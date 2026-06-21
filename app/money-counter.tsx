@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   accountTypes,
   centsToInputValue,
@@ -302,7 +302,17 @@ function CategoryPie({
   );
 }
 
-function MonthSelect({
+const MONTH_SHORT = [
+  "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
+  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
+];
+
+// Custom month/period picker — a popover with a 12-month grid and year nav.
+// Drop-in for the old native <select>: same contract (value/onChange are
+// "yyyy-mm" strings, `options` is the allowed set of months, others render
+// disabled). There is NO day selection — only whole months — so the value
+// stays a plain "yyyy-mm" string and nothing downstream needs converting.
+function MonthPicker({
   value,
   onChange,
   options,
@@ -313,14 +323,110 @@ function MonthSelect({
   options: string[];
   ariaLabel: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(() => ymParts(value).year);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const allowed = useMemo(() => new Set(options), [options]);
+  const { minYear, maxYear } = useMemo(() => {
+    const years = options.map((ym) => ymParts(ym).year);
+    const fallback = ymParts(value).year;
+    return {
+      minYear: years.length ? Math.min(...years) : fallback,
+      maxYear: years.length ? Math.max(...years) : fallback,
+    };
+  }, [options, value]);
+
+  // Close on outside click / Escape while open (client-only, like the modal).
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const { year: selectedYear, month: selectedMonth } = ymParts(value);
+
+  function toggle() {
+    // Always reopen on the selected month's year.
+    if (!open) setViewYear(selectedYear);
+    setOpen((current) => !current);
+  }
+
+  function pick(month: number) {
+    const ym = `${viewYear}-${String(month).padStart(2, "0")}`;
+    if (!allowed.has(ym)) return;
+    onChange(ym);
+    setOpen(false);
+  }
+
   return (
-    <select aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)}>
-      {options.map((ym) => (
-        <option key={ym} value={ym}>
-          {formatMonthLabel(ym)}
-        </option>
-      ))}
-    </select>
+    <div className="monthPicker" ref={containerRef}>
+      <button
+        type="button"
+        className="monthPickerTrigger"
+        aria-label={ariaLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <span>{formatMonthLabel(value)}</span>
+        <span className="monthPickerCaret" aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div className="monthPickerPanel" role="dialog" aria-label={ariaLabel}>
+          <div className="monthPickerHead">
+            <button
+              type="button"
+              className="iconButton small"
+              onClick={() => setViewYear((y) => y - 1)}
+              disabled={viewYear <= minYear}
+              aria-label="Предыдущий год"
+            >
+              ‹
+            </button>
+            <b>{viewYear}</b>
+            <button
+              type="button"
+              className="iconButton small"
+              onClick={() => setViewYear((y) => y + 1)}
+              disabled={viewYear >= maxYear}
+              aria-label="Следующий год"
+            >
+              ›
+            </button>
+          </div>
+          <div className="monthPickerGrid">
+            {MONTH_SHORT.map((label, index) => {
+              const month = index + 1;
+              const ym = `${viewYear}-${String(month).padStart(2, "0")}`;
+              const isSelected = viewYear === selectedYear && month === selectedMonth;
+              return (
+                <button
+                  key={month}
+                  type="button"
+                  className={`monthPickerMonth ${isSelected ? "selected" : ""}`}
+                  disabled={!allowed.has(ym)}
+                  aria-pressed={isSelected}
+                  onClick={() => pick(month)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -968,7 +1074,7 @@ export default function MoneyCounter() {
                     the picker used to be (top-right). */}
                 <h2 className="opsTitle">Операции</h2>
                 <div className="sectionHead">
-                  <MonthSelect
+                  <MonthPicker
                     ariaLabel="Период"
                     value={mainPeriod}
                     onChange={setMainPeriod}
@@ -1591,11 +1697,11 @@ export default function MoneyCounter() {
             <div className="rangeControls">
               <label>
                 С
-                <MonthSelect ariaLabel="Начало периода" value={chartFrom} onChange={setChartFrom} options={monthOptions} />
+                <MonthPicker ariaLabel="Начало периода" value={chartFrom} onChange={setChartFrom} options={monthOptions} />
               </label>
               <label>
                 По
-                <MonthSelect ariaLabel="Конец периода" value={chartTo} onChange={setChartTo} options={monthOptions} />
+                <MonthPicker ariaLabel="Конец периода" value={chartTo} onChange={setChartTo} options={monthOptions} />
               </label>
               <label>
                 Валюта

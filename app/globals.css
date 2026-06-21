@@ -688,6 +688,97 @@ dd {
   width: auto;
 }
 
+/* --- Month picker (custom period selector, replaces the native <select>) --- */
+.monthPicker {
+  display: inline-block;
+  position: relative;
+}
+
+.monthPickerTrigger {
+  align-items: center;
+  background: #fbfcfd;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--foreground);
+  display: inline-flex;
+  font-weight: 600;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 40px;
+  min-width: 160px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.monthPickerTrigger:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.16);
+  outline: none;
+}
+
+.monthPickerCaret {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monthPickerPanel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+  left: 0;
+  margin-top: 6px;
+  padding: 12px;
+  position: absolute;
+  top: 100%;
+  width: 240px;
+  z-index: 30;
+}
+
+.monthPickerHead {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.monthPickerHead b {
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.monthPickerGrid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.monthPickerMonth {
+  background: #fbfcfd;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--foreground);
+  font-weight: 600;
+  min-height: 38px;
+  padding: 0 4px;
+}
+
+.monthPickerMonth:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.monthPickerMonth.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.monthPickerMonth:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 /* --- Settings lists --- */
 .settingsList {
   display: grid;
