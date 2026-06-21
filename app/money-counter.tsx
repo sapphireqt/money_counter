@@ -7,7 +7,6 @@ import {
   formatDateShort,
   formatMoney,
   formatMoneyParts,
-  normalizeCurrency,
 } from "../lib/finance";
 import {
   analyzeImport,
@@ -86,8 +85,6 @@ type ImportPayloadRow = {
 
 type Tab = "main" | "settings" | "charts";
 
-const NEW_ACCOUNT = "__new__";
-
 const DELIMITER_LABELS: Record<string, string> = {
   ",": "запятая",
   ";": "точка с запятой",
@@ -164,30 +161,6 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(data.error ?? "Запрос не выполнен");
   }
   return data as T;
-}
-
-// Best-effort bank name from the statement file name.
-const BANK_HINTS: Array<[RegExp, string]> = [
-  [/revolut/i, "Revolut"],
-  [/wise|transferwise/i, "Wise"],
-  [/\bn26\b/i, "N26"],
-  [/paypal/i, "PayPal"],
-  [/caixa/i, "CaixaBank"],
-  [/bbva/i, "BBVA"],
-  [/sabadell/i, "Sabadell"],
-  [/santander/i, "Santander"],
-  [/tinkoff|t-bank|тинькоф/i, "Tinkoff"],
-  [/sber|сбер/i, "Sber"],
-  [/\balfa|альфа/i, "Alfa"],
-];
-
-function suggestAccountName(fileName: string, currency: string) {
-  for (const [pattern, name] of BANK_HINTS) {
-    if (pattern.test(fileName)) {
-      return `${name} ${currency}`.trim();
-    }
-  }
-  return `Импорт ${currency}`.trim();
 }
 
 // Render a money value with the currency symbol greyed out. The number keeps
@@ -471,9 +444,6 @@ export default function MoneyCounter() {
   const [importAnalysis, setImportAnalysis] = useState<AnalyzeResult | null>(null);
   const [importMapping, setImportMapping] = useState<ColumnMapping | null>(null);
   const [importFileName, setImportFileName] = useState("");
-  const [importTarget, setImportTarget] = useState<string>(NEW_ACCOUNT);
-  const [importNewName, setImportNewName] = useState("");
-  const [importNewCurrency, setImportNewCurrency] = useState("EUR");
   const [importFlip, setImportFlip] = useState(false);
   const [importEditorOpen, setImportEditorOpen] = useState(false);
   // Non-null when the picked file was a PDF: rows are parsed directly (the sign
@@ -691,13 +661,16 @@ export default function MoneyCounter() {
   }, [stats, colorByCategory]);
 
   // --- import ---------------------------------------------------------------
+  // The import always targets the account selected in the modal's "Счет" field;
+  // there is no separate destination picker and no on-the-fly account creation.
+  const importAccount = accounts.find(
+    (account) => String(account.id) === transactionForm.accountId
+  );
   const importCurrency =
-    importTarget === NEW_ACCOUNT
-      ? normalizeCurrency(importNewCurrency)
-      : accounts.find((account) => String(account.id) === importTarget)?.currency ??
-        importAnalysis?.detectedCurrency ??
-        pdfRows?.[0]?.currency ??
-        "EUR";
+    importAccount?.currency ??
+    importAnalysis?.detectedCurrency ??
+    pdfRows?.[0]?.currency ??
+    activeCurrency;
 
   const importRows = useMemo<ParsedRow[]>(() => {
     // PDF rows are already fully resolved (signed amount, currency) by analyzePdf.
@@ -737,7 +710,6 @@ export default function MoneyCounter() {
     setImportFileName("");
     setImportFlip(false);
     setImportEditorOpen(false);
-    setImportTarget(accounts[0] ? String(accounts[0].id) : NEW_ACCOUNT);
   }
 
   async function handleImportFile(file: File | null) {
@@ -766,9 +738,6 @@ export default function MoneyCounter() {
       setImportFileName(file.name);
       setImportFlip(false);
       setImportEditorOpen(needsMapping);
-      setImportNewCurrency(analysis.detectedCurrency);
-      setImportNewName(suggestAccountName(file.name, analysis.detectedCurrency));
-      setImportTarget(NEW_ACCOUNT);
       setNotice(
         `Файл распознан: ${analysis.valid} строк к импорту` +
           (analysis.skipped ? `, ${analysis.skipped} пропущено` : "")
@@ -817,9 +786,6 @@ export default function MoneyCounter() {
       setImportFileName(file.name);
       setImportFlip(false);
       setImportEditorOpen(false);
-      setImportNewCurrency(result.currency);
-      setImportNewName(suggestAccountName(file.name, result.currency));
-      setImportTarget(NEW_ACCOUNT);
       setNotice(
         `PDF распознан (${result.bank}): ${result.valid} операций к импорту` +
           (result.skipped ? `, ${result.skipped} пропущено` : "")
@@ -835,25 +801,14 @@ export default function MoneyCounter() {
 
   async function handleImport() {
     if (importValidRows.length === 0) return;
+    // Always import into the account selected in the modal — never create one.
+    const accountId = Number(transactionForm.accountId);
+    if (!accountId) {
+      setNotice("Выберите счёт для импорта");
+      return;
+    }
     setSaving(true);
     try {
-      let accountId: number;
-      if (importTarget === NEW_ACCOUNT) {
-        const name = importNewName.trim();
-        if (!name) {
-          setNotice("Укажите название нового счета");
-          setSaving(false);
-          return;
-        }
-        const created = await requestJson<{ account: { id: number } }>("/api/accounts", {
-          method: "POST",
-          body: JSON.stringify({ name, currency: normalizeCurrency(importNewCurrency) }),
-        });
-        accountId = created.account.id;
-      } else {
-        accountId = Number(importTarget);
-      }
-
       const rows: ImportPayloadRow[] = importValidRows.map((row) => ({
         currency: row.currency,
         date: row.date ?? "",
@@ -1376,37 +1331,14 @@ export default function MoneyCounter() {
 
                   {(importAnalysis && importMapping) || pdfRows ? (
                     <>
-                      <label className="importField">
-                        Счёт назначения
-                        <select value={importTarget} onChange={(event) => setImportTarget(event.target.value)}>
-                          {accounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name} · {account.currency}
-                            </option>
-                          ))}
-                          <option value={NEW_ACCOUNT}>+ Новый счёт…</option>
-                        </select>
-                      </label>
-
-                      {importTarget === NEW_ACCOUNT ? (
-                        <div className="formGrid two">
-                          <label>
-                            Название
-                            <input
-                              value={importNewName}
-                              onChange={(event) => setImportNewName(event.target.value)}
-                            />
-                          </label>
-                          <label>
-                            Валюта
-                            <input
-                              maxLength={3}
-                              value={importNewCurrency}
-                              onChange={(event) => setImportNewCurrency(event.target.value.toUpperCase())}
-                            />
-                          </label>
-                        </div>
-                      ) : null}
+                      <p className="importHint">
+                        Импортируется в счёт{" "}
+                        <b>
+                          {importAccount
+                            ? `«${importAccount.name}»`
+                            : "— сначала выберите счёт в поле «Счет» выше"}
+                        </b>
+                      </p>
 
                       {/* Column mapping + sign flip are CSV-only. PDF rows are
                           already resolved by analyzePdf, so this block is hidden
@@ -1515,7 +1447,7 @@ export default function MoneyCounter() {
                       <button
                         className="primaryButton"
                         type="button"
-                        disabled={saving || importValidRows.length === 0}
+                        disabled={saving || importValidRows.length === 0 || !importAccount}
                         onClick={handleImport}
                       >
                         <span>↓</span> Импортировать {importValidRows.length}
