@@ -63,5 +63,27 @@ export async function ensureSchema() {
     d1.prepare(
       "CREATE INDEX IF NOT EXISTS transactions_amount_cents_idx ON transactions (amount_cents)"
     ),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#2563eb',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    d1.prepare(
+      "CREATE UNIQUE INDEX IF NOT EXISTS categories_name_idx ON categories (name)"
+    ),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS category_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pattern TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    d1.prepare(
+      "CREATE INDEX IF NOT EXISTS category_rules_category_idx ON category_rules (category)"
+    ),
   ]);
 }

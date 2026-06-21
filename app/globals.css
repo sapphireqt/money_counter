@@ -98,7 +98,7 @@ h2 {
 .summaryGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto 16px;
   max-width: 1540px;
 }
@@ -332,22 +332,23 @@ select:focus {
 }
 
 .flowBars {
-  align-items: end;
+  align-items: flex-end;
   background: #f8fafb;
   border: 1px solid var(--line);
   border-radius: 8px;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(6, minmax(34px, 1fr));
+  display: flex;
+  gap: 10px;
   min-height: 150px;
+  overflow-x: auto;
   padding: 16px;
 }
 
 .flowBar {
   align-items: center;
-  display: grid;
+  display: flex;
+  flex: 1 0 28px;
+  flex-direction: column;
   gap: 8px;
-  justify-items: center;
 }
 
 .barPair {
@@ -385,7 +386,7 @@ select:focus {
 .filters {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 170px;
+  grid-template-columns: minmax(0, 1fr) 150px 150px;
   margin-bottom: 12px;
 }
 
@@ -431,6 +432,12 @@ td {
   color: var(--expense);
 }
 
+/* The currency symbol is muted everywhere money is shown; the number keeps the
+   colour of its container (green income, black expense, default elsewhere). */
+.currencySymbol {
+  color: #777070;
+}
+
 .rowActions {
   display: flex;
   gap: 6px;
@@ -468,6 +475,90 @@ td {
 .importStats span,
 dl dt {
   color: var(--muted);
+}
+
+.importField {
+  margin-top: 14px;
+}
+
+.importHint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 12px 0 0;
+}
+
+.importWarning {
+  background: #fff4f4;
+  border: 1px solid #f3c6c6;
+  border-radius: 8px;
+  color: var(--expense);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 12px 0 0;
+  padding: 8px 10px;
+}
+
+.flipToggle {
+  align-items: center;
+  color: var(--muted-strong);
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 8px;
+  grid-template-columns: none;
+  margin-top: 12px;
+}
+
+.flipToggle input {
+  height: 16px;
+  min-height: 0;
+  width: 16px;
+}
+
+.mappingEditor {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.mappingEditor summary {
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mappingGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.importPreview {
+  margin-top: 14px;
+}
+
+.importPreview table {
+  min-width: 0;
+}
+
+.importPreview td,
+.importPreview th {
+  padding: 8px 6px;
+}
+
+.importPreview td small {
+  color: var(--expense);
+  display: block;
+  font-size: 11px;
+}
+
+.skippedRow {
+  opacity: 0.5;
 }
 
 .detailHero {
@@ -547,6 +638,267 @@ dd {
 
   .flowBars {
     gap: 8px;
-    grid-template-columns: repeat(3, minmax(46px, 1fr));
+  }
+
+  .rangeControls {
+    flex-wrap: wrap;
+  }
+}
+
+/* --- Tabs --- */
+.tabBar {
+  display: flex;
+  gap: 6px;
+  margin: 0 auto 16px;
+  max-width: 1540px;
+}
+
+.tabButton {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted-strong);
+  font-weight: 760;
+  min-height: 40px;
+  padding: 0 18px;
+}
+
+.tabButton.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.workspace.twoCol {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.workspace.oneCol {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* "Операции" sits on its own line above the toolbar (period picker + add). */
+.opsTitle {
+  margin-bottom: 12px;
+}
+
+.sectionHead select {
+  min-height: 36px;
+  min-width: 150px;
+  width: auto;
+}
+
+/* --- Settings lists --- */
+.settingsList {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.settingsList li {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 9px 12px;
+}
+
+.settingsListMain {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.settingsListMain b,
+.settingsListMain small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsListMain small {
+  color: var(--muted);
+}
+
+.settingsList.chips {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.settingsList.chips .chip {
+  border-radius: 999px;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.chipRemove {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 0 0 2px;
+}
+
+.settingsForm {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.settingsForm h3 {
+  font-size: 13px;
+  font-weight: 760;
+  margin: 0;
+}
+
+/* --- Charts --- */
+.chartToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 0 auto 16px;
+  max-width: 1540px;
+}
+
+.rangeControls {
+  align-items: end;
+  display: flex;
+  gap: 12px;
+}
+
+.rangeControls label {
+  gap: 6px;
+}
+
+.chartTotals {
+  display: flex;
+  gap: 20px;
+}
+
+.chartTotals span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chartTotals b {
+  display: block;
+  font-size: 18px;
+}
+
+.positive {
+  color: var(--income);
+}
+
+.negative {
+  color: var(--expense);
+}
+
+/* --- Pie --- */
+.pieWrap {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.pieSvg {
+  flex: 0 0 180px;
+  height: 180px;
+  width: 180px;
+}
+
+.pieLegend {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  min-width: 200px;
+  padding: 0;
+}
+
+.pieLegend li {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+}
+
+.legendDot {
+  border-radius: 3px;
+  display: inline-block;
+  height: 12px;
+  width: 12px;
+}
+
+.legendName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legendValue {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --- Modal (add/edit transaction + statement import) --- */
+.modalOverlay {
+  align-items: flex-start;
+  background: rgba(24, 32, 38, 0.45);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 32px 16px;
+  position: fixed;
+  z-index: 50;
+}
+
+.modalCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 18px;
+  max-width: 720px;
+  padding: 20px;
+  width: 100%;
+}
+
+.modalHead {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* The form is a 4-column grid on the page; in the narrower modal a 2-column
+   layout reads better, with the submit button spanning the full width. */
+.modalCard .transactionForm {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.modalCard .transactionForm .primaryButton {
+  grid-column: 1 / -1;
+}
+
+.modalImport {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+@media (max-width: 560px) {
+  .modalCard .transactionForm {
+    grid-template-columns: 1fr;
   }
 }

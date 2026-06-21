@@ -9,6 +9,9 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "start:docker": "sh scripts/start-docker.sh",
+    "docker:build": "docker build -t money-counter-demo .",
+    "docker:run": "docker run --rm -p 8787:8787 -v money-counter-data:/data money-counter-demo",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

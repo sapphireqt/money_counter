@@ -34,3 +34,22 @@ amount, type/direction, description, category, payee, notes, and currency.
 - `pnpm run build`: verify the vinext build output.
 - `pnpm run db:generate`: generate Drizzle migrations after schema changes.
 - `pnpm run lint`: run ESLint.
+
+## Docker Demo
+
+Build the local demo image:
+
+```bash
+docker build -t money-counter-demo .
+```
+
+Run it with a persistent local D1 volume:
+
+```bash
+docker run --rm -p 8787:8787 -v money-counter-data:/data money-counter-demo
+```
+
+Then open `http://localhost:8787`.
+
+The container runs the built Cloudflare Worker with Wrangler's local runtime and
+stores D1 state under `/data`. It does not use Sites or publish anything.

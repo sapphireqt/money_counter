@@ -1,6 +1,8 @@
 import {
+  matchCategoryRule,
   normalizeDateInput,
   resolveSignedAmountCents,
+  type CategoryRule,
 } from "../../../lib/finance";
 import { ensureSchema, getD1 } from "../../../db";
 
@@ -209,6 +211,17 @@ export async function POST(request: Request) {
       return Response.json({ error: "Счет не найден" }, { status: 404 });
     }
 
+    const payee = String(payload.payee ?? "").trim();
+    let category = String(payload.category ?? "").trim();
+    if (!category) {
+      const ruleRows = await getD1()
+        .prepare("SELECT pattern, category FROM category_rules ORDER BY id")
+        .all<CategoryRule>();
+      const rules = ruleRows.results ?? [];
+      category =
+        matchCategoryRule(description, rules) || matchCategoryRule(payee, rules);
+    }
+
     const row = await getD1()
       .prepare(
         `INSERT INTO transactions (
@@ -241,8 +254,8 @@ export async function POST(request: Request) {
         accountId,
         date,
         description || (amountCents > 0 ? "Поступление" : "Расход"),
-        String(payload.category ?? "").trim(),
-        String(payload.payee ?? "").trim(),
+        category,
+        payee,
         amountCents,
         normalizeStatus(payload.status),
         String(payload.notes ?? "").trim()

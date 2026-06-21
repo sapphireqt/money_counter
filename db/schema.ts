@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 export const accounts = sqliteTable(
   "accounts",
@@ -43,4 +49,26 @@ export const transactions = sqliteTable(
     index("transactions_date_idx").on(table.date),
     index("transactions_amount_cents_idx").on(table.amountCents),
   ]
+);
+
+export const categories = sqliteTable(
+  "categories",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    color: text("color").notNull().default("#2563eb"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("categories_name_idx").on(table.name)]
+);
+
+export const categoryRules = sqliteTable(
+  "category_rules",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    pattern: text("pattern").notNull(),
+    category: text("category").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("category_rules_category_idx").on(table.category)]
 );

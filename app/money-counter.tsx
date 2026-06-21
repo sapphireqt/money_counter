@@ -1,14 +1,24 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   accountTypes,
   centsToInputValue,
   formatDateShort,
   formatMoney,
+  formatMoneyParts,
   normalizeCurrency,
-  resolveSignedAmountCents,
 } from "../lib/finance";
+import {
+  analyzeImport,
+  buildRows,
+  detectAmountSigned,
+  FIELD_DEFS,
+  type AnalyzeResult,
+  type ColumnMapping,
+  type FieldKey,
+  type ParsedRow,
+} from "../lib/import";
 
 type Account = {
   id: number;
@@ -36,6 +46,14 @@ type Transaction = {
   notes: string;
 };
 
+type Category = { id: number; name: string; color: string };
+type Rule = { id: number; pattern: string; category: string };
+type Stats = {
+  monthly: Array<{ month: string; income: number; expense: number }>;
+  byCategory: Array<{ category: string; total: number }>;
+  totals: { income: number; expense: number };
+};
+
 type AccountForm = {
   name: string;
   bankName: string;
@@ -52,12 +70,9 @@ type TransactionForm = {
   amount: string;
   description: string;
   category: string;
-  payee: string;
-  notes: string;
 };
 
-type ImportRow = {
-  accountName: string;
+type ImportPayloadRow = {
   currency: string;
   date: string;
   amount: string;
@@ -68,7 +83,18 @@ type ImportRow = {
   notes: string;
 };
 
-const accountPalette = [
+type Tab = "main" | "settings" | "charts";
+
+const NEW_ACCOUNT = "__new__";
+
+const DELIMITER_LABELS: Record<string, string> = {
+  ",": "запятая",
+  ";": "точка с запятой",
+  "\t": "табуляция",
+  "|": "вертикальная черта",
+};
+
+const palette = [
   "#2563eb",
   "#0f766e",
   "#b45309",
@@ -76,10 +102,52 @@ const accountPalette = [
   "#6d28d9",
   "#0369a1",
   "#4d7c0f",
+  "#c2410c",
+  "#0891b2",
+  "#7c3aed",
 ];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function monthKey(date: string) {
+  return date.slice(0, 7);
+}
+
+function ymParts(ym: string) {
+  const [year, month] = ym.split("-").map(Number);
+  return { year, month };
+}
+
+function addMonths(ym: string, delta: number) {
+  const { year, month } = ymParts(ym);
+  const index = year * 12 + (month - 1) + delta;
+  const y = Math.floor(index / 12);
+  const m = (index % 12) + 1;
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+// Real last day of the month as an ISO date. Must be a VALID calendar day —
+// "YYYY-MM-31" is rejected by the date validator for 30-day months / February,
+// which would silently drop the upper bound of a range query.
+function monthEnd(ym: string) {
+  const { year, month } = ymParts(ym);
+  const day = new Date(year, month, 0).getDate();
+  return `${ym}-${String(day).padStart(2, "0")}`;
+}
+
+function monthBounds(ym: string) {
+  return { from: `${ym}-01`, to: monthEnd(ym) };
+}
+
+function formatMonthLabel(ym: string) {
+  const { year, month } = ymParts(ym);
+  const label = new Intl.DateTimeFormat("ru-RU", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -90,167 +158,198 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
-  const data = (await response.json().catch(() => ({}))) as {
-    error?: string;
-  };
-
+  const data = (await response.json().catch(() => ({}))) as { error?: string };
   if (!response.ok) {
     throw new Error(data.error ?? "Запрос не выполнен");
   }
-
   return data as T;
 }
 
-function normalizeHeader(value: string) {
-  return value.trim().toLowerCase().replace("ё", "е");
+// Best-effort bank name from the statement file name.
+const BANK_HINTS: Array<[RegExp, string]> = [
+  [/revolut/i, "Revolut"],
+  [/wise|transferwise/i, "Wise"],
+  [/\bn26\b/i, "N26"],
+  [/paypal/i, "PayPal"],
+  [/caixa/i, "CaixaBank"],
+  [/bbva/i, "BBVA"],
+  [/sabadell/i, "Sabadell"],
+  [/santander/i, "Santander"],
+  [/tinkoff|t-bank|тинькоф/i, "Tinkoff"],
+  [/sber|сбер/i, "Sber"],
+  [/\balfa|альфа/i, "Alfa"],
+];
+
+function suggestAccountName(fileName: string, currency: string) {
+  for (const [pattern, name] of BANK_HINTS) {
+    if (pattern.test(fileName)) {
+      return `${name} ${currency}`.trim();
+    }
+  }
+  return `Импорт ${currency}`.trim();
 }
 
-function parseDelimited(text: string) {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let inQuotes = false;
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-  const delimiter = [";", ",", "\t"].sort(
-    (a, b) => firstLine.split(b).length - firstLine.split(a).length
-  )[0];
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-
-    if (char === '"' && next === '"' && inQuotes) {
-      cell += '"';
-      index += 1;
-      continue;
-    }
-
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-
-    if (char === delimiter && !inQuotes) {
-      row.push(cell.trim());
-      cell = "";
-      continue;
-    }
-
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") {
-        index += 1;
-      }
-      row.push(cell.trim());
-      if (row.some(Boolean)) {
-        rows.push(row);
-      }
-      row = [];
-      cell = "";
-      continue;
-    }
-
-    cell += char;
-  }
-
-  row.push(cell.trim());
-  if (row.some(Boolean)) {
-    rows.push(row);
-  }
-
-  return rows;
+// Render a money value with the currency symbol greyed out. The number keeps
+// whatever colour its container sets; only the symbol is muted (#777070, via
+// the .currencySymbol class). formatToParts keeps symbol placement correct for
+// any locale/currency instead of assuming a trailing symbol.
+function Money({ cents, currency }: { cents: number; currency: string }) {
+  return (
+    <>
+      {formatMoneyParts(cents, currency).map((part, index) =>
+        part.type === "currency" ? (
+          <span key={index} className="currencySymbol">
+            {part.value}
+          </span>
+        ) : (
+          <Fragment key={index}>{part.value}</Fragment>
+        )
+      )}
+    </>
+  );
 }
 
-function readColumn(
-  record: string[],
-  headers: string[],
-  names: string[],
-  fallback = ""
+// Balances summed per currency, joined by " · " (e.g. "1 234,56 € · 500,00 $").
+function MoneyTotals({
+  map,
+  fallback,
+}: {
+  map: Record<string, number>;
+  fallback: string;
+}) {
+  const entries = Object.entries(map).filter(([, value]) => value !== 0);
+  if (entries.length === 0) {
+    return <Money cents={0} currency={fallback} />;
+  }
+  return (
+    <>
+      {entries.map(([currency, value], index) => (
+        <Fragment key={currency}>
+          {index > 0 ? " · " : null}
+          <Money cents={value} currency={currency} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+// Donut segment path (outer radius r, inner radius ir, angles in radians).
+function donutPath(
+  cx: number,
+  cy: number,
+  r: number,
+  ir: number,
+  a0: number,
+  a1: number
 ) {
-  const index = headers.findIndex((header) => names.includes(header));
-  return index >= 0 ? record[index] ?? fallback : fallback;
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const x0 = cx + r * Math.cos(a0);
+  const y0 = cy + r * Math.sin(a0);
+  const x1 = cx + r * Math.cos(a1);
+  const y1 = cy + r * Math.sin(a1);
+  const xi1 = cx + ir * Math.cos(a1);
+  const yi1 = cy + ir * Math.sin(a1);
+  const xi0 = cx + ir * Math.cos(a0);
+  const yi0 = cy + ir * Math.sin(a0);
+  return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} L ${xi1} ${yi1} A ${ir} ${ir} 0 ${large} 0 ${xi0} ${yi0} Z`;
 }
 
-function parseCsvImport(text: string): ImportRow[] {
-  const [headerRow, ...records] = parseDelimited(text);
-  if (!headerRow) {
-    return [];
+function CategoryPie({
+  slices,
+  currency,
+}: {
+  slices: Array<{ label: string; value: number; color: string }>;
+  currency: string;
+}) {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  if (total <= 0) {
+    return <div className="emptyBars">Нет расходов за период</div>;
   }
 
-  const headers = headerRow.map(normalizeHeader);
+  const cx = 90;
+  const cy = 90;
+  const r = 84;
+  const ir = 50;
+  const start = -Math.PI / 2;
+  const arcs = slices.map((slice, index) => {
+    const prior = slices.slice(0, index).reduce((sum, item) => sum + item.value, 0);
+    const frac = slice.value / total;
+    const a0 = start + (prior / total) * Math.PI * 2;
+    // Cap sweep just under a full turn so a single 100% slice still renders.
+    const a1 = a0 + Math.min(frac, 0.9999) * Math.PI * 2;
+    return { ...slice, frac, d: donutPath(cx, cy, r, ir, a0, a1) };
+  });
 
-  return records
-    .map((record) => {
-      const direction = readColumn(record, headers, [
-        "type",
-        "тип",
-        "direction",
-        "направление",
-      ]);
-
-      return {
-        accountName: readColumn(record, headers, [
-          "account",
-          "account name",
-          "счет",
-          "счёт",
-          "банк",
-        ]),
-        currency: normalizeCurrency(
-          readColumn(record, headers, ["currency", "валюта"], "EUR")
-        ),
-        date: readColumn(record, headers, ["date", "дата"]),
-        amount: readColumn(record, headers, ["amount", "сумма", "sum"]),
-        direction,
-        description: readColumn(record, headers, [
-          "description",
-          "описание",
-          "comment",
-          "комментарий",
-        ]),
-        category: readColumn(record, headers, ["category", "категория"]),
-        payee: readColumn(record, headers, [
-          "payee",
-          "merchant",
-          "контрагент",
-          "получатель",
-        ]),
-        notes: readColumn(record, headers, ["notes", "заметки", "note"]),
-      };
-    })
-    .filter((row) => row.accountName || row.date || row.amount);
+  return (
+    <div className="pieWrap">
+      <svg viewBox="0 0 180 180" className="pieSvg" role="img" aria-label="Расходы по категориям">
+        {arcs.map((arc) => (
+          <path key={arc.label} d={arc.d} fill={arc.color} />
+        ))}
+      </svg>
+      <ul className="pieLegend">
+        {arcs.map((arc) => (
+          <li key={arc.label}>
+            <span className="legendDot" style={{ background: arc.color }} />
+            <span className="legendName">{arc.label}</span>
+            <span className="legendValue">
+              <Money cents={arc.value} currency={currency} /> · {Math.round(arc.frac * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
-function groupTotalsByCurrency(accounts: Account[]) {
-  return accounts.reduce<Record<string, number>>((totals, account) => {
-    totals[account.currency] = (totals[account.currency] ?? 0) + account.balanceCents;
-    return totals;
-  }, {});
-}
-
-function monthKey(date: string) {
-  return date.slice(0, 7);
+function MonthSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  ariaLabel: string;
+}) {
+  return (
+    <select aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)}>
+      {options.map((ym) => (
+        <option key={ym} value={ym}>
+          {formatMonthLabel(ym)}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 export default function MoneyCounter() {
+  const [activeTab, setActiveTab] = useState<Tab>("main");
+
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [periods, setPeriods] = useState<string[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  const [mainPeriod, setMainPeriod] = useState(monthKey(today()));
+  const [chartFrom, setChartFrom] = useState(addMonths(monthKey(today()), -5));
+  const [chartTo, setChartTo] = useState(monthKey(today()));
+  const [chartCurrency, setChartCurrency] = useState("");
+
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
-  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(
-    null
-  );
-  const [accountForm, setAccountForm] = useState<AccountForm>({
-    name: "",
-    bankName: "",
-    currency: "EUR",
-    type: "checking",
-    openingBalance: "",
-    color: accountPalette[0],
-  });
+
+  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
+  // The add/edit form + statement import now live in a single modal dialog,
+  // opened from the "Добавить" button or the row edit (pencil) action.
+  const [formOpen, setFormOpen] = useState(false);
   const [transactionForm, setTransactionForm] = useState<TransactionForm>({
     accountId: "",
     date: today(),
@@ -258,151 +357,373 @@ export default function MoneyCounter() {
     amount: "",
     description: "",
     category: "",
-    payee: "",
-    notes: "",
   });
-  const [importRows, setImportRows] = useState<ImportRow[]>([]);
 
-  const selectedAccount =
-    selectedAccountId === "all"
-      ? null
-      : accounts.find((account) => String(account.id) === selectedAccountId) ??
-        null;
-  const activeCurrency = selectedAccount?.currency ?? accounts[0]?.currency ?? "EUR";
+  const [accountForm, setAccountForm] = useState<AccountForm>({
+    name: "",
+    bankName: "",
+    currency: "EUR",
+    type: "checking",
+    openingBalance: "",
+    color: palette[0],
+  });
+  const [categoryForm, setCategoryForm] = useState({ name: "", color: palette[1] });
+  const [ruleForm, setRuleForm] = useState({ pattern: "", category: "" });
 
+  const [importAnalysis, setImportAnalysis] = useState<AnalyzeResult | null>(null);
+  const [importMapping, setImportMapping] = useState<ColumnMapping | null>(null);
+  const [importFileName, setImportFileName] = useState("");
+  const [importTarget, setImportTarget] = useState<string>(NEW_ACCOUNT);
+  const [importNewName, setImportNewName] = useState("");
+  const [importNewCurrency, setImportNewCurrency] = useState("EUR");
+  const [importFlip, setImportFlip] = useState(false);
+  const [importEditorOpen, setImportEditorOpen] = useState(false);
+
+  const activeCurrency = accounts[0]?.currency ?? "EUR";
+
+  const monthOptions = useMemo(() => {
+    const current = monthKey(today());
+    let earliest = current;
+    for (const period of periods) {
+      if (period && period < earliest) earliest = period;
+    }
+    const windowStart = addMonths(current, -11);
+    if (windowStart < earliest) earliest = windowStart;
+
+    const list: string[] = [];
+    let cursor = current;
+    while (cursor >= earliest) {
+      list.push(cursor);
+      cursor = addMonths(cursor, -1);
+    }
+    return list; // newest first
+  }, [periods]);
+
+  const currencyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const account of accounts) set.add(account.currency);
+    return [...set];
+  }, [accounts]);
+
+  const colorByCategory = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const category of categories) map.set(category.name, category.color);
+    return map;
+  }, [categories]);
+
+  // --- data loading ---------------------------------------------------------
   const loadAccounts = useCallback(async () => {
     const data = await requestJson<{ accounts: Account[] }>("/api/accounts");
     setAccounts(data.accounts);
     setTransactionForm((current) => ({
       ...current,
-      accountId:
-        current.accountId || (data.accounts[0] ? String(data.accounts[0].id) : ""),
+      accountId: current.accountId || (data.accounts[0] ? String(data.accounts[0].id) : ""),
     }));
+    // Keep the chart currency valid: keep the current one if an account still
+    // uses it, otherwise fall back to the first account's currency.
+    setChartCurrency((current) =>
+      data.accounts.some((account) => account.currency === current)
+        ? current
+        : data.accounts[0]?.currency ?? ""
+    );
+  }, []);
+
+  const loadCategories = useCallback(async () => {
+    const data = await requestJson<{ categories: Category[] }>("/api/categories");
+    setCategories(data.categories);
+  }, []);
+
+  const loadRules = useCallback(async () => {
+    const data = await requestJson<{ rules: Rule[] }>("/api/rules");
+    setRules(data.rules);
+  }, []);
+
+  const loadPeriods = useCallback(async () => {
+    const data = await requestJson<{ periods: string[] }>("/api/periods");
+    setPeriods(data.periods);
   }, []);
 
   const loadTransactions = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (selectedAccountId !== "all") {
-      params.set("accountId", selectedAccountId);
-    }
-    if (query.trim()) {
-      params.set("q", query.trim());
-    }
-    if (typeFilter !== "all") {
-      params.set("type", typeFilter);
-    }
-    params.set("limit", "300");
-
-    const data = await requestJson<{ transactions: Transaction[] }>(
-      `/api/transactions?${params.toString()}`
-    );
-    setTransactions(data.transactions);
-  }, [query, selectedAccountId, typeFilter]);
-
-  const refresh = useCallback(async () => {
     try {
-      await Promise.all([loadAccounts(), loadTransactions()]);
+      const params = new URLSearchParams();
+      const { from, to } = monthBounds(mainPeriod);
+      params.set("from", from);
+      params.set("to", to);
+      if (selectedAccountId !== "all") params.set("accountId", selectedAccountId);
+      if (query.trim()) params.set("q", query.trim());
+      if (typeFilter !== "all") params.set("type", typeFilter);
+      params.set("limit", "500");
+
+      const data = await requestJson<{ transactions: Transaction[] }>(
+        `/api/transactions?${params.toString()}`
+      );
+      setTransactions(data.transactions);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Не удалось загрузить данные");
-    } finally {
-      setLoading(false);
+      setNotice(error instanceof Error ? error.message : "Не удалось загрузить операции");
     }
-  }, [loadAccounts, loadTransactions]);
+  }, [mainPeriod, selectedAccountId, query, typeFilter]);
+
+  const loadStats = useCallback(async () => {
+    if (!chartCurrency) {
+      setStats(null);
+      return;
+    }
+    try {
+      const lo = chartFrom <= chartTo ? chartFrom : chartTo;
+      const hi = chartFrom <= chartTo ? chartTo : chartFrom;
+      const params = new URLSearchParams({
+        from: `${lo}-01`,
+        to: monthEnd(hi),
+        currency: chartCurrency,
+      });
+      const data = await requestJson<Stats>(`/api/stats?${params.toString()}`);
+      setStats(data);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось загрузить статистику");
+    }
+  }, [chartFrom, chartTo, chartCurrency]);
+
+  const reloadMeta = useCallback(async () => {
+    await Promise.all([loadAccounts(), loadCategories(), loadRules(), loadPeriods()]);
+  }, [loadAccounts, loadCategories, loadRules, loadPeriods]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void refresh();
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, [refresh]);
-
-  const totalsByCurrency = useMemo(() => groupTotalsByCurrency(accounts), [accounts]);
-  const totalOperations = useMemo(
-    () => accounts.reduce((sum, account) => sum + account.transactionCount, 0),
-    [accounts]
-  );
-  const currentMonth = monthKey(today());
-  const monthIncome = useMemo(
-    () =>
-      transactions
-        .filter(
-          (transaction) =>
-            monthKey(transaction.date) === currentMonth && transaction.amountCents > 0
-        )
-        .reduce((sum, transaction) => sum + transaction.amountCents, 0),
-    [currentMonth, transactions]
-  );
-  const monthExpense = useMemo(
-    () =>
-      transactions
-        .filter(
-          (transaction) =>
-            monthKey(transaction.date) === currentMonth && transaction.amountCents < 0
-        )
-        .reduce((sum, transaction) => sum + transaction.amountCents, 0),
-    [currentMonth, transactions]
-  );
-  const cashflowBars = useMemo(() => {
-    const buckets = new Map<string, { income: number; expense: number }>();
-    for (const transaction of transactions) {
-      const key = monthKey(transaction.date);
-      const bucket = buckets.get(key) ?? { income: 0, expense: 0 };
-      if (transaction.amountCents > 0) {
-        bucket.income += transaction.amountCents;
-      } else {
-        bucket.expense += Math.abs(transaction.amountCents);
+    void (async () => {
+      try {
+        await reloadMeta();
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Не удалось загрузить данные");
+      } finally {
+        setLoading(false);
       }
-      buckets.set(key, bucket);
-    }
+    })();
+  }, [reloadMeta]);
 
-    return [...buckets.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .slice(-6)
-      .map(([key, value]) => ({
-        key,
-        label: key.slice(5),
-        ...value,
-      }));
+  useEffect(() => {
+    void (async () => {
+      await loadTransactions();
+    })();
+  }, [loadTransactions]);
+
+  useEffect(() => {
+    if (activeTab !== "charts") return;
+    void (async () => {
+      await loadStats();
+    })();
+  }, [activeTab, loadStats]);
+
+  // While the modal is open: close on Escape and lock background scrolling.
+  useEffect(() => {
+    if (!formOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFormOpen(false);
+        setEditingTransactionId(null);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [formOpen]);
+
+  const refreshAfterMutation = useCallback(async () => {
+    await Promise.all([reloadMeta(), loadTransactions()]);
+    if (activeTab === "charts") await loadStats();
+  }, [reloadMeta, loadTransactions, loadStats, activeTab]);
+
+  // --- derived --------------------------------------------------------------
+  const totalsByCurrency = useMemo(() => {
+    return accounts.reduce<Record<string, number>>((totals, account) => {
+      totals[account.currency] = (totals[account.currency] ?? 0) + account.balanceCents;
+      return totals;
+    }, {});
+  }, [accounts]);
+
+  const periodIncome = useMemo(() => {
+    return transactions.reduce<Record<string, number>>((map, tx) => {
+      if (tx.amountCents > 0) {
+        map[tx.accountCurrency] = (map[tx.accountCurrency] ?? 0) + tx.amountCents;
+      }
+      return map;
+    }, {});
   }, [transactions]);
-  const largestFlow = Math.max(
-    1,
-    ...cashflowBars.flatMap((bar) => [bar.income, bar.expense])
-  );
-  const importTotal = useMemo(
-    () =>
-      importRows.reduce(
-        (sum, row) => sum + (resolveSignedAmountCents(row.amount, row.direction) ?? 0),
-        0
-      ),
-    [importRows]
-  );
 
-  async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const periodExpense = useMemo(() => {
+    return transactions.reduce<Record<string, number>>((map, tx) => {
+      if (tx.amountCents < 0) {
+        map[tx.accountCurrency] = (map[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
+      }
+      return map;
+    }, {});
+  }, [transactions]);
+
+  const chartBars = useMemo(() => {
+    const monthly = stats?.monthly ?? [];
+    const largest = Math.max(1, ...monthly.flatMap((m) => [m.income, m.expense]));
+    return { monthly, largest };
+  }, [stats]);
+
+  const pieSlices = useMemo(() => {
+    const data = stats?.byCategory ?? [];
+    const top = data.slice(0, 8);
+    const restValue = data.slice(8).reduce((sum, item) => sum + item.total, 0);
+    const slices = top.map((item, index) => ({
+      label: item.category,
+      value: item.total,
+      color:
+        item.category === "Без категории"
+          ? "#94a3b8"
+          : colorByCategory.get(item.category) ?? palette[index % palette.length],
+    }));
+    if (restValue > 0) {
+      slices.push({ label: "Остальное", value: restValue, color: "#cbd5e1" });
+    }
+    return slices;
+  }, [stats, colorByCategory]);
+
+  // --- import ---------------------------------------------------------------
+  const importCurrency =
+    importTarget === NEW_ACCOUNT
+      ? normalizeCurrency(importNewCurrency)
+      : accounts.find((account) => String(account.id) === importTarget)?.currency ??
+        importAnalysis?.detectedCurrency ??
+        "EUR";
+
+  const importRows = useMemo<ParsedRow[]>(() => {
+    if (!importAnalysis || !importMapping) return [];
+    const amountIsSigned = detectAmountSigned(importAnalysis.dataRows, importMapping.amount);
+    return buildRows(importAnalysis.dataRows, importMapping, {
+      amountIsSigned,
+      directionIndex: importAnalysis.directionIndex,
+      flipSign: importFlip,
+      defaultCurrency: importCurrency,
+    });
+  }, [importAnalysis, importMapping, importCurrency, importFlip]);
+
+  const importNeedsMapping = Boolean(
+    importMapping &&
+      (importMapping.date < 0 ||
+        (importMapping.amount < 0 && importMapping.debit < 0 && importMapping.credit < 0))
+  );
+  const importValidRows = useMemo(() => importRows.filter((row) => !row.skip), [importRows]);
+  const importTotal = useMemo(
+    () => importValidRows.reduce((sum, row) => sum + (row.amountCents ?? 0), 0),
+    [importValidRows]
+  );
+  const importSkipReasons = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of importRows) {
+      if (row.skip) counts.set(row.skip, (counts.get(row.skip) ?? 0) + 1);
+    }
+    return [...counts.entries()];
+  }, [importRows]);
+
+  function resetImport() {
+    setImportAnalysis(null);
+    setImportMapping(null);
+    setImportFileName("");
+    setImportFlip(false);
+    setImportEditorOpen(false);
+    setImportTarget(accounts[0] ? String(accounts[0].id) : NEW_ACCOUNT);
+  }
+
+  async function handleCsvFile(file: File | null) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const analysis = analyzeImport(text, { defaultCurrency: activeCurrency });
+      if (analysis.headers.length === 0 || analysis.rows.length === 0) {
+        setNotice("Не удалось распознать строки в файле");
+        return;
+      }
+      const hasAmount =
+        analysis.mapping.amount >= 0 ||
+        analysis.mapping.debit >= 0 ||
+        analysis.mapping.credit >= 0;
+      const needsMapping = analysis.mapping.date < 0 || !hasAmount;
+
+      setImportAnalysis(analysis);
+      setImportMapping(analysis.mapping);
+      setImportFileName(file.name);
+      setImportFlip(false);
+      setImportEditorOpen(needsMapping);
+      setImportNewCurrency(analysis.detectedCurrency);
+      setImportNewName(suggestAccountName(file.name, analysis.detectedCurrency));
+      setImportTarget(NEW_ACCOUNT);
+      setNotice(
+        `Файл распознан: ${analysis.valid} строк к импорту` +
+          (analysis.skipped ? `, ${analysis.skipped} пропущено` : "")
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Файл не прочитан");
+    }
+  }
+
+  function updateMapping(field: FieldKey, index: number) {
+    setImportMapping((current) => (current ? { ...current, [field]: index } : current));
+  }
+
+  async function handleImport() {
+    if (importValidRows.length === 0) return;
     setSaving(true);
     try {
-      await requestJson("/api/accounts", {
+      let accountId: number;
+      if (importTarget === NEW_ACCOUNT) {
+        const name = importNewName.trim();
+        if (!name) {
+          setNotice("Укажите название нового счета");
+          setSaving(false);
+          return;
+        }
+        const created = await requestJson<{ account: { id: number } }>("/api/accounts", {
+          method: "POST",
+          body: JSON.stringify({ name, currency: normalizeCurrency(importNewCurrency) }),
+        });
+        accountId = created.account.id;
+      } else {
+        accountId = Number(importTarget);
+      }
+
+      const rows: ImportPayloadRow[] = importValidRows.map((row) => ({
+        currency: row.currency,
+        date: row.date ?? "",
+        amount: ((row.amountCents ?? 0) / 100).toFixed(2),
+        direction: "",
+        description: row.description,
+        category: row.category,
+        payee: row.payee,
+        notes: "",
+      }));
+
+      const result = await requestJson<{
+        createdTransactions: number;
+        duplicates: number;
+        rejected: Array<{ row: number; reason: string }>;
+      }>("/api/import", {
         method: "POST",
-        body: JSON.stringify(accountForm),
+        body: JSON.stringify({ rows, accountId }),
       });
-      setNotice("Счет добавлен");
-      setAccountForm({
-        name: "",
-        bankName: "",
-        currency: accountForm.currency,
-        type: "checking",
-        openingBalance: "",
-        color: accountPalette[accounts.length % accountPalette.length],
-      });
-      await refresh();
+
+      setNotice(
+        `Импортировано: ${result.createdTransactions}` +
+          (result.duplicates ? `, дублей пропущено: ${result.duplicates}` : "") +
+          (result.rejected.length ? `, ошибок: ${result.rejected.length}` : "")
+      );
+      resetImport();
+      setFormOpen(false);
+      await refreshAfterMutation();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Счет не добавлен");
+      setNotice(error instanceof Error ? error.message : "Импорт не выполнен");
     } finally {
       setSaving(false);
     }
   }
 
+  // --- mutations ------------------------------------------------------------
   async function handleSubmitTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -411,30 +732,50 @@ export default function MoneyCounter() {
       const url = editingTransactionId
         ? `/api/transactions?id=${editingTransactionId}`
         : "/api/transactions";
-
-      await requestJson(url, {
-        method,
-        body: JSON.stringify(transactionForm),
-      });
+      await requestJson(url, { method, body: JSON.stringify(transactionForm) });
       setNotice(editingTransactionId ? "Операция обновлена" : "Операция добавлена");
       setEditingTransactionId(null);
+      setFormOpen(false);
       setTransactionForm({
-        accountId:
-          transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
+        accountId: transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
         date: today(),
         direction: "expense",
         amount: "",
         description: "",
         category: "",
-        payee: "",
-        notes: "",
       });
-      await refresh();
+      await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не сохранена");
     } finally {
       setSaving(false);
     }
+  }
+
+  function openAddTransaction() {
+    setEditingTransactionId(null);
+    setTransactionForm({
+      accountId: transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
+      date: today(),
+      direction: "expense",
+      amount: "",
+      description: "",
+      category: "",
+    });
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditingTransactionId(null);
+    setTransactionForm({
+      accountId: transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
+      date: today(),
+      direction: "expense",
+      amount: "",
+      description: "",
+      category: "",
+    });
   }
 
   function startEditTransaction(transaction: Transaction) {
@@ -446,77 +787,128 @@ export default function MoneyCounter() {
       amount: centsToInputValue(Math.abs(transaction.amountCents)),
       description: transaction.description,
       category: transaction.category,
-      payee: transaction.payee,
-      notes: transaction.notes,
     });
+    setActiveTab("main");
+    setFormOpen(true);
   }
 
   async function removeTransaction(transaction: Transaction) {
-    if (!window.confirm("Удалить операцию?")) {
-      return;
-    }
-
+    if (!window.confirm("Удалить операцию?")) return;
     try {
       await requestJson(`/api/transactions?id=${transaction.id}`, { method: "DELETE" });
       setNotice("Операция удалена");
-      await refresh();
+      await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не удалена");
     }
   }
 
-  async function archiveAccount(account: Account) {
-    if (!window.confirm(`Архивировать счет ${account.name}?`)) {
-      return;
-    }
-
-    try {
-      await requestJson(`/api/accounts?id=${account.id}`, { method: "DELETE" });
-      setNotice("Счет архивирован");
-      setSelectedAccountId("all");
-      await refresh();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Счет не архивирован");
-    }
-  }
-
-  async function handleCsvFile(file: File | null) {
-    if (!file) {
-      return;
-    }
-
-    const text = await file.text();
-    const rows = parseCsvImport(text);
-    setImportRows(rows);
-    setNotice(rows.length ? `Готово к импорту: ${rows.length}` : "Строки не найдены");
-  }
-
-  async function handleImport() {
-    if (importRows.length === 0) {
-      return;
-    }
-
+  async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSaving(true);
     try {
-      const result = await requestJson<{
-        createdAccounts: number;
-        createdTransactions: number;
-        rejected: Array<{ row: number; reason: string }>;
-      }>("/api/import", {
-        method: "POST",
-        body: JSON.stringify({ rows: importRows }),
+      await requestJson("/api/accounts", { method: "POST", body: JSON.stringify(accountForm) });
+      setNotice("Счет добавлен");
+      setAccountForm({
+        name: "",
+        bankName: "",
+        currency: accountForm.currency,
+        type: "checking",
+        openingBalance: "",
+        color: palette[accounts.length % palette.length],
       });
-      setNotice(
-        `Импорт: ${result.createdTransactions}, счетов: ${result.createdAccounts}, ошибок: ${result.rejected.length}`
-      );
-      setImportRows([]);
-      await refresh();
+      await refreshAfterMutation();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Импорт не выполнен");
+      setNotice(error instanceof Error ? error.message : "Счет не добавлен");
     } finally {
       setSaving(false);
     }
   }
+
+  async function removeAccount(account: Account) {
+    if (!window.confirm(`Удалить счёт «${account.name}»? Его операции тоже скроются.`)) return;
+    try {
+      await requestJson(`/api/accounts?id=${account.id}`, { method: "DELETE" });
+      setNotice("Счёт удалён");
+      if (selectedAccountId === String(account.id)) setSelectedAccountId("all");
+      await refreshAfterMutation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Счёт не удалён");
+    }
+  }
+
+  async function handleCreateCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await requestJson("/api/categories", { method: "POST", body: JSON.stringify(categoryForm) });
+      setNotice("Категория добавлена");
+      setCategoryForm({ name: "", color: palette[(categories.length + 1) % palette.length] });
+      await loadCategories();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Категория не добавлена");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeCategory(category: Category) {
+    if (!window.confirm(`Удалить категорию «${category.name}»?`)) return;
+    try {
+      await requestJson(`/api/categories?id=${category.id}`, { method: "DELETE" });
+      setNotice("Категория удалена");
+      await loadCategories();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Категория не удалена");
+    }
+  }
+
+  async function handleCreateRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await requestJson("/api/rules", { method: "POST", body: JSON.stringify(ruleForm) });
+      setNotice("Правило добавлено");
+      setRuleForm({ pattern: "", category: "" });
+      await Promise.all([loadRules(), loadCategories()]);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Правило не добавлено");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeRule(rule: Rule) {
+    try {
+      await requestJson(`/api/rules?id=${rule.id}`, { method: "DELETE" });
+      setNotice("Правило удалено");
+      await loadRules();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Правило не удалено");
+    }
+  }
+
+  async function applyRules() {
+    setSaving(true);
+    try {
+      const result = await requestJson<{ updated: number }>("/api/rules/apply", {
+        method: "POST",
+      });
+      setNotice(`Категории проставлены: ${result.updated}`);
+      await refreshAfterMutation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось применить правила");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // --- render ---------------------------------------------------------------
+  const tabs: Array<{ id: Tab; label: string }> = [
+    { id: "main", label: "Операции" },
+    { id: "settings", label: "Настройки" },
+    { id: "charts", label: "Визуализация" },
+  ];
 
   return (
     <main className="appShell">
@@ -525,510 +917,752 @@ export default function MoneyCounter() {
           <p className="eyebrow">Money Counter</p>
           <h1>Счета и движение средств</h1>
         </div>
-        <button className="iconButton" type="button" onClick={refresh} title="Обновить">
+        <button className="iconButton" type="button" onClick={() => void refreshAfterMutation()} title="Обновить">
           ↻
         </button>
       </header>
 
+      <nav className="tabBar" aria-label="Разделы">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`tabButton ${activeTab === tab.id ? "active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
       {notice ? <div className="notice">{notice}</div> : null}
 
-      <section className="summaryGrid" aria-label="Сводка">
-        <article className="metric">
-          <span>Баланс</span>
-          <strong>
-            {Object.keys(totalsByCurrency).length === 0
-              ? formatMoney(0, activeCurrency)
-              : Object.entries(totalsByCurrency)
-                  .map(([currency, amount]) => formatMoney(amount, currency))
-                  .join(" · ")}
-          </strong>
-        </article>
-        <article className="metric">
-          <span>Поступления месяца</span>
-          <strong>{formatMoney(monthIncome, activeCurrency)}</strong>
-        </article>
-        <article className="metric">
-          <span>Расходы месяца</span>
-          <strong>{formatMoney(Math.abs(monthExpense), activeCurrency)}</strong>
-        </article>
-        <article className="metric">
-          <span>Операции</span>
-          <strong>{totalOperations}</strong>
-        </article>
-      </section>
+      <datalist id="categoryOptions">
+        {categories.map((category) => (
+          <option key={category.id} value={category.name} />
+        ))}
+      </datalist>
 
-      <div className="workspace">
-        <aside className="sidebar">
-          <section className="surface">
-            <div className="sectionHead">
-              <h2>Счета</h2>
-              <span>{accounts.length}</span>
-            </div>
-            <button
-              className={`accountRow ${selectedAccountId === "all" ? "active" : ""}`}
-              type="button"
-              onClick={() => setSelectedAccountId("all")}
-            >
-              <span className="accountDot all" />
-              <span>
-                <b>Все счета</b>
-                <small>{totalOperations} операций</small>
-              </span>
-            </button>
-            <div className="accountList">
-              {accounts.map((account) => (
-                <button
-                  className={`accountRow ${
-                    selectedAccountId === String(account.id) ? "active" : ""
-                  }`}
-                  key={account.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedAccountId(String(account.id));
-                    setTransactionForm((current) => ({
-                      ...current,
-                      accountId: String(account.id),
-                    }));
-                  }}
-                >
-                  <span
-                    className="accountDot"
-                    style={{ background: account.color }}
+      {activeTab === "main" ? (
+        <>
+          <section className="summaryGrid" aria-label="Сводка">
+            <article className="metric">
+              <span>Баланс (все счета)</span>
+              <strong><MoneyTotals map={totalsByCurrency} fallback={activeCurrency} /></strong>
+            </article>
+            <article className="metric">
+              <span>Поступления периода</span>
+              <strong><MoneyTotals map={periodIncome} fallback={activeCurrency} /></strong>
+            </article>
+            <article className="metric">
+              <span>Расходы периода</span>
+              <strong><MoneyTotals map={periodExpense} fallback={activeCurrency} /></strong>
+            </article>
+          </section>
+
+          <div className="workspace oneCol">
+            <section className="mainColumn">
+              <section className="surface">
+                {/* Title lifted above the toolbar; the period picker takes the
+                    title's old spot (left), and the primary action sits where
+                    the picker used to be (top-right). */}
+                <h2 className="opsTitle">Операции</h2>
+                <div className="sectionHead">
+                  <MonthSelect
+                    ariaLabel="Период"
+                    value={mainPeriod}
+                    onChange={setMainPeriod}
+                    options={monthOptions}
                   />
-                  <span>
-                    <b>{account.name}</b>
-                    <small>{formatMoney(account.balanceCents, account.currency)}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="surface">
-            <div className="sectionHead">
-              <h2>Новый счет</h2>
-            </div>
-            <form className="stackForm" onSubmit={handleCreateAccount}>
-              <label>
-                Название
-                <input
-                  required
-                  value={accountForm.name}
-                  onChange={(event) =>
-                    setAccountForm({ ...accountForm, name: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Банк
-                <input
-                  value={accountForm.bankName}
-                  onChange={(event) =>
-                    setAccountForm({ ...accountForm, bankName: event.target.value })
-                  }
-                />
-              </label>
-              <div className="formGrid two">
-                <label>
-                  Валюта
-                  <input
-                    maxLength={3}
-                    value={accountForm.currency}
-                    onChange={(event) =>
-                      setAccountForm({
-                        ...accountForm,
-                        currency: event.target.value.toUpperCase(),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  Цвет
-                  <input
-                    className="colorInput"
-                    type="color"
-                    value={accountForm.color}
-                    onChange={(event) =>
-                      setAccountForm({ ...accountForm, color: event.target.value })
-                    }
-                  />
-                </label>
-              </div>
-              <label>
-                Тип
-                <select
-                  value={accountForm.type}
-                  onChange={(event) =>
-                    setAccountForm({ ...accountForm, type: event.target.value })
-                  }
-                >
-                  {accountTypes.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Начальный баланс
-                <input
-                  inputMode="decimal"
-                  value={accountForm.openingBalance}
-                  onChange={(event) =>
-                    setAccountForm({
-                      ...accountForm,
-                      openingBalance: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <button className="primaryButton" disabled={saving} type="submit">
-                <span>+</span> Добавить счет
-              </button>
-            </form>
-          </section>
-        </aside>
-
-        <section className="mainColumn">
-          <section className="surface flowSurface">
-            <div className="sectionHead">
-              <h2>Движение</h2>
-              <span>{selectedAccount?.name ?? "Все счета"}</span>
-            </div>
-            <div className="flowBars" aria-label="Помесячное движение">
-              {cashflowBars.length === 0 ? (
-                <div className="emptyBars">Нет операций</div>
-              ) : (
-                cashflowBars.map((bar) => (
-                  <div className="flowBar" key={bar.key}>
-                    <div className="barPair">
-                      <span
-                        className="incomeBar"
-                        style={{
-                          height: `${Math.max(6, (bar.income / largestFlow) * 92)}%`,
-                        }}
-                      />
-                      <span
-                        className="expenseBar"
-                        style={{
-                          height: `${Math.max(6, (bar.expense / largestFlow) * 92)}%`,
-                        }}
-                      />
-                    </div>
-                    <small>{bar.label}</small>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="surface">
-            <div className="sectionHead">
-              <h2>{editingTransactionId ? "Правка операции" : "Новая операция"}</h2>
-              {editingTransactionId ? (
-                <button
-                  className="textButton"
-                  type="button"
-                  onClick={() => {
-                    setEditingTransactionId(null);
-                    setTransactionForm({
-                      accountId: accounts[0] ? String(accounts[0].id) : "",
-                      date: today(),
-                      direction: "expense",
-                      amount: "",
-                      description: "",
-                      category: "",
-                      payee: "",
-                      notes: "",
-                    });
-                  }}
-                >
-                  Сброс
-                </button>
-              ) : null}
-            </div>
-            <form className="transactionForm" onSubmit={handleSubmitTransaction}>
-              <label>
-                Счет
-                <select
-                  required
-                  disabled={accounts.length === 0}
-                  value={transactionForm.accountId}
-                  onChange={(event) =>
-                    setTransactionForm({
-                      ...transactionForm,
-                      accountId: event.target.value,
-                    })
-                  }
-                >
-                  <option value="">Выберите счет</option>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Дата
-                <input
-                  required
-                  type="date"
-                  value={transactionForm.date}
-                  onChange={(event) =>
-                    setTransactionForm({ ...transactionForm, date: event.target.value })
-                  }
-                />
-              </label>
-              <label>
-                Тип
-                <select
-                  value={transactionForm.direction}
-                  onChange={(event) =>
-                    setTransactionForm({
-                      ...transactionForm,
-                      direction: event.target.value as TransactionForm["direction"],
-                    })
-                  }
-                >
-                  <option value="expense">Расход</option>
-                  <option value="income">Поступление</option>
-                </select>
-              </label>
-              <label>
-                Сумма
-                <input
-                  required
-                  inputMode="decimal"
-                  value={transactionForm.amount}
-                  onChange={(event) =>
-                    setTransactionForm({
-                      ...transactionForm,
-                      amount: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="wideField">
-                Описание
-                <input
-                  value={transactionForm.description}
-                  onChange={(event) =>
-                    setTransactionForm({
-                      ...transactionForm,
-                      description: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Категория
-                <input
-                  value={transactionForm.category}
-                  onChange={(event) =>
-                    setTransactionForm({
-                      ...transactionForm,
-                      category: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Контрагент
-                <input
-                  value={transactionForm.payee}
-                  onChange={(event) =>
-                    setTransactionForm({ ...transactionForm, payee: event.target.value })
-                  }
-                />
-              </label>
-              <label className="wideField">
-                Заметка
-                <input
-                  value={transactionForm.notes}
-                  onChange={(event) =>
-                    setTransactionForm({ ...transactionForm, notes: event.target.value })
-                  }
-                />
-              </label>
-              <button
-                className="primaryButton"
-                disabled={saving || accounts.length === 0}
-                type="submit"
-              >
-                <span>{editingTransactionId ? "✓" : "+"}</span>
-                {editingTransactionId ? "Сохранить" : "Добавить"}
-              </button>
-            </form>
-          </section>
-
-          <section className="surface">
-            <div className="sectionHead">
-              <h2>Операции</h2>
-              <span>{loading ? "Загрузка" : transactions.length}</span>
-            </div>
-            <div className="filters">
-              <input
-                aria-label="Поиск"
-                placeholder="Поиск"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <select
-                aria-label="Тип операций"
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
-              >
-                <option value="all">Все</option>
-                <option value="expense">Расходы</option>
-                <option value="income">Поступления</option>
-              </select>
-            </div>
-
-            <div className="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Дата</th>
-                    <th>Счет</th>
-                    <th>Описание</th>
-                    <th>Категория</th>
-                    <th className="amountCell">Сумма</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="emptyTable">
-                        Нет операций
-                      </td>
-                    </tr>
-                  ) : (
-                    transactions.map((transaction) => (
-                      <tr key={transaction.id}>
-                        <td>{formatDateShort(transaction.date)}</td>
-                        <td>{transaction.accountName}</td>
-                        <td>
-                          <b>{transaction.description}</b>
-                          {transaction.payee ? <small>{transaction.payee}</small> : null}
-                        </td>
-                        <td>{transaction.category || "—"}</td>
-                        <td
-                          className={`amountCell ${
-                            transaction.amountCents < 0 ? "negative" : "positive"
-                          }`}
-                        >
-                          {formatMoney(
-                            transaction.amountCents,
-                            transaction.accountCurrency
-                          )}
-                        </td>
-                        <td className="rowActions">
-                          <button
-                            className="iconButton small"
-                            type="button"
-                            onClick={() => startEditTransaction(transaction)}
-                            title="Править"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            className="iconButton small danger"
-                            type="button"
-                            onClick={() => removeTransaction(transaction)}
-                            title="Удалить"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </section>
-
-        <aside className="rightRail">
-          <section className="surface">
-            <div className="sectionHead">
-              <h2>Импорт CSV</h2>
-              <span>{importRows.length}</span>
-            </div>
-            <label className="fileDrop">
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={(event) => void handleCsvFile(event.target.files?.[0] ?? null)}
-              />
-              <span>Выбрать файл</span>
-            </label>
-            <div className="importStats">
-              <span>Строк</span>
-              <b>{importRows.length}</b>
-              <span>Сумма</span>
-              <b>{formatMoney(importTotal, activeCurrency)}</b>
-            </div>
-            <button
-              className="primaryButton"
-              type="button"
-              disabled={saving || importRows.length === 0}
-              onClick={handleImport}
-            >
-              <span>↓</span> Импортировать
-            </button>
-          </section>
-
-          <section className="surface accountDetails">
-            <div className="sectionHead">
-              <h2>Детали счета</h2>
-            </div>
-            {selectedAccount ? (
-              <>
-                <div className="detailHero">
-                  <span
-                    className="accountDot large"
-                    style={{ background: selectedAccount.color }}
-                  />
-                  <div>
-                    <b>{selectedAccount.name}</b>
-                    <span>
-                      {formatMoney(
-                        selectedAccount.balanceCents,
-                        selectedAccount.currency
-                      )}
-                    </span>
-                  </div>
+                  <button
+                    className="primaryButton"
+                    type="button"
+                    onClick={openAddTransaction}
+                    disabled={saving}
+                  >
+                    <span>+</span> Добавить
+                  </button>
                 </div>
-                <dl>
-                  <dt>Банк</dt>
-                  <dd>{selectedAccount.bankName || "—"}</dd>
-                  <dt>Операции</dt>
-                  <dd>{selectedAccount.transactionCount}</dd>
-                  <dt>Начальный баланс</dt>
-                  <dd>
-                    {formatMoney(
-                      selectedAccount.openingBalanceCents,
-                      selectedAccount.currency
-                    )}
-                  </dd>
-                </dl>
-                <button
-                  className="secondaryButton danger"
-                  type="button"
-                  onClick={() => archiveAccount(selectedAccount)}
-                >
-                  <span>×</span> Архивировать
+                <div className="filters">
+                  <input
+                    aria-label="Поиск"
+                    placeholder="Поиск"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                  <select
+                    aria-label="Счёт"
+                    value={selectedAccountId}
+                    onChange={(event) => setSelectedAccountId(event.target.value)}
+                  >
+                    <option value="all">Все счета</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Тип операций"
+                    value={typeFilter}
+                    onChange={(event) => setTypeFilter(event.target.value)}
+                  >
+                    <option value="all">Все</option>
+                    <option value="expense">Расходы</option>
+                    <option value="income">Поступления</option>
+                  </select>
+                </div>
+
+                <div className="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Дата</th>
+                        <th>Счет</th>
+                        <th>Описание</th>
+                        <th>Категория</th>
+                        <th className="amountCell">Сумма</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="emptyTable">
+                            {loading ? "Загрузка" : "Нет операций за период"}
+                          </td>
+                        </tr>
+                      ) : (
+                        transactions.map((transaction) => (
+                          <tr key={transaction.id}>
+                            <td>{formatDateShort(transaction.date)}</td>
+                            <td>{transaction.accountName}</td>
+                            <td>
+                              <b>{transaction.description}</b>
+                            </td>
+                            <td>{transaction.category || "—"}</td>
+                            <td
+                              className={`amountCell ${
+                                transaction.amountCents > 0 ? "positive" : ""
+                              }`}
+                            >
+                              {/* Expenses are plain black and shown without a
+                                  leading minus; only income is coloured (green). */}
+                              <Money
+                                cents={Math.abs(transaction.amountCents)}
+                                currency={transaction.accountCurrency}
+                              />
+                            </td>
+                            <td className="rowActions">
+                              <button
+                                className="iconButton small"
+                                type="button"
+                                onClick={() => startEditTransaction(transaction)}
+                                title="Править"
+                              >
+                                ✎
+                              </button>
+                              <button
+                                className="iconButton small danger"
+                                type="button"
+                                onClick={() => removeTransaction(transaction)}
+                                title="Удалить"
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </section>
+          </div>
+
+          {formOpen ? (
+            <div
+              className="modalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingTransactionId ? "Правка операции" : "Новая операция"}
+              onClick={closeForm}
+            >
+              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+                <div className="modalHead">
+                  <h2>{editingTransactionId ? "Правка операции" : "Новая операция"}</h2>
+                  <button className="iconButton small" type="button" onClick={closeForm} title="Закрыть">
+                    ×
+                  </button>
+                </div>
+
+                <form className="transactionForm" onSubmit={handleSubmitTransaction}>
+                  <label>
+                    Счет
+                    <select
+                      required
+                      disabled={accounts.length === 0}
+                      value={transactionForm.accountId}
+                      onChange={(event) =>
+                        setTransactionForm({ ...transactionForm, accountId: event.target.value })
+                      }
+                    >
+                      <option value="">Выберите счет</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Дата
+                    <input
+                      required
+                      type="date"
+                      value={transactionForm.date}
+                      onChange={(event) =>
+                        setTransactionForm({ ...transactionForm, date: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Тип
+                    <select
+                      value={transactionForm.direction}
+                      onChange={(event) =>
+                        setTransactionForm({
+                          ...transactionForm,
+                          direction: event.target.value as TransactionForm["direction"],
+                        })
+                      }
+                    >
+                      <option value="expense">Расход</option>
+                      <option value="income">Поступление</option>
+                    </select>
+                  </label>
+                  <label>
+                    Сумма
+                    <input
+                      required
+                      inputMode="decimal"
+                      value={transactionForm.amount}
+                      onChange={(event) =>
+                        setTransactionForm({ ...transactionForm, amount: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="wideField">
+                    Описание
+                    <input
+                      value={transactionForm.description}
+                      onChange={(event) =>
+                        setTransactionForm({ ...transactionForm, description: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Категория
+                    <select
+                      value={transactionForm.category}
+                      onChange={(event) =>
+                        setTransactionForm({ ...transactionForm, category: event.target.value })
+                      }
+                    >
+                      <option value="">— без категории —</option>
+                      {transactionForm.category &&
+                      !categories.some((c) => c.name === transactionForm.category) ? (
+                        <option value={transactionForm.category}>
+                          {transactionForm.category}
+                        </option>
+                      ) : null}
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.name}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="primaryButton" disabled={saving || accounts.length === 0} type="submit">
+                    <span>{editingTransactionId ? "✓" : "+"}</span>
+                    {editingTransactionId ? "Сохранить" : "Добавить"}
+                  </button>
+                </form>
+
+                <div className="modalImport">
+                  <div className="sectionHead">
+                    <h2>Импорт выписки</h2>
+                    <span>{importValidRows.length}</span>
+                  </div>
+                  <label className="fileDrop">
+                    <input
+                      type="file"
+                      accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        event.target.value = "";
+                        void handleCsvFile(file);
+                      }}
+                    />
+                    <span>{importFileName || "Выбрать файл · CSV, TSV или TXT"}</span>
+                  </label>
+
+                  {importAnalysis && importMapping ? (
+                    <>
+                      <label className="importField">
+                        Счёт назначения
+                        <select value={importTarget} onChange={(event) => setImportTarget(event.target.value)}>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name} · {account.currency}
+                            </option>
+                          ))}
+                          <option value={NEW_ACCOUNT}>+ Новый счёт…</option>
+                        </select>
+                      </label>
+
+                      {importTarget === NEW_ACCOUNT ? (
+                        <div className="formGrid two">
+                          <label>
+                            Название
+                            <input
+                              value={importNewName}
+                              onChange={(event) => setImportNewName(event.target.value)}
+                            />
+                          </label>
+                          <label>
+                            Валюта
+                            <input
+                              maxLength={3}
+                              value={importNewCurrency}
+                              onChange={(event) => setImportNewCurrency(event.target.value.toUpperCase())}
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+
+                      {importNeedsMapping ? (
+                        <p className="importWarning">
+                          Не найдена колонка даты или суммы — укажите её в разделе «Колонки» ниже.
+                        </p>
+                      ) : null}
+
+                      <details
+                        className="mappingEditor"
+                        open={importEditorOpen}
+                        onToggle={(event) => setImportEditorOpen(event.currentTarget.open)}
+                      >
+                        <summary>
+                          Колонки · разделитель «
+                          {DELIMITER_LABELS[importAnalysis.delimiter] ?? importAnalysis.delimiter}»
+                        </summary>
+                        <div className="mappingGrid">
+                          {FIELD_DEFS.map((field) => (
+                            <label key={field.key}>
+                              {field.label}
+                              <select
+                                value={importMapping[field.key]}
+                                onChange={(event) => updateMapping(field.key, Number(event.target.value))}
+                              >
+                                <option value={-1}>—</option>
+                                {importAnalysis.headers.map((header, index) => (
+                                  <option key={index} value={index}>
+                                    {header || `Колонка ${index + 1}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+
+                      <label className="flipToggle">
+                        <input
+                          type="checkbox"
+                          checked={importFlip}
+                          onChange={(event) => setImportFlip(event.target.checked)}
+                        />
+                        Инвертировать знак (выписки по карте: траты как «+»)
+                      </label>
+
+                      <div className="tableWrap importPreview">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Дата</th>
+                              <th>Описание</th>
+                              <th className="amountCell">Сумма</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importRows.slice(0, 8).map((row, index) => (
+                              <tr key={index} className={row.skip ? "skippedRow" : ""}>
+                                <td>{row.date ?? "—"}</td>
+                                <td>
+                                  <b>{row.description || "—"}</b>
+                                  {row.skip ? <small>пропуск: {row.skip}</small> : null}
+                                </td>
+                                <td
+                                  className={`amountCell ${
+                                    (row.amountCents ?? 0) < 0 ? "negative" : "positive"
+                                  }`}
+                                >
+                                  {row.amountCents === null ? (
+                                    "—"
+                                  ) : (
+                                    <Money
+                                      cents={row.amountCents}
+                                      currency={row.currency || importCurrency}
+                                    />
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="importStats">
+                        <span>К импорту</span>
+                        <b>{importValidRows.length}</b>
+                        <span>Пропущено</span>
+                        <b>{importRows.length - importValidRows.length}</b>
+                        <span>Сумма</span>
+                        <b><Money cents={importTotal} currency={importCurrency} /></b>
+                      </div>
+
+                      {importSkipReasons.length ? (
+                        <p className="importHint">
+                          Пропущены:{" "}
+                          {importSkipReasons.map(([reason, count]) => `${reason} (${count})`).join(", ")}
+                        </p>
+                      ) : null}
+
+                      <button
+                        className="primaryButton"
+                        type="button"
+                        disabled={saving || importValidRows.length === 0}
+                        onClick={handleImport}
+                      >
+                        <span>↓</span> Импортировать {importValidRows.length}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="importHint">
+                      Поддерживаются выписки банков в CSV и TSV. Разделитель, колонки и валюта
+                      определяются автоматически — перед загрузкой можно всё проверить. Категории
+                      проставятся по правилам из «Настроек».
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {activeTab === "settings" ? (
+        <div className="workspace twoCol">
+          <section className="mainColumn">
+            <section className="surface">
+              <div className="sectionHead">
+                <h2>Счета</h2>
+                <span>{accounts.length}</span>
+              </div>
+              {accounts.length === 0 ? (
+                <div className="mutedBlock">Пока нет счетов</div>
+              ) : (
+                <ul className="settingsList">
+                  {accounts.map((account) => (
+                    <li key={account.id}>
+                      <span className="accountDot" style={{ background: account.color }} />
+                      <span className="settingsListMain">
+                        <b>{account.name}</b>
+                        <small>
+                          {account.currency} · <Money cents={account.balanceCents} currency={account.currency} /> ·{" "}
+                          {account.transactionCount} оп.
+                        </small>
+                      </span>
+                      <button
+                        className="iconButton small danger"
+                        type="button"
+                        title="Удалить"
+                        onClick={() => removeAccount(account)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <form className="stackForm settingsForm" onSubmit={handleCreateAccount}>
+                <h3>Новый счёт</h3>
+                <label>
+                  Название
+                  <input
+                    required
+                    value={accountForm.name}
+                    onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Банк
+                  <input
+                    value={accountForm.bankName}
+                    onChange={(event) => setAccountForm({ ...accountForm, bankName: event.target.value })}
+                  />
+                </label>
+                <div className="formGrid two">
+                  <label>
+                    Валюта
+                    <input
+                      maxLength={3}
+                      value={accountForm.currency}
+                      onChange={(event) =>
+                        setAccountForm({ ...accountForm, currency: event.target.value.toUpperCase() })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Цвет
+                    <input
+                      className="colorInput"
+                      type="color"
+                      value={accountForm.color}
+                      onChange={(event) => setAccountForm({ ...accountForm, color: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <label>
+                  Тип
+                  <select
+                    value={accountForm.type}
+                    onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })}
+                  >
+                    {accountTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Начальный баланс
+                  <input
+                    inputMode="decimal"
+                    value={accountForm.openingBalance}
+                    onChange={(event) =>
+                      setAccountForm({ ...accountForm, openingBalance: event.target.value })
+                    }
+                  />
+                </label>
+                <button className="primaryButton" disabled={saving} type="submit">
+                  <span>+</span> Добавить счёт
                 </button>
-              </>
-            ) : (
-              <div className="mutedBlock">Выберите счет</div>
-            )}
+              </form>
+            </section>
           </section>
-        </aside>
-      </div>
+
+          <aside className="rightRail">
+            <section className="surface">
+              <div className="sectionHead">
+                <h2>Категории</h2>
+                <span>{categories.length}</span>
+              </div>
+              {categories.length === 0 ? (
+                <div className="mutedBlock">Пока нет категорий</div>
+              ) : (
+                <ul className="settingsList chips">
+                  {categories.map((category) => (
+                    <li key={category.id} className="chip">
+                      <span className="legendDot" style={{ background: category.color }} />
+                      <span>{category.name}</span>
+                      <button
+                        className="chipRemove"
+                        type="button"
+                        title="Удалить"
+                        onClick={() => removeCategory(category)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form className="stackForm settingsForm" onSubmit={handleCreateCategory}>
+                <div className="formGrid two">
+                  <label>
+                    Название
+                    <input
+                      required
+                      value={categoryForm.name}
+                      onChange={(event) => setCategoryForm({ ...categoryForm, name: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Цвет
+                    <input
+                      className="colorInput"
+                      type="color"
+                      value={categoryForm.color}
+                      onChange={(event) => setCategoryForm({ ...categoryForm, color: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <button className="primaryButton" disabled={saving} type="submit">
+                  <span>+</span> Добавить категорию
+                </button>
+              </form>
+            </section>
+
+            <section className="surface">
+              <div className="sectionHead">
+                <h2>Автокатегории</h2>
+                <span>{rules.length}</span>
+              </div>
+              <p className="importHint">
+                Если описание операции содержит текст из правила, ей автоматически ставится
+                категория. Например: «EasyPark» → «Transport».
+              </p>
+              {rules.length > 0 ? (
+                <ul className="settingsList">
+                  {rules.map((rule) => (
+                    <li key={rule.id}>
+                      <span className="settingsListMain">
+                        <b>{rule.pattern}</b>
+                        <small>→ {rule.category}</small>
+                      </span>
+                      <button
+                        className="iconButton small danger"
+                        type="button"
+                        title="Удалить"
+                        onClick={() => removeRule(rule)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <form className="stackForm settingsForm" onSubmit={handleCreateRule}>
+                <div className="formGrid two">
+                  <label>
+                    Текст в описании
+                    <input
+                      required
+                      placeholder="EasyPark"
+                      value={ruleForm.pattern}
+                      onChange={(event) => setRuleForm({ ...ruleForm, pattern: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Категория
+                    <input
+                      required
+                      list="categoryOptions"
+                      placeholder="Transport"
+                      value={ruleForm.category}
+                      onChange={(event) => setRuleForm({ ...ruleForm, category: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <button className="primaryButton" disabled={saving} type="submit">
+                  <span>+</span> Добавить правило
+                </button>
+              </form>
+              <button
+                className="secondaryButton"
+                type="button"
+                disabled={saving || rules.length === 0}
+                onClick={() => void applyRules()}
+              >
+                Применить к операциям без категории
+              </button>
+            </section>
+          </aside>
+        </div>
+      ) : null}
+
+      {activeTab === "charts" ? (
+        <>
+          <section className="surface chartToolbar">
+            <div className="rangeControls">
+              <label>
+                С
+                <MonthSelect ariaLabel="Начало периода" value={chartFrom} onChange={setChartFrom} options={monthOptions} />
+              </label>
+              <label>
+                По
+                <MonthSelect ariaLabel="Конец периода" value={chartTo} onChange={setChartTo} options={monthOptions} />
+              </label>
+              <label>
+                Валюта
+                <select
+                  aria-label="Валюта"
+                  value={chartCurrency}
+                  onChange={(event) => setChartCurrency(event.target.value)}
+                >
+                  {currencyOptions.length === 0 ? <option value="">—</option> : null}
+                  {currencyOptions.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="chartTotals">
+              <span>
+                Поступления <b className="positive"><Money cents={stats?.totals.income ?? 0} currency={chartCurrency || "EUR"} /></b>
+              </span>
+              <span>
+                Расходы <b className="negative"><Money cents={stats?.totals.expense ?? 0} currency={chartCurrency || "EUR"} /></b>
+              </span>
+            </div>
+          </section>
+
+          <div className="workspace twoCol">
+            <section className="surface">
+              <div className="sectionHead">
+                <h2>Движение по месяцам</h2>
+                <span>{chartCurrency}</span>
+              </div>
+              <div className="flowBars" aria-label="Помесячное движение">
+                {chartBars.monthly.length === 0 ? (
+                  <div className="emptyBars">Нет данных за период</div>
+                ) : (
+                  chartBars.monthly.map((bar) => (
+                    <div className="flowBar" key={bar.month}>
+                      <div className="barPair">
+                        <span
+                          className="incomeBar"
+                          style={{ height: `${Math.max(4, (bar.income / chartBars.largest) * 100)}%` }}
+                          title={formatMoney(bar.income, chartCurrency || "EUR")}
+                        />
+                        <span
+                          className="expenseBar"
+                          style={{ height: `${Math.max(4, (bar.expense / chartBars.largest) * 100)}%` }}
+                          title={formatMoney(bar.expense, chartCurrency || "EUR")}
+                        />
+                      </div>
+                      <small>{bar.month.slice(5)}.{bar.month.slice(2, 4)}</small>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="surface">
+              <div className="sectionHead">
+                <h2>Расходы по категориям</h2>
+              </div>
+              <CategoryPie slices={pieSlices} currency={chartCurrency || "EUR"} />
+            </section>
+          </div>
+        </>
+      ) : null}
     </main>
   );
 }

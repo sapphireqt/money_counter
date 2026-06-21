@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+.git
+.next
+.pnpm-store
+.wrangler
+dist
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+tsconfig.tsbuildinfo
