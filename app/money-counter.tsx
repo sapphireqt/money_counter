@@ -19,6 +19,7 @@ import {
   type FieldKey,
   type ParsedRow,
 } from "../lib/import";
+import { analyzePdf, type PdfPage } from "../lib/pdf";
 
 type Account = {
   id: number;
@@ -475,6 +476,9 @@ export default function MoneyCounter() {
   const [importNewCurrency, setImportNewCurrency] = useState("EUR");
   const [importFlip, setImportFlip] = useState(false);
   const [importEditorOpen, setImportEditorOpen] = useState(false);
+  // Non-null when the picked file was a PDF: rows are parsed directly (the sign
+  // comes from the running balance), bypassing the CSV column-mapping machinery.
+  const [pdfRows, setPdfRows] = useState<ParsedRow[] | null>(null);
 
   const activeCurrency = accounts[0]?.currency ?? "EUR";
 
@@ -692,9 +696,12 @@ export default function MoneyCounter() {
       ? normalizeCurrency(importNewCurrency)
       : accounts.find((account) => String(account.id) === importTarget)?.currency ??
         importAnalysis?.detectedCurrency ??
+        pdfRows?.[0]?.currency ??
         "EUR";
 
   const importRows = useMemo<ParsedRow[]>(() => {
+    // PDF rows are already fully resolved (signed amount, currency) by analyzePdf.
+    if (pdfRows) return pdfRows;
     if (!importAnalysis || !importMapping) return [];
     const amountIsSigned = detectAmountSigned(importAnalysis.dataRows, importMapping.amount);
     return buildRows(importAnalysis.dataRows, importMapping, {
@@ -703,7 +710,7 @@ export default function MoneyCounter() {
       flipSign: importFlip,
       defaultCurrency: importCurrency,
     });
-  }, [importAnalysis, importMapping, importCurrency, importFlip]);
+  }, [pdfRows, importAnalysis, importMapping, importCurrency, importFlip]);
 
   const importNeedsMapping = Boolean(
     importMapping &&
@@ -726,14 +733,20 @@ export default function MoneyCounter() {
   function resetImport() {
     setImportAnalysis(null);
     setImportMapping(null);
+    setPdfRows(null);
     setImportFileName("");
     setImportFlip(false);
     setImportEditorOpen(false);
     setImportTarget(accounts[0] ? String(accounts[0].id) : NEW_ACCOUNT);
   }
 
-  async function handleCsvFile(file: File | null) {
+  async function handleImportFile(file: File | null) {
     if (!file) return;
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (isPdf) {
+      await handlePdfFile(file);
+      return;
+    }
     try {
       const text = await file.text();
       const analysis = analyzeImport(text, { defaultCurrency: activeCurrency });
@@ -747,6 +760,7 @@ export default function MoneyCounter() {
         analysis.mapping.credit >= 0;
       const needsMapping = analysis.mapping.date < 0 || !hasAmount;
 
+      setPdfRows(null);
       setImportAnalysis(analysis);
       setImportMapping(analysis.mapping);
       setImportFileName(file.name);
@@ -761,6 +775,57 @@ export default function MoneyCounter() {
       );
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Файл не прочитан");
+    }
+  }
+
+  // PDF path: pdfjs is loaded lazily (only when a PDF is picked) so it stays out
+  // of the main bundle. It extracts positioned text in the browser; the pure
+  // analyzePdf (lib/pdf.ts) reconstructs the table into ParsedRow[].
+  async function handlePdfFile(file: File) {
+    setNotice("Читаю PDF…");
+    try {
+      const pdfjs = await import("pdfjs-dist");
+      const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+      pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+      const data = await file.arrayBuffer();
+      const doc = await pdfjs.getDocument({ data }).promise;
+      const pages: PdfPage[] = [];
+      for (let p = 1; p <= doc.numPages; p += 1) {
+        const page = await doc.getPage(p);
+        const content = await page.getTextContent();
+        const items: PdfPage["items"] = [];
+        for (const item of content.items) {
+          if ("str" in item && typeof item.str === "string") {
+            items.push({ str: item.str, x: item.transform[4], y: item.transform[5] });
+          }
+        }
+        pages.push({ items });
+      }
+
+      const result = analyzePdf(pages);
+      if (!result.bank || result.valid === 0) {
+        setNotice(
+          "Формат PDF не распознан — поддерживается выписка K PLUS / KBank (THB)"
+        );
+        return;
+      }
+
+      setImportAnalysis(null);
+      setImportMapping(null);
+      setPdfRows(result.rows);
+      setImportFileName(file.name);
+      setImportFlip(false);
+      setImportEditorOpen(false);
+      setImportNewCurrency(result.currency);
+      setImportNewName(suggestAccountName(file.name, result.currency));
+      setImportTarget(NEW_ACCOUNT);
+      setNotice(
+        `PDF распознан (${result.bank}): ${result.valid} операций к импорту` +
+          (result.skipped ? `, ${result.skipped} пропущено` : "")
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "PDF не прочитан");
     }
   }
 
@@ -1299,17 +1364,17 @@ export default function MoneyCounter() {
                   <label className="fileDrop">
                     <input
                       type="file"
-                      accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                      accept=".csv,.tsv,.txt,.pdf,text/csv,text/tab-separated-values,text/plain,application/pdf"
                       onChange={(event) => {
                         const file = event.target.files?.[0] ?? null;
                         event.target.value = "";
-                        void handleCsvFile(file);
+                        void handleImportFile(file);
                       }}
                     />
-                    <span>{importFileName || "Выбрать файл · CSV, TSV или TXT"}</span>
+                    <span>{importFileName || "Выбрать файл · CSV, TSV, TXT или PDF"}</span>
                   </label>
 
-                  {importAnalysis && importMapping ? (
+                  {(importAnalysis && importMapping) || pdfRows ? (
                     <>
                       <label className="importField">
                         Счёт назначения
@@ -1343,49 +1408,56 @@ export default function MoneyCounter() {
                         </div>
                       ) : null}
 
-                      {importNeedsMapping ? (
-                        <p className="importWarning">
-                          Не найдена колонка даты или суммы — укажите её в разделе «Колонки» ниже.
-                        </p>
+                      {/* Column mapping + sign flip are CSV-only. PDF rows are
+                          already resolved by analyzePdf, so this block is hidden
+                          for PDF imports (importAnalysis is null then). */}
+                      {importAnalysis && importMapping ? (
+                        <>
+                          {importNeedsMapping ? (
+                            <p className="importWarning">
+                              Не найдена колонка даты или суммы — укажите её в разделе «Колонки» ниже.
+                            </p>
+                          ) : null}
+
+                          <details
+                            className="mappingEditor"
+                            open={importEditorOpen}
+                            onToggle={(event) => setImportEditorOpen(event.currentTarget.open)}
+                          >
+                            <summary>
+                              Колонки · разделитель «
+                              {DELIMITER_LABELS[importAnalysis.delimiter] ?? importAnalysis.delimiter}»
+                            </summary>
+                            <div className="mappingGrid">
+                              {FIELD_DEFS.map((field) => (
+                                <label key={field.key}>
+                                  {field.label}
+                                  <select
+                                    value={importMapping[field.key]}
+                                    onChange={(event) => updateMapping(field.key, Number(event.target.value))}
+                                  >
+                                    <option value={-1}>—</option>
+                                    {importAnalysis.headers.map((header, index) => (
+                                      <option key={index} value={index}>
+                                        {header || `Колонка ${index + 1}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ))}
+                            </div>
+                          </details>
+
+                          <label className="flipToggle">
+                            <input
+                              type="checkbox"
+                              checked={importFlip}
+                              onChange={(event) => setImportFlip(event.target.checked)}
+                            />
+                            Инвертировать знак (выписки по карте: траты как «+»)
+                          </label>
+                        </>
                       ) : null}
-
-                      <details
-                        className="mappingEditor"
-                        open={importEditorOpen}
-                        onToggle={(event) => setImportEditorOpen(event.currentTarget.open)}
-                      >
-                        <summary>
-                          Колонки · разделитель «
-                          {DELIMITER_LABELS[importAnalysis.delimiter] ?? importAnalysis.delimiter}»
-                        </summary>
-                        <div className="mappingGrid">
-                          {FIELD_DEFS.map((field) => (
-                            <label key={field.key}>
-                              {field.label}
-                              <select
-                                value={importMapping[field.key]}
-                                onChange={(event) => updateMapping(field.key, Number(event.target.value))}
-                              >
-                                <option value={-1}>—</option>
-                                {importAnalysis.headers.map((header, index) => (
-                                  <option key={index} value={index}>
-                                    {header || `Колонка ${index + 1}`}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          ))}
-                        </div>
-                      </details>
-
-                      <label className="flipToggle">
-                        <input
-                          type="checkbox"
-                          checked={importFlip}
-                          onChange={(event) => setImportFlip(event.target.checked)}
-                        />
-                        Инвертировать знак (выписки по карте: траты как «+»)
-                      </label>
 
                       <div className="tableWrap importPreview">
                         <table>
@@ -1451,9 +1523,9 @@ export default function MoneyCounter() {
                     </>
                   ) : (
                     <p className="importHint">
-                      Поддерживаются выписки банков в CSV и TSV. Разделитель, колонки и валюта
-                      определяются автоматически — перед загрузкой можно всё проверить. Категории
-                      проставятся по правилам из «Настроек».
+                      Поддерживаются выписки банков в CSV и TSV (разделитель, колонки и валюта
+                      определяются автоматически) и PDF-выписка K PLUS / KBank. Перед загрузкой
+                      можно всё проверить; категории проставятся по правилам из «Настроек».
                     </p>
                   )}
                 </div>
