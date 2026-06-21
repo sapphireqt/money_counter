@@ -308,34 +308,26 @@ const MONTH_SHORT = [
 ];
 
 // Custom month/period picker — a popover with a 12-month grid and year nav.
-// Drop-in for the old native <select>: same contract (value/onChange are
-// "yyyy-mm" strings, `options` is the allowed set of months, others render
-// disabled). There is NO day selection — only whole months — so the value
-// stays a plain "yyyy-mm" string and nothing downstream needs converting.
+// value/onChange are "yyyy-mm" strings. `max` is the newest selectable month
+// (the current month): any earlier month is freely selectable (unlimited
+// navigation into the past), future months are disabled. Month-only — no day
+// selection — so the value stays a plain "yyyy-mm" string.
 function MonthPicker({
   value,
   onChange,
-  options,
+  max,
   ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  max: string;
   ariaLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(() => ymParts(value).year);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const allowed = useMemo(() => new Set(options), [options]);
-  const { minYear, maxYear } = useMemo(() => {
-    const years = options.map((ym) => ymParts(ym).year);
-    const fallback = ymParts(value).year;
-    return {
-      minYear: years.length ? Math.min(...years) : fallback,
-      maxYear: years.length ? Math.max(...years) : fallback,
-    };
-  }, [options, value]);
+  const maxYear = ymParts(max).year;
 
   // Close on outside click / Escape while open (client-only, like the modal).
   useEffect(() => {
@@ -364,7 +356,7 @@ function MonthPicker({
 
   function pick(month: number) {
     const ym = `${viewYear}-${String(month).padStart(2, "0")}`;
-    if (!allowed.has(ym)) return;
+    if (ym > max) return;
     onChange(ym);
     setOpen(false);
   }
@@ -389,7 +381,6 @@ function MonthPicker({
               type="button"
               className="iconButton small"
               onClick={() => setViewYear((y) => y - 1)}
-              disabled={viewYear <= minYear}
               aria-label="Предыдущий год"
             >
               ‹
@@ -415,7 +406,7 @@ function MonthPicker({
                   key={month}
                   type="button"
                   className={`monthPickerMonth ${isSelected ? "selected" : ""}`}
-                  disabled={!allowed.has(ym)}
+                  disabled={ym > max}
                   aria-pressed={isSelected}
                   onClick={() => pick(month)}
                 >
@@ -504,6 +495,10 @@ export default function MoneyCounter() {
     }
     return list; // newest first
   }, [periods]);
+
+  // Newest selectable month for the pickers — the current month. (monthOptions
+  // is newest-first, so [0] is the current month.)
+  const currentMonth = monthOptions[0] ?? monthKey(today());
 
   const currencyOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1078,7 +1073,7 @@ export default function MoneyCounter() {
                     ariaLabel="Период"
                     value={mainPeriod}
                     onChange={setMainPeriod}
-                    options={monthOptions}
+                    max={currentMonth}
                   />
                   <button
                     className="primaryButton"
@@ -1697,11 +1692,11 @@ export default function MoneyCounter() {
             <div className="rangeControls">
               <label>
                 С
-                <MonthPicker ariaLabel="Начало периода" value={chartFrom} onChange={setChartFrom} options={monthOptions} />
+                <MonthPicker ariaLabel="Начало периода" value={chartFrom} onChange={setChartFrom} max={currentMonth} />
               </label>
               <label>
                 По
-                <MonthPicker ariaLabel="Конец периода" value={chartTo} onChange={setChartTo} options={monthOptions} />
+                <MonthPicker ariaLabel="Конец периода" value={chartTo} onChange={setChartTo} max={currentMonth} />
               </label>
               <label>
                 Валюта
