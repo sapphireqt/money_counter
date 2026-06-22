@@ -85,5 +85,13 @@ export async function ensureSchema() {
     d1.prepare(
       "CREATE INDEX IF NOT EXISTS category_rules_category_idx ON category_rules (category)"
     ),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS exchange_rates (
+        date TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        usd_rate REAL NOT NULL,
+        PRIMARY KEY (date, currency)
+      )
+    `),
   ]);
 }

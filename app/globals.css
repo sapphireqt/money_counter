@@ -95,6 +95,31 @@ h2 {
   padding: 10px 12px;
 }
 
+/* Currency selector above the summary cards. */
+.summaryBar {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 auto 12px;
+  max-width: 1540px;
+}
+
+.currencyPick {
+  align-items: center;
+  color: var(--muted-strong);
+  display: inline-flex;
+  flex-direction: row;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.currencyPick select {
+  min-height: 36px;
+  min-width: 90px;
+  width: auto;
+}
+
 .summaryGrid {
   display: grid;
   gap: 12px;
@@ -887,6 +912,15 @@ dd {
 
 .negative {
   color: var(--expense);
+}
+
+/* Reusable soft-error marker: red, dotted-underlined, with a hover tooltip
+   (native title) explaining why. The colour overrides any inherited one. */
+.flagged {
+  color: var(--expense);
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 /* --- Pie --- */

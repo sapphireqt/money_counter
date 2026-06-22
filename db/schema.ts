@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -71,4 +73,17 @@ export const categoryRules = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [index("category_rules_category_idx").on(table.category)]
+);
+
+// Cached historical FX rates, base USD: 1 USD = usdRate units of `currency`.
+// Keyed by (date, currency); historical rates are immutable so rows are
+// written once and reused. Populated on demand from the Frankfurter API.
+export const exchangeRates = sqliteTable(
+  "exchange_rates",
+  {
+    date: text("date").notNull(),
+    currency: text("currency").notNull(),
+    usdRate: real("usd_rate").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.date, table.currency] })]
 );

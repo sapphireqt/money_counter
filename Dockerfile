@@ -26,6 +26,14 @@ ENV PORT=8787
 ENV WRANGLER_LOG_PATH=/tmp/wrangler.log
 ENV PATH="${PNPM_HOME}:${PATH}"
 
+# node:slim ships without a system CA bundle. Node's fetch bundles its own
+# roots, but workerd (the wrangler runtime) verifies TLS against the system
+# store, so outbound HTTPS (e.g. the FX-rate API) fails with "unable to get
+# local issuer certificate" until ca-certificates is installed.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable \
   && corepack prepare pnpm@11.5.3 --activate \
   && mkdir -p /data /tmp \

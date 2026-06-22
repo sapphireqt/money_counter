@@ -1,6 +1,15 @@
 "use client";
 
-import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   accountTypes,
   centsToInputValue,
@@ -183,28 +192,49 @@ function Money({ cents, currency }: { cents: number; currency: string }) {
   );
 }
 
-// Balances summed per currency, joined by " · " (e.g. "1 234,56 € · 500,00 $").
-function MoneyTotals({
-  map,
-  fallback,
-}: {
-  map: Record<string, number>;
-  fallback: string;
-}) {
-  const entries = Object.entries(map).filter(([, value]) => value !== 0);
-  if (entries.length === 0) {
-    return <Money cents={0} currency={fallback} />;
-  }
+// Reusable error/attention marker: renders its content red + dotted-underlined
+// with a hover tooltip explaining why. Intended to be reused for other soft
+// errors, not just missing FX rates.
+function Flagged({ reason, children }: { reason: string; children: ReactNode }) {
   return (
-    <>
-      {entries.map(([currency, value], index) => (
-        <Fragment key={currency}>
-          {index > 0 ? " · " : null}
-          <Money cents={value} currency={currency} />
-        </Fragment>
-      ))}
-    </>
+    <span className="flagged" title={reason}>
+      {children}
+    </span>
   );
+}
+
+// Convert a per-currency map of cents into a single target currency using a
+// USD-based rate map (1 USD = rates[c] units of c). Amounts already in the
+// target need no rate. Currencies with no available rate are summed-out and
+// reported in `missing` so the caller can flag the result.
+function convertTotals(
+  totals: Record<string, number>,
+  rates: Record<string, number> | null,
+  target: string
+): { cents: number; missing: string[] } {
+  let cents = 0;
+  const missing: string[] = [];
+  for (const [currency, amount] of Object.entries(totals)) {
+    if (amount === 0) continue;
+    if (currency === target) {
+      cents += amount;
+      continue;
+    }
+    const rateTo = rates?.[target];
+    const rateFrom = rates?.[currency];
+    if (rateTo != null && rateFrom != null) {
+      cents += Math.round((amount * rateTo) / rateFrom);
+    } else if (!missing.includes(currency)) {
+      missing.push(currency);
+    }
+  }
+  return { cents, missing };
+}
+
+// "2024-12-01" -> "01.12.2024" for human-readable tooltips.
+function dmy(isoDate: string) {
+  const [year, month, day] = isoDate.split("-");
+  return `${day}.${month}.${year}`;
 }
 
 // Donut segment path (outer radius r, inner radius ir, angles in radians).
@@ -409,6 +439,13 @@ export default function MoneyCounter() {
   const [chartFrom, setChartFrom] = useState(addMonths(monthKey(today()), -5));
   const [chartTo, setChartTo] = useState(monthKey(today()));
   const [chartCurrency, setChartCurrency] = useState("");
+
+  // Currency the summary cards are shown in (persisted in localStorage). The
+  // balance uses the current month's first-day rate; period income/expense use
+  // the selected period's first-day rate. null rate map = not loaded yet.
+  const [displayCurrency, setDisplayCurrency] = useState("");
+  const [balanceRates, setBalanceRates] = useState<Record<string, number> | null>(null);
+  const [periodRates, setPeriodRates] = useState<Record<string, number> | null>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [query, setQuery] = useState("");
@@ -635,6 +672,86 @@ export default function MoneyCounter() {
       return map;
     }, {});
   }, [transactions]);
+
+  // --- currency conversion (summary cards) ----------------------------------
+  const loadRates = useCallback(
+    async (date: string): Promise<Record<string, number>> => {
+      const currencies = [...new Set([...currencyOptions, displayCurrency])].filter(Boolean);
+      if (currencies.length === 0) return {};
+      const params = new URLSearchParams({ date, currencies: currencies.join(",") });
+      const data = await requestJson<{ rates: Record<string, number> }>(`/api/rates?${params}`);
+      return data.rates ?? {};
+    },
+    [currencyOptions, displayCurrency]
+  );
+
+  // Resolve the display currency once account currencies are known: keep a
+  // valid current choice, else the persisted one, else the first available.
+  useEffect(() => {
+    const first = currencyOptions[0];
+    if (!first) return;
+    void (async () => {
+      const saved = window.localStorage.getItem("mc.displayCurrency");
+      setDisplayCurrency((current) => {
+        if (current && currencyOptions.includes(current)) return current;
+        return saved && currencyOptions.includes(saved) ? saved : first;
+      });
+    })();
+  }, [currencyOptions]);
+
+  // Persist the choice so it survives reloads.
+  useEffect(() => {
+    if (displayCurrency) window.localStorage.setItem("mc.displayCurrency", displayCurrency);
+  }, [displayCurrency]);
+
+  // Fetch the two rate maps: current month's 1st (balance) and the selected
+  // period's 1st (income/expense). A single request when the dates coincide.
+  useEffect(() => {
+    if (!displayCurrency) return;
+    const balanceDate = `${currentMonth}-01`;
+    const periodDate = `${mainPeriod}-01`;
+    void (async () => {
+      try {
+        const balance = await loadRates(balanceDate);
+        setBalanceRates(balance);
+        setPeriodRates(periodDate === balanceDate ? balance : await loadRates(periodDate));
+      } catch {
+        // Loaded-but-empty: conversion flags every non-target currency.
+        setBalanceRates({});
+        setPeriodRates({});
+      }
+    })();
+  }, [displayCurrency, currentMonth, mainPeriod, loadRates]);
+
+  const balanceConverted = useMemo(
+    () => convertTotals(totalsByCurrency, balanceRates, displayCurrency),
+    [totalsByCurrency, balanceRates, displayCurrency]
+  );
+  const incomeConverted = useMemo(
+    () => convertTotals(periodIncome, periodRates, displayCurrency),
+    [periodIncome, periodRates, displayCurrency]
+  );
+  const expenseConverted = useMemo(
+    () => convertTotals(periodExpense, periodRates, displayCurrency),
+    [periodExpense, periodRates, displayCurrency]
+  );
+
+  // A summary value in displayCurrency: "…" until rates load, the converted
+  // amount otherwise, flagged (red, with a tooltip) if some currency had no rate.
+  const renderConverted = (
+    conv: { cents: number; missing: string[] },
+    rates: Record<string, number> | null,
+    dateIso: string
+  ): ReactNode => {
+    if (!displayCurrency || rates === null) return "…";
+    const value = <Money cents={conv.cents} currency={displayCurrency} />;
+    if (conv.missing.length === 0) return value;
+    return (
+      <Flagged reason={`Без учёта ${conv.missing.join(", ")} — нет курса на ${dmy(dateIso)}`}>
+        {value}
+      </Flagged>
+    );
+  };
 
   const chartBars = useMemo(() => {
     const monthly = stats?.monthly ?? [];
@@ -1066,18 +1183,37 @@ export default function MoneyCounter() {
 
       {activeTab === "main" ? (
         <>
+          {currencyOptions.length > 0 ? (
+            <div className="summaryBar">
+              <label className="currencyPick">
+                В валюте
+                <select
+                  aria-label="Валюта сводки"
+                  value={displayCurrency}
+                  onChange={(event) => setDisplayCurrency(event.target.value)}
+                >
+                  {currencyOptions.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
           <section className="summaryGrid" aria-label="Сводка">
             <article className="metric">
               <span>Баланс (все счета)</span>
-              <strong><MoneyTotals map={totalsByCurrency} fallback={activeCurrency} /></strong>
+              <strong>{renderConverted(balanceConverted, balanceRates, `${currentMonth}-01`)}</strong>
             </article>
             <article className="metric">
               <span>Поступления периода</span>
-              <strong><MoneyTotals map={periodIncome} fallback={activeCurrency} /></strong>
+              <strong>{renderConverted(incomeConverted, periodRates, `${mainPeriod}-01`)}</strong>
             </article>
             <article className="metric">
               <span>Расходы периода</span>
-              <strong><MoneyTotals map={periodExpense} fallback={activeCurrency} /></strong>
+              <strong>{renderConverted(expenseConverted, periodRates, `${mainPeriod}-01`)}</strong>
             </article>
           </section>
 
