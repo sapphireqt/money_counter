@@ -90,4 +90,4 @@ No test runner. Verify changes by layer:
 
 - Code, identifiers, comments: English. UI strings: Russian. Money/dates as above.
 - Match the existing single-file UI style and the route-handler error pattern (`toRouteErrorMessage`, which special-cases "no such table").
-- Don't commit/push unless asked; if on `main`, branch first.
+- Don't commit/push unless asked. Committing directly to `main` is fine for this project — do NOT create a feature branch first (this overrides the global "branch first on main" rule).
