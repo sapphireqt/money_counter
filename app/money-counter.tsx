@@ -1155,9 +1155,6 @@ export default function MoneyCounter() {
           <p className="eyebrow">Money Counter</p>
           <h1>Счета и движение средств</h1>
         </div>
-        <button className="iconButton" type="button" onClick={() => void refreshAfterMutation()} title="Обновить">
-          ↻
-        </button>
       </header>
 
       <nav className="tabBar" aria-label="Разделы">
@@ -1316,8 +1313,21 @@ export default function MoneyCounter() {
                                 type="button"
                                 onClick={() => startEditTransaction(transaction)}
                                 title="Править"
+                                aria-label="Править"
                               >
-                                ✎
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  width="15"
+                                  height="15"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                                </svg>
                               </button>
                               <button
                                 className="iconButton small danger"
