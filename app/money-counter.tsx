@@ -766,38 +766,32 @@ export default function MoneyCounter() {
     return groups;
   }, [transactions]);
 
-  // Amount for an operation row: the value in the display currency (constant,
-  // from the selector) on top, and — when the account currency differs — the
-  // original account-currency amount below in a smaller, muted font. Conversion
-  // uses the period's first-day rate (periodRates), so rows reconcile with the
-  // period totals shown in the summary cards.
-  const renderRowAmount = (transaction: Transaction): ReactNode => {
+  // The account-currency amount in its own column, next to the display-currency
+  // "Сумма". Empty (—) when the account currency already equals the display
+  // currency, since the display column then shows the same value.
+  const renderAccountAmount = (transaction: Transaction): ReactNode => {
+    const account = transaction.accountCurrency;
+    if (!displayCurrency || account === displayCurrency) return "—";
+    return <Money cents={Math.abs(transaction.amountCents)} currency={account} />;
+  };
+
+  // The operation amount in the display currency (the constant selector choice).
+  // Conversion uses the period's first-day rate (periodRates), so rows reconcile
+  // with the summary cards. Falls back to the raw amount when no display currency
+  // is set, to "…" while rates load, and to a flagged "—" when no rate exists.
+  const renderDisplayAmount = (transaction: Transaction): ReactNode => {
     const account = transaction.accountCurrency;
     const cents = Math.abs(transaction.amountCents);
-    // Same currency, no display currency yet, or rates still loading: show the
-    // single original amount (always correct; no conversion needed/possible).
-    if (!displayCurrency || account === displayCurrency || periodRates === null) {
+    if (!displayCurrency || account === displayCurrency) {
       return <Money cents={cents} currency={account} />;
     }
+    if (periodRates === null) return "…";
     const rateTo = periodRates[displayCurrency];
     const rateFrom = periodRates[account];
     if (rateTo == null || rateFrom == null) {
-      // No rate for this currency: keep the original amount, flagged.
-      return (
-        <Flagged reason={`Нет курса ${account} на ${dmy(`${mainPeriod}-01`)}`}>
-          <Money cents={cents} currency={account} />
-        </Flagged>
-      );
+      return <Flagged reason={`Нет курса ${account} на ${dmy(`${mainPeriod}-01`)}`}>—</Flagged>;
     }
-    const converted = Math.round((cents * rateTo) / rateFrom);
-    return (
-      <>
-        <Money cents={converted} currency={displayCurrency} />
-        <small className="altAmount">
-          <Money cents={cents} currency={account} />
-        </small>
-      </>
-    );
+    return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
   };
 
   const chartBars = useMemo(() => {
@@ -1321,6 +1315,7 @@ export default function MoneyCounter() {
                         <th>Счет</th>
                         <th>Описание</th>
                         <th>Категория</th>
+                        <th className="amountCell">В валюте счёта</th>
                         <th className="amountCell">Сумма</th>
                         <th />
                       </tr>
@@ -1328,7 +1323,7 @@ export default function MoneyCounter() {
                     <tbody>
                       {transactions.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="emptyTable">
+                          <td colSpan={6} className="emptyTable">
                             {loading ? "Загрузка" : "Нет операций за период"}
                           </td>
                         </tr>
@@ -1336,13 +1331,16 @@ export default function MoneyCounter() {
                         dayGroups.map((group) => (
                           <Fragment key={group.date}>
                             <tr className="dayGroup">
-                              <td colSpan={5}>{formatDayHeader(group.date)}</td>
+                              <td colSpan={6}>{formatDayHeader(group.date)}</td>
                             </tr>
                             {group.items.map((transaction) => (
                               <tr key={transaction.id}>
                                 <td>{transaction.accountName}</td>
                                 <td>{transaction.description}</td>
                                 <td>{transaction.category || "—"}</td>
+                                <td className="amountCell">
+                                  <span className="altAmount">{renderAccountAmount(transaction)}</span>
+                                </td>
                                 <td
                                   className={`amountCell ${
                                     transaction.amountCents > 0 ? "positive" : ""
@@ -1350,7 +1348,7 @@ export default function MoneyCounter() {
                                 >
                                   {/* Expenses are plain black and shown without a
                                       leading minus; only income is coloured (green). */}
-                                  {renderRowAmount(transaction)}
+                                  {renderDisplayAmount(transaction)}
                                 </td>
                                 <td className="rowActions">
                                   <button

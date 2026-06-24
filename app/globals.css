@@ -480,6 +480,7 @@ td {
 /* Day-group header row: the date as a heading over the operations it groups,
    instead of a per-row date column. */
 .opsTable .dayGroup td {
+  border-bottom: 1px solid var(--line);
   color: var(--muted-strong);
   font-size: 16px;
   font-weight: 760;
@@ -487,13 +488,11 @@ td {
   padding-top: 20px;
 }
 
-/* Original account-currency amount shown under the display-currency amount
-   when they differ; same font and colour as the row, just 70% of its size. */
+/* Account-currency amount column: a muted, smaller reference shown next to the
+   display-currency "Сумма". 70% of the row's size. */
 .altAmount {
-  color: inherit;
-  display: block;
+  color: var(--muted);
   font-size: 70%;
-  margin-top: 1px;
 }
 
 .fileDrop {
