@@ -475,6 +475,7 @@ export default function MoneyCounter() {
     openingBalance: "",
     color: palette[0],
   });
+  const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [categoryForm, setCategoryForm] = useState({ name: "", color: palette[1] });
   const [ruleForm, setRuleForm] = useState({ pattern: "", category: "" });
 
@@ -1107,23 +1108,48 @@ export default function MoneyCounter() {
     }
   }
 
-  async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
+  function resetAccountForm() {
+    setEditingAccountId(null);
+    setAccountForm({
+      name: "",
+      bankName: "",
+      currency: accountForm.currency,
+      type: "checking",
+      openingBalance: "",
+      color: palette[accounts.length % palette.length],
+    });
+  }
+
+  function startEditAccount(account: Account) {
+    setEditingAccountId(account.id);
+    setAccountForm({
+      name: account.name,
+      bankName: account.bankName,
+      currency: account.currency,
+      type: account.type,
+      openingBalance: centsToInputValue(account.openingBalanceCents),
+      color: account.color,
+    });
+  }
+
+  async function handleSubmitAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      await requestJson("/api/accounts", { method: "POST", body: JSON.stringify(accountForm) });
-      setNotice("Счет добавлен");
-      setAccountForm({
-        name: "",
-        bankName: "",
-        currency: accountForm.currency,
-        type: "checking",
-        openingBalance: "",
-        color: palette[accounts.length % palette.length],
-      });
+      if (editingAccountId !== null) {
+        await requestJson("/api/accounts", {
+          method: "PATCH",
+          body: JSON.stringify({ id: editingAccountId, ...accountForm }),
+        });
+        setNotice("Счёт обновлён");
+      } else {
+        await requestJson("/api/accounts", { method: "POST", body: JSON.stringify(accountForm) });
+        setNotice("Счет добавлен");
+      }
+      resetAccountForm();
       await refreshAfterMutation();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Счет не добавлен");
+      setNotice(error instanceof Error ? error.message : "Счёт не сохранён");
     } finally {
       setSaving(false);
     }
@@ -1743,21 +1769,44 @@ export default function MoneyCounter() {
                           {account.transactionCount} оп.
                         </small>
                       </span>
-                      <button
-                        className="iconButton small danger"
-                        type="button"
-                        title="Удалить"
-                        onClick={() => removeAccount(account)}
-                      >
-                        ×
-                      </button>
+                      <span className="rowActions">
+                        <button
+                          className="iconButton small"
+                          type="button"
+                          title="Изменить"
+                          aria-label="Изменить"
+                          onClick={() => startEditAccount(account)}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="15"
+                            height="15"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                          </svg>
+                        </button>
+                        <button
+                          className="iconButton small danger"
+                          type="button"
+                          title="Удалить"
+                          onClick={() => removeAccount(account)}
+                        >
+                          ×
+                        </button>
+                      </span>
                     </li>
                   ))}
                 </ul>
               )}
 
-              <form className="stackForm settingsForm" onSubmit={handleCreateAccount}>
-                <h3>Новый счёт</h3>
+              <form className="stackForm settingsForm" onSubmit={handleSubmitAccount}>
+                <h3>{editingAccountId !== null ? "Правка счёта" : "Новый счёт"}</h3>
                 <label>
                   Название
                   <input
@@ -1818,8 +1867,14 @@ export default function MoneyCounter() {
                   />
                 </label>
                 <button className="primaryButton" disabled={saving} type="submit">
-                  <span>+</span> Добавить счёт
+                  <span>{editingAccountId !== null ? "✓" : "+"}</span>
+                  {editingAccountId !== null ? "Сохранить" : "Добавить счёт"}
                 </button>
+                {editingAccountId !== null ? (
+                  <button className="textButton" type="button" onClick={resetAccountForm}>
+                    Отмена
+                  </button>
+                ) : null}
               </form>
             </section>
           </section>
