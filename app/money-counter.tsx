@@ -794,6 +794,31 @@ export default function MoneyCounter() {
     return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
   };
 
+  // Per-account balance for the "Счета" panel, in the display currency. Balances
+  // are signed (an account can go negative). Uses balanceRates (current month's
+  // 1st), so the rows reconcile with the "Баланс (все счета)" card / panel total.
+  const renderAccountBalance = (account: Account): ReactNode => {
+    const cents = account.balanceCents;
+    const code = account.currency;
+    if (!displayCurrency || code === displayCurrency) {
+      return <Money cents={cents} currency={code} />;
+    }
+    if (balanceRates === null) return "…";
+    const rateTo = balanceRates[displayCurrency];
+    const rateFrom = balanceRates[code];
+    if (rateTo == null || rateFrom == null) {
+      return <Flagged reason={`Нет курса ${code} на ${dmy(`${currentMonth}-01`)}`}>—</Flagged>;
+    }
+    return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
+  };
+
+  // The same balance in the account's own currency (secondary column); empty
+  // when it already equals the display currency.
+  const renderAccountBalanceNative = (account: Account): ReactNode => {
+    if (!displayCurrency || account.currency === displayCurrency) return "—";
+    return <Money cents={account.balanceCents} currency={account.currency} />;
+  };
+
   const chartBars = useMemo(() => {
     const monthly = stats?.monthly ?? [];
     const largest = Math.max(1, ...monthly.flatMap((m) => [m.income, m.expense]));
@@ -1255,7 +1280,7 @@ export default function MoneyCounter() {
             </article>
           </section>
 
-          <div className="workspace oneCol">
+          <div className="workspace twoCol">
             <section className="mainColumn">
               <section className="surface">
                 {/* Title lifted above the toolbar; the period picker takes the
@@ -1390,6 +1415,40 @@ export default function MoneyCounter() {
                   </table>
                 </div>
               </section>
+            </section>
+
+            <section className="surface accountsPanel" aria-label="Баланс по счетам">
+              <h2>Счета</h2>
+              <table className="balanceTable">
+                <tbody>
+                  {accounts.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="emptyTable">Нет счетов</td>
+                    </tr>
+                  ) : (
+                    accounts.map((account) => (
+                      <tr key={account.id}>
+                        <td className="balName">{account.name}</td>
+                        <td className="amountCell">{renderAccountBalance(account)}</td>
+                        <td className="amountCell">
+                          <span className="altAmount">{renderAccountBalanceNative(account)}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {accounts.length > 0 ? (
+                  <tfoot>
+                    <tr className="balTotal">
+                      <td>Итого</td>
+                      <td className="amountCell">
+                        {renderConverted(balanceConverted, balanceRates, `${currentMonth}-01`)}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                ) : null}
+              </table>
             </section>
           </div>
 
