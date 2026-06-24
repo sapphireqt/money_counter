@@ -25,6 +25,11 @@ this file is the working context for code changes.
 
 ## Deploy
 
+**Deploy after every code change by default** — commit to `main`, push, then run
+the two steps below. The user demos the live app to a customer who cannot look at
+the dev laptop, so changes must reach the running deployment automatically. Skip
+deploying ONLY when the user explicitly says not to (e.g. "не выкатывай").
+
 Exactly these two steps — do NOT change the image tag.
 
 1. Build & push:
@@ -90,4 +95,4 @@ No test runner. Verify changes by layer:
 
 - Code, identifiers, comments: English. UI strings: Russian. Money/dates as above.
 - Match the existing single-file UI style and the route-handler error pattern (`toRouteErrorMessage`, which special-cases "no such table").
-- Don't commit/push unless asked. Committing directly to `main` is fine for this project — do NOT create a feature branch first (this overrides the global "branch first on main" rule).
+- After making code changes, the default is to commit to `main`, push, and deploy (see Deploy) automatically — do NOT wait to be asked, and do NOT create a feature branch. This overrides the global "commit/push only when asked" and "branch first on main" rules. The only exception is when the user explicitly says not to commit/deploy.
