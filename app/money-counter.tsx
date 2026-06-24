@@ -1315,7 +1315,7 @@ export default function MoneyCounter() {
                 </div>
 
                 <div className="tableWrap">
-                  <table>
+                  <table className="opsTable">
                     <thead>
                       <tr>
                         <th>Счет</th>
@@ -1341,9 +1341,7 @@ export default function MoneyCounter() {
                             {group.items.map((transaction) => (
                               <tr key={transaction.id}>
                                 <td>{transaction.accountName}</td>
-                                <td>
-                                  <b>{transaction.description}</b>
-                                </td>
+                                <td>{transaction.description}</td>
                                 <td>{transaction.category || "—"}</td>
                                 <td
                                   className={`amountCell ${

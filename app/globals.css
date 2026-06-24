@@ -469,24 +469,30 @@ td {
   justify-content: flex-end;
 }
 
+/* Operations list: borderless and tight rows. Days are separated by the date
+   header's top padding, not by rules between rows. */
+.opsTable th,
+.opsTable td {
+  border-bottom: none;
+  padding: 5px 8px;
+}
+
 /* Day-group header row: the date as a heading over the operations it groups,
    instead of a per-row date column. */
-.dayGroup td {
-  background: #f8fafb;
+.opsTable .dayGroup td {
   color: var(--muted-strong);
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 760;
-  padding-bottom: 7px;
-  padding-top: 7px;
+  padding-bottom: 6px;
+  padding-top: 20px;
 }
 
 /* Original account-currency amount shown under the display-currency amount
-   when they differ; smaller and muted so the display value stays primary. */
+   when they differ; same font and colour as the row, just 70% of its size. */
 .altAmount {
-  color: var(--muted);
+  color: inherit;
   display: block;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 70%;
   margin-top: 1px;
 }
 
