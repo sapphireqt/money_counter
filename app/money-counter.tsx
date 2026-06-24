@@ -13,7 +13,7 @@ import {
 import {
   accountTypes,
   centsToInputValue,
-  formatDateShort,
+  formatDayHeader,
   formatMoney,
   formatMoneyParts,
 } from "../lib/finance";
@@ -173,7 +173,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 // Render a money value with the currency symbol greyed out. The number keeps
-// whatever colour its container sets; only the symbol is muted (#777070, via
+// whatever colour its container sets; only the symbol is muted (#DDDDDD, via
 // the .currencySymbol class). formatToParts keeps symbol placement correct for
 // any locale/currency instead of assuming a trailing symbol.
 function Money({ cents, currency }: { cents: number; currency: string }) {
@@ -753,6 +753,53 @@ export default function MoneyCounter() {
     );
   };
 
+  // Operations grouped by day. The list is one month, sorted date DESC, so
+  // same-date rows are already consecutive; the date becomes a group header
+  // instead of a per-row column.
+  const dayGroups = useMemo(() => {
+    const groups: { date: string; items: Transaction[] }[] = [];
+    for (const tx of transactions) {
+      const last = groups[groups.length - 1];
+      if (last && last.date === tx.date) last.items.push(tx);
+      else groups.push({ date: tx.date, items: [tx] });
+    }
+    return groups;
+  }, [transactions]);
+
+  // Amount for an operation row: the value in the display currency (constant,
+  // from the selector) on top, and — when the account currency differs — the
+  // original account-currency amount below in a smaller, muted font. Conversion
+  // uses the period's first-day rate (periodRates), so rows reconcile with the
+  // period totals shown in the summary cards.
+  const renderRowAmount = (transaction: Transaction): ReactNode => {
+    const account = transaction.accountCurrency;
+    const cents = Math.abs(transaction.amountCents);
+    // Same currency, no display currency yet, or rates still loading: show the
+    // single original amount (always correct; no conversion needed/possible).
+    if (!displayCurrency || account === displayCurrency || periodRates === null) {
+      return <Money cents={cents} currency={account} />;
+    }
+    const rateTo = periodRates[displayCurrency];
+    const rateFrom = periodRates[account];
+    if (rateTo == null || rateFrom == null) {
+      // No rate for this currency: keep the original amount, flagged.
+      return (
+        <Flagged reason={`Нет курса ${account} на ${dmy(`${mainPeriod}-01`)}`}>
+          <Money cents={cents} currency={account} />
+        </Flagged>
+      );
+    }
+    const converted = Math.round((cents * rateTo) / rateFrom);
+    return (
+      <>
+        <Money cents={converted} currency={displayCurrency} />
+        <small className="altAmount">
+          <Money cents={cents} currency={account} />
+        </small>
+      </>
+    );
+  };
+
   const chartBars = useMemo(() => {
     const monthly = stats?.monthly ?? [];
     const largest = Math.max(1, ...monthly.flatMap((m) => [m.income, m.expense]));
@@ -1271,7 +1318,6 @@ export default function MoneyCounter() {
                   <table>
                     <thead>
                       <tr>
-                        <th>Дата</th>
                         <th>Счет</th>
                         <th>Описание</th>
                         <th>Категория</th>
@@ -1282,63 +1328,66 @@ export default function MoneyCounter() {
                     <tbody>
                       {transactions.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="emptyTable">
+                          <td colSpan={5} className="emptyTable">
                             {loading ? "Загрузка" : "Нет операций за период"}
                           </td>
                         </tr>
                       ) : (
-                        transactions.map((transaction) => (
-                          <tr key={transaction.id}>
-                            <td>{formatDateShort(transaction.date)}</td>
-                            <td>{transaction.accountName}</td>
-                            <td>
-                              <b>{transaction.description}</b>
-                            </td>
-                            <td>{transaction.category || "—"}</td>
-                            <td
-                              className={`amountCell ${
-                                transaction.amountCents > 0 ? "positive" : ""
-                              }`}
-                            >
-                              {/* Expenses are plain black and shown without a
-                                  leading minus; only income is coloured (green). */}
-                              <Money
-                                cents={Math.abs(transaction.amountCents)}
-                                currency={transaction.accountCurrency}
-                              />
-                            </td>
-                            <td className="rowActions">
-                              <button
-                                className="iconButton small"
-                                type="button"
-                                onClick={() => startEditTransaction(transaction)}
-                                title="Править"
-                                aria-label="Править"
-                              >
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  width="15"
-                                  height="15"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden="true"
+                        dayGroups.map((group) => (
+                          <Fragment key={group.date}>
+                            <tr className="dayGroup">
+                              <td colSpan={5}>{formatDayHeader(group.date)}</td>
+                            </tr>
+                            {group.items.map((transaction) => (
+                              <tr key={transaction.id}>
+                                <td>{transaction.accountName}</td>
+                                <td>
+                                  <b>{transaction.description}</b>
+                                </td>
+                                <td>{transaction.category || "—"}</td>
+                                <td
+                                  className={`amountCell ${
+                                    transaction.amountCents > 0 ? "positive" : ""
+                                  }`}
                                 >
-                                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                </svg>
-                              </button>
-                              <button
-                                className="iconButton small danger"
-                                type="button"
-                                onClick={() => removeTransaction(transaction)}
-                                title="Удалить"
-                              >
-                                ×
-                              </button>
-                            </td>
-                          </tr>
+                                  {/* Expenses are plain black and shown without a
+                                      leading minus; only income is coloured (green). */}
+                                  {renderRowAmount(transaction)}
+                                </td>
+                                <td className="rowActions">
+                                  <button
+                                    className="iconButton small"
+                                    type="button"
+                                    onClick={() => startEditTransaction(transaction)}
+                                    title="Править"
+                                    aria-label="Править"
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      width="15"
+                                      height="15"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    className="iconButton small danger"
+                                    type="button"
+                                    onClick={() => removeTransaction(transaction)}
+                                    title="Удалить"
+                                  >
+                                    ×
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
                         ))
                       )}
                     </tbody>
@@ -1457,156 +1506,160 @@ export default function MoneyCounter() {
                   </button>
                 </form>
 
-                <div className="modalImport">
-                  <div className="sectionHead">
-                    <h2>Импорт выписки</h2>
-                    <span>{importValidRows.length}</span>
-                  </div>
-                  <label className="fileDrop">
-                    <input
-                      type="file"
-                      accept=".csv,.tsv,.txt,.pdf,text/csv,text/tab-separated-values,text/plain,application/pdf"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        event.target.value = "";
-                        void handleImportFile(file);
-                      }}
-                    />
-                    <span>{importFileName || "Выбрать файл · CSV, TSV, TXT или PDF"}</span>
-                  </label>
+                {/* Import is only for adding new operations; the edit modal
+                    omits it so it differs from the "add" modal. */}
+                {!editingTransactionId ? (
+                  <div className="modalImport">
+                    <div className="sectionHead">
+                      <h2>Импорт выписки</h2>
+                      <span>{importValidRows.length}</span>
+                    </div>
+                    <label className="fileDrop">
+                      <input
+                        type="file"
+                        accept=".csv,.tsv,.txt,.pdf,text/csv,text/tab-separated-values,text/plain,application/pdf"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          event.target.value = "";
+                          void handleImportFile(file);
+                        }}
+                      />
+                      <span>{importFileName || "Выбрать файл · CSV, TSV, TXT или PDF"}</span>
+                    </label>
 
-                  {(importAnalysis && importMapping) || pdfRows ? (
-                    <>
-                      <p className="importHint">
-                        Импортируется в счёт{" "}
-                        <b>
-                          {importAccount
-                            ? `«${importAccount.name}»`
-                            : "— сначала выберите счёт в поле «Счет» выше"}
-                        </b>
-                      </p>
-
-                      {/* Column mapping + sign flip are CSV-only. PDF rows are
-                          already resolved by analyzePdf, so this block is hidden
-                          for PDF imports (importAnalysis is null then). */}
-                      {importAnalysis && importMapping ? (
-                        <>
-                          {importNeedsMapping ? (
-                            <p className="importWarning">
-                              Не найдена колонка даты или суммы — укажите её в разделе «Колонки» ниже.
-                            </p>
-                          ) : null}
-
-                          <details
-                            className="mappingEditor"
-                            open={importEditorOpen}
-                            onToggle={(event) => setImportEditorOpen(event.currentTarget.open)}
-                          >
-                            <summary>
-                              Колонки · разделитель «
-                              {DELIMITER_LABELS[importAnalysis.delimiter] ?? importAnalysis.delimiter}»
-                            </summary>
-                            <div className="mappingGrid">
-                              {FIELD_DEFS.map((field) => (
-                                <label key={field.key}>
-                                  {field.label}
-                                  <select
-                                    value={importMapping[field.key]}
-                                    onChange={(event) => updateMapping(field.key, Number(event.target.value))}
-                                  >
-                                    <option value={-1}>—</option>
-                                    {importAnalysis.headers.map((header, index) => (
-                                      <option key={index} value={index}>
-                                        {header || `Колонка ${index + 1}`}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              ))}
-                            </div>
-                          </details>
-
-                          <label className="flipToggle">
-                            <input
-                              type="checkbox"
-                              checked={importFlip}
-                              onChange={(event) => setImportFlip(event.target.checked)}
-                            />
-                            Инвертировать знак (выписки по карте: траты как «+»)
-                          </label>
-                        </>
-                      ) : null}
-
-                      <div className="tableWrap importPreview">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Дата</th>
-                              <th>Описание</th>
-                              <th className="amountCell">Сумма</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {importRows.slice(0, 8).map((row, index) => (
-                              <tr key={index} className={row.skip ? "skippedRow" : ""}>
-                                <td>{row.date ?? "—"}</td>
-                                <td>
-                                  <b>{row.description || "—"}</b>
-                                  {row.skip ? <small>пропуск: {row.skip}</small> : null}
-                                </td>
-                                <td
-                                  className={`amountCell ${
-                                    (row.amountCents ?? 0) < 0 ? "negative" : "positive"
-                                  }`}
-                                >
-                                  {row.amountCents === null ? (
-                                    "—"
-                                  ) : (
-                                    <Money
-                                      cents={row.amountCents}
-                                      currency={row.currency || importCurrency}
-                                    />
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="importStats">
-                        <span>К импорту</span>
-                        <b>{importValidRows.length}</b>
-                        <span>Пропущено</span>
-                        <b>{importRows.length - importValidRows.length}</b>
-                        <span>Сумма</span>
-                        <b><Money cents={importTotal} currency={importCurrency} /></b>
-                      </div>
-
-                      {importSkipReasons.length ? (
+                    {(importAnalysis && importMapping) || pdfRows ? (
+                      <>
                         <p className="importHint">
-                          Пропущены:{" "}
-                          {importSkipReasons.map(([reason, count]) => `${reason} (${count})`).join(", ")}
+                          Импортируется в счёт{" "}
+                          <b>
+                            {importAccount
+                              ? `«${importAccount.name}»`
+                              : "— сначала выберите счёт в поле «Счет» выше"}
+                          </b>
                         </p>
-                      ) : null}
 
-                      <button
-                        className="primaryButton"
-                        type="button"
-                        disabled={saving || importValidRows.length === 0 || !importAccount}
-                        onClick={handleImport}
-                      >
-                        <span>↓</span> Импортировать {importValidRows.length}
-                      </button>
-                    </>
-                  ) : (
-                    <p className="importHint">
-                      Поддерживаются выписки банков в CSV и TSV (разделитель, колонки и валюта
-                      определяются автоматически) и PDF-выписка K PLUS / KBank. Перед загрузкой
-                      можно всё проверить; категории проставятся по правилам из «Настроек».
-                    </p>
-                  )}
-                </div>
+                        {/* Column mapping + sign flip are CSV-only. PDF rows are
+                            already resolved by analyzePdf, so this block is hidden
+                            for PDF imports (importAnalysis is null then). */}
+                        {importAnalysis && importMapping ? (
+                          <>
+                            {importNeedsMapping ? (
+                              <p className="importWarning">
+                                Не найдена колонка даты или суммы — укажите её в разделе «Колонки» ниже.
+                              </p>
+                            ) : null}
+
+                            <details
+                              className="mappingEditor"
+                              open={importEditorOpen}
+                              onToggle={(event) => setImportEditorOpen(event.currentTarget.open)}
+                            >
+                              <summary>
+                                Колонки · разделитель «
+                                {DELIMITER_LABELS[importAnalysis.delimiter] ?? importAnalysis.delimiter}»
+                              </summary>
+                              <div className="mappingGrid">
+                                {FIELD_DEFS.map((field) => (
+                                  <label key={field.key}>
+                                    {field.label}
+                                    <select
+                                      value={importMapping[field.key]}
+                                      onChange={(event) => updateMapping(field.key, Number(event.target.value))}
+                                    >
+                                      <option value={-1}>—</option>
+                                      {importAnalysis.headers.map((header, index) => (
+                                        <option key={index} value={index}>
+                                          {header || `Колонка ${index + 1}`}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                ))}
+                              </div>
+                            </details>
+
+                            <label className="flipToggle">
+                              <input
+                                type="checkbox"
+                                checked={importFlip}
+                                onChange={(event) => setImportFlip(event.target.checked)}
+                              />
+                              Инвертировать знак (выписки по карте: траты как «+»)
+                            </label>
+                          </>
+                        ) : null}
+
+                        <div className="tableWrap importPreview">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Дата</th>
+                                <th>Описание</th>
+                                <th className="amountCell">Сумма</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {importRows.slice(0, 8).map((row, index) => (
+                                <tr key={index} className={row.skip ? "skippedRow" : ""}>
+                                  <td>{row.date ?? "—"}</td>
+                                  <td>
+                                    <b>{row.description || "—"}</b>
+                                    {row.skip ? <small>пропуск: {row.skip}</small> : null}
+                                  </td>
+                                  <td
+                                    className={`amountCell ${
+                                      (row.amountCents ?? 0) < 0 ? "negative" : "positive"
+                                    }`}
+                                  >
+                                    {row.amountCents === null ? (
+                                      "—"
+                                    ) : (
+                                      <Money
+                                        cents={row.amountCents}
+                                        currency={row.currency || importCurrency}
+                                      />
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="importStats">
+                          <span>К импорту</span>
+                          <b>{importValidRows.length}</b>
+                          <span>Пропущено</span>
+                          <b>{importRows.length - importValidRows.length}</b>
+                          <span>Сумма</span>
+                          <b><Money cents={importTotal} currency={importCurrency} /></b>
+                        </div>
+
+                        {importSkipReasons.length ? (
+                          <p className="importHint">
+                            Пропущены:{" "}
+                            {importSkipReasons.map(([reason, count]) => `${reason} (${count})`).join(", ")}
+                          </p>
+                        ) : null}
+
+                        <button
+                          className="primaryButton"
+                          type="button"
+                          disabled={saving || importValidRows.length === 0 || !importAccount}
+                          onClick={handleImport}
+                        >
+                          <span>↓</span> Импортировать {importValidRows.length}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="importHint">
+                        Поддерживаются выписки банков в CSV и TSV (разделитель, колонки и валюта
+                        определяются автоматически) и PDF-выписка K PLUS / KBank. Перед загрузкой
+                        можно всё проверить; категории проставятся по правилам из «Настроек».
+                      </p>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
