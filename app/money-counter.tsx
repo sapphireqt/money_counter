@@ -1315,8 +1315,8 @@ export default function MoneyCounter() {
                         <th>Счет</th>
                         <th>Описание</th>
                         <th>Категория</th>
-                        <th className="amountCell">В валюте счёта</th>
                         <th className="amountCell">Сумма</th>
+                        <th className="amountCell">В валюте счёта</th>
                         <th />
                       </tr>
                     </thead>
@@ -1338,9 +1338,6 @@ export default function MoneyCounter() {
                                 <td>{transaction.accountName}</td>
                                 <td>{transaction.description}</td>
                                 <td>{transaction.category || "—"}</td>
-                                <td className="amountCell">
-                                  <span className="altAmount">{renderAccountAmount(transaction)}</span>
-                                </td>
                                 <td
                                   className={`amountCell ${
                                     transaction.amountCents > 0 ? "positive" : ""
@@ -1349,6 +1346,9 @@ export default function MoneyCounter() {
                                   {/* Expenses are plain black and shown without a
                                       leading minus; only income is coloured (green). */}
                                   {renderDisplayAmount(transaction)}
+                                </td>
+                                <td className="amountCell">
+                                  <span className="altAmount">{renderAccountAmount(transaction)}</span>
                                 </td>
                                 <td className="rowActions">
                                   <button
