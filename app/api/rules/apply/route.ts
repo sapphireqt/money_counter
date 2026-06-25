@@ -9,12 +9,16 @@ function toRouteErrorMessage(error: unknown) {
   return message;
 }
 
-// Apply every rule to transactions that have no category yet, matching against
-// description and payee. Returns how many transactions were categorized.
-export async function POST() {
+// Apply every rule to transactions, matching against description and payee.
+// By default only uncategorized transactions are touched; with ?overwrite=1 the
+// rules run over ALL transactions, overwriting the category wherever a rule
+// matches (transactions with no matching rule keep their current category).
+// Returns how many transactions were (re)categorized.
+export async function POST(request: Request) {
   try {
     await ensureSchema();
     const d1 = getD1();
+    const overwrite = new URL(request.url).searchParams.get("overwrite") === "1";
 
     const ruleRows = await d1
       .prepare("SELECT pattern, category FROM category_rules ORDER BY id")
@@ -27,16 +31,19 @@ export async function POST() {
 
     const txRows = await d1
       .prepare(
-        "SELECT id, description, payee FROM transactions WHERE category = '' OR category IS NULL"
+        overwrite
+          ? "SELECT id, description, payee, category FROM transactions"
+          : "SELECT id, description, payee, category FROM transactions WHERE category = '' OR category IS NULL"
       )
-      .all<{ id: number; description: string; payee: string }>();
+      .all<{ id: number; description: string; payee: string; category: string }>();
 
     const updates: Array<ReturnType<typeof d1.prepare>> = [];
     for (const tx of txRows.results ?? []) {
       const category =
         matchCategoryRule(tx.description, rules) ||
         matchCategoryRule(tx.payee, rules);
-      if (category) {
+      // Skip no-op writes so `updated` reflects rows that actually changed.
+      if (category && category.toLowerCase() !== String(tx.category ?? "").toLowerCase()) {
         updates.push(
           d1
             .prepare(

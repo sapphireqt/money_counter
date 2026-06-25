@@ -204,6 +204,25 @@ function Flagged({ reason, children }: { reason: string; children: ReactNode }) 
   );
 }
 
+// Pencil "edit" icon used by list rows (right-leaning, currentColor stroke).
+function EditIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+    </svg>
+  );
+}
+
 // Convert a per-currency map of cents into a single target currency using a
 // USD-based rate map (1 USD = rates[c] units of c). Amounts already in the
 // target need no rate. Currencies with no available rate are summed-out and
@@ -479,7 +498,17 @@ export default function MoneyCounter() {
   });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [categoryForm, setCategoryForm] = useState({ name: "", color: palette[1] });
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [ruleForm, setRuleForm] = useState({ pattern: "", category: "" });
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [currencyForm, setCurrencyForm] = useState({ code: "", name: "", symbol: "" });
+  const [editingCurrencyCode, setEditingCurrencyCode] = useState<string | null>(null);
+  // Настройки sub-navigation + per-list add/edit modals.
+  const [settingsTab, setSettingsTab] = useState<"accounts" | "categories" | "currencies">("accounts");
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [currencyModalOpen, setCurrencyModalOpen] = useState(false);
 
   const [importAnalysis, setImportAnalysis] = useState<AnalyzeResult | null>(null);
   const [importMapping, setImportMapping] = useState<ColumnMapping | null>(null);
@@ -1133,6 +1162,11 @@ export default function MoneyCounter() {
     });
   }
 
+  function openAddAccount() {
+    resetAccountForm();
+    setAccountModalOpen(true);
+  }
+
   function startEditAccount(account: Account) {
     setEditingAccountId(account.id);
     setAccountForm({
@@ -1143,6 +1177,12 @@ export default function MoneyCounter() {
       openingBalance: centsToInputValue(account.openingBalanceCents),
       color: account.color,
     });
+    setAccountModalOpen(true);
+  }
+
+  function closeAccountModal() {
+    setAccountModalOpen(false);
+    resetAccountForm();
   }
 
   async function handleSubmitAccount(event: FormEvent<HTMLFormElement>) {
@@ -1159,7 +1199,7 @@ export default function MoneyCounter() {
         await requestJson("/api/accounts", { method: "POST", body: JSON.stringify(accountForm) });
         setNotice("Счет добавлен");
       }
-      resetAccountForm();
+      closeAccountModal();
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Счёт не сохранён");
@@ -1180,16 +1220,41 @@ export default function MoneyCounter() {
     }
   }
 
-  async function handleCreateCategory(event: FormEvent<HTMLFormElement>) {
+  function openAddCategory() {
+    setEditingCategoryId(null);
+    setCategoryForm({ name: "", color: palette[(categories.length + 1) % palette.length] });
+    setCategoryModalOpen(true);
+  }
+
+  function startEditCategory(category: Category) {
+    setEditingCategoryId(category.id);
+    setCategoryForm({ name: category.name, color: category.color });
+    setCategoryModalOpen(true);
+  }
+
+  function closeCategoryModal() {
+    setCategoryModalOpen(false);
+    setEditingCategoryId(null);
+  }
+
+  async function handleSubmitCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      await requestJson("/api/categories", { method: "POST", body: JSON.stringify(categoryForm) });
-      setNotice("Категория добавлена");
-      setCategoryForm({ name: "", color: palette[(categories.length + 1) % palette.length] });
+      if (editingCategoryId !== null) {
+        await requestJson("/api/categories", {
+          method: "PATCH",
+          body: JSON.stringify({ id: editingCategoryId, ...categoryForm }),
+        });
+        setNotice("Категория обновлена");
+      } else {
+        await requestJson("/api/categories", { method: "POST", body: JSON.stringify(categoryForm) });
+        setNotice("Категория добавлена");
+      }
+      closeCategoryModal();
       await loadCategories();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Категория не добавлена");
+      setNotice(error instanceof Error ? error.message : "Категория не сохранена");
     } finally {
       setSaving(false);
     }
@@ -1206,16 +1271,41 @@ export default function MoneyCounter() {
     }
   }
 
-  async function handleCreateRule(event: FormEvent<HTMLFormElement>) {
+  function openAddRule() {
+    setEditingRuleId(null);
+    setRuleForm({ pattern: "", category: "" });
+    setRuleModalOpen(true);
+  }
+
+  function startEditRule(rule: Rule) {
+    setEditingRuleId(rule.id);
+    setRuleForm({ pattern: rule.pattern, category: rule.category });
+    setRuleModalOpen(true);
+  }
+
+  function closeRuleModal() {
+    setRuleModalOpen(false);
+    setEditingRuleId(null);
+  }
+
+  async function handleSubmitRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     try {
-      await requestJson("/api/rules", { method: "POST", body: JSON.stringify(ruleForm) });
-      setNotice("Правило добавлено");
-      setRuleForm({ pattern: "", category: "" });
+      if (editingRuleId !== null) {
+        await requestJson("/api/rules", {
+          method: "PATCH",
+          body: JSON.stringify({ id: editingRuleId, ...ruleForm }),
+        });
+        setNotice("Правило обновлено");
+      } else {
+        await requestJson("/api/rules", { method: "POST", body: JSON.stringify(ruleForm) });
+        setNotice("Правило добавлено");
+      }
+      closeRuleModal();
       await Promise.all([loadRules(), loadCategories()]);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Правило не добавлено");
+      setNotice(error instanceof Error ? error.message : "Правило не сохранено");
     } finally {
       setSaving(false);
     }
@@ -1231,12 +1321,61 @@ export default function MoneyCounter() {
     }
   }
 
-  async function applyRules() {
+  function openAddCurrency() {
+    setEditingCurrencyCode(null);
+    setCurrencyForm({ code: "", name: "", symbol: "" });
+    setCurrencyModalOpen(true);
+  }
+
+  function startEditCurrency(currency: Currency) {
+    setEditingCurrencyCode(currency.code);
+    setCurrencyForm({ code: currency.code, name: currency.name, symbol: currency.symbol });
+    setCurrencyModalOpen(true);
+  }
+
+  function closeCurrencyModal() {
+    setCurrencyModalOpen(false);
+    setEditingCurrencyCode(null);
+  }
+
+  async function handleSubmitCurrency(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setSaving(true);
     try {
-      const result = await requestJson<{ updated: number }>("/api/rules/apply", {
-        method: "POST",
-      });
+      if (editingCurrencyCode !== null) {
+        await requestJson("/api/currencies", { method: "PATCH", body: JSON.stringify(currencyForm) });
+        setNotice("Валюта обновлена");
+      } else {
+        await requestJson("/api/currencies", { method: "POST", body: JSON.stringify(currencyForm) });
+        setNotice("Валюта добавлена");
+      }
+      closeCurrencyModal();
+      await loadCurrencies();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Валюта не сохранена");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeCurrency(currency: Currency) {
+    if (!window.confirm(`Удалить валюту ${currency.code}?`)) return;
+    try {
+      await requestJson(`/api/currencies?code=${encodeURIComponent(currency.code)}`, { method: "DELETE" });
+      setNotice("Валюта удалена");
+      await loadCurrencies();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Валюта не удалена");
+    }
+  }
+
+  async function applyRules(overwrite: boolean) {
+    setSaving(true);
+    try {
+      const result = await requestJson<{ updated: number }>(
+        `/api/rules/apply${overwrite ? "?overwrite=1" : ""}`,
+        { method: "POST" }
+      );
       setNotice(`Категории проставлены: ${result.updated}`);
       await refreshAfterMutation();
     } catch (error) {
@@ -1759,175 +1898,360 @@ export default function MoneyCounter() {
       ) : null}
 
       {activeTab === "settings" ? (
-        <div className="workspace twoCol">
-          <section className="mainColumn">
-            <section className="surface">
-              <div className="sectionHead">
-                <h2>Счета</h2>
-                <span>{accounts.length}</span>
-              </div>
-              {accounts.length === 0 ? (
-                <div className="mutedBlock">Пока нет счетов</div>
-              ) : (
-                <ul className="settingsList">
-                  {accounts.map((account) => (
-                    <li key={account.id}>
-                      <span className="accountDot" style={{ background: account.color }} />
-                      <span className="settingsListMain">
-                        <b>{account.name}</b>
-                        <small>
-                          {account.currency} · <Money cents={account.balanceCents} currency={account.currency} /> ·{" "}
-                          {account.transactionCount} оп.
-                        </small>
-                      </span>
-                      <span className="rowActions">
-                        <button
-                          className="iconButton small"
-                          type="button"
-                          title="Изменить"
-                          aria-label="Изменить"
-                          onClick={() => startEditAccount(account)}
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="15"
-                            height="15"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                          </svg>
-                        </button>
-                        <button
-                          className="iconButton small danger"
-                          type="button"
-                          title="Удалить"
-                          onClick={() => removeAccount(account)}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+        <>
+          <div className="subNav" aria-label="Справочники">
+            {(
+              [
+                { id: "accounts", label: "Счета" },
+                { id: "categories", label: "Категории" },
+                { id: "currencies", label: "Валюты" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`subNavButton ${settingsTab === t.id ? "active" : ""}`}
+                onClick={() => setSettingsTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-              <form className="stackForm settingsForm" onSubmit={handleSubmitAccount}>
-                <h3>{editingAccountId !== null ? "Правка счёта" : "Новый счёт"}</h3>
-                <label>
-                  Название
-                  <input
-                    required
-                    value={accountForm.name}
-                    onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Банк
-                  <input
-                    value={accountForm.bankName}
-                    onChange={(event) => setAccountForm({ ...accountForm, bankName: event.target.value })}
-                  />
-                </label>
-                <div className="formGrid two">
-                  <label>
-                    Валюта
-                    <select
-                      value={accountForm.currency}
-                      onChange={(event) =>
-                        setAccountForm({ ...accountForm, currency: event.target.value })
-                      }
-                    >
-                      {accountForm.currency &&
-                      !currencies.some((c) => c.code === accountForm.currency) ? (
-                        <option value={accountForm.currency}>{accountForm.currency}</option>
-                      ) : null}
-                      {currencies.map((currency) => (
-                        <option key={currency.code} value={currency.code}>
-                          {currency.code}
-                          {currency.name ? ` — ${currency.name}` : ""}
-                        </option>
+          {settingsTab === "accounts" ? (
+            <div className="workspace oneCol">
+              <section className="surface">
+                <div className="sectionHead">
+                  <h2>
+                    Счета <span className="countBadge">{accounts.length}</span>
+                  </h2>
+                  <button className="primaryButton" type="button" onClick={openAddAccount}>
+                    <span>+</span> Добавить
+                  </button>
+                </div>
+                {accounts.length === 0 ? (
+                  <div className="mutedBlock">Пока нет счетов</div>
+                ) : (
+                  <ul className="settingsList">
+                    {accounts.map((account) => (
+                      <li key={account.id}>
+                        <span className="accountDot" style={{ background: account.color }} />
+                        <span className="settingsListMain">
+                          <b>{account.name}</b>
+                          <small>
+                            {account.currency} ·{" "}
+                            <Money cents={account.balanceCents} currency={account.currency} /> ·{" "}
+                            {account.transactionCount} оп.
+                          </small>
+                        </span>
+                        <span className="rowActions">
+                          <button
+                            className="iconButton small"
+                            type="button"
+                            title="Изменить"
+                            aria-label="Изменить"
+                            onClick={() => startEditAccount(account)}
+                          >
+                            <EditIcon />
+                          </button>
+                          <button
+                            className="iconButton small danger"
+                            type="button"
+                            title="Удалить"
+                            onClick={() => removeAccount(account)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          ) : null}
+
+          {settingsTab === "categories" ? (
+            <div className="workspace twoCol">
+              <section className="mainColumn">
+                <section className="surface">
+                  <div className="sectionHead">
+                    <h2>
+                      Категории <span className="countBadge">{categories.length}</span>
+                    </h2>
+                    <button className="primaryButton" type="button" onClick={openAddCategory}>
+                      <span>+</span> Добавить
+                    </button>
+                  </div>
+                  {categories.length === 0 ? (
+                    <div className="mutedBlock">Пока нет категорий</div>
+                  ) : (
+                    <ul className="settingsList">
+                      {categories.map((category) => (
+                        <li key={category.id}>
+                          <span className="accountDot" style={{ background: category.color }} />
+                          <span className="settingsListMain">
+                            <b>{category.name}</b>
+                          </span>
+                          <span className="rowActions">
+                            <button
+                              className="iconButton small"
+                              type="button"
+                              title="Изменить"
+                              aria-label="Изменить"
+                              onClick={() => startEditCategory(category)}
+                            >
+                              <EditIcon />
+                            </button>
+                            <button
+                              className="iconButton small danger"
+                              type="button"
+                              title="Удалить"
+                              onClick={() => removeCategory(category)}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        </li>
                       ))}
-                    </select>
+                    </ul>
+                  )}
+                </section>
+              </section>
+
+              <aside className="rightRail">
+                <section className="surface">
+                  <div className="sectionHead">
+                    <h2>
+                      Автокатегории <span className="countBadge">{rules.length}</span>
+                    </h2>
+                    <button className="primaryButton" type="button" onClick={openAddRule}>
+                      <span>+</span> Добавить
+                    </button>
+                  </div>
+                  <p className="importHint">
+                    Если описание операции содержит текст из правила, ей автоматически ставится
+                    категория. Например: «EasyPark» → «Transport».
+                  </p>
+                  {rules.length > 0 ? (
+                    <ul className="settingsList">
+                      {rules.map((rule) => (
+                        <li key={rule.id}>
+                          <span className="settingsListMain">
+                            <b>{rule.pattern}</b>
+                            <small>→ {rule.category}</small>
+                          </span>
+                          <span className="rowActions">
+                            <button
+                              className="iconButton small"
+                              type="button"
+                              title="Изменить"
+                              aria-label="Изменить"
+                              onClick={() => startEditRule(rule)}
+                            >
+                              <EditIcon />
+                            </button>
+                            <button
+                              className="iconButton small danger"
+                              type="button"
+                              title="Удалить"
+                              onClick={() => removeRule(rule)}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="applyRow">
+                    <button
+                      className="secondaryButton"
+                      type="button"
+                      disabled={saving || rules.length === 0}
+                      onClick={() => void applyRules(false)}
+                    >
+                      Применить к операциям без категории
+                    </button>
+                    <button
+                      className="secondaryButton"
+                      type="button"
+                      disabled={saving || rules.length === 0}
+                      onClick={() => void applyRules(true)}
+                    >
+                      Применить ко всем (перезаписать)
+                    </button>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          ) : null}
+
+          {settingsTab === "currencies" ? (
+            <div className="workspace oneCol">
+              <section className="surface">
+                <div className="sectionHead">
+                  <h2>
+                    Валюты <span className="countBadge">{currencies.length}</span>
+                  </h2>
+                  <button className="primaryButton" type="button" onClick={openAddCurrency}>
+                    <span>+</span> Добавить
+                  </button>
+                </div>
+                {currencies.length === 0 ? (
+                  <div className="mutedBlock">Пока нет валют</div>
+                ) : (
+                  <ul className="settingsList">
+                    {currencies.map((currency) => (
+                      <li key={currency.code}>
+                        <span className="settingsListMain">
+                          <b>
+                            {currency.code}
+                            {currency.symbol ? ` · ${currency.symbol}` : ""}
+                          </b>
+                          <small>{currency.name || "—"}</small>
+                        </span>
+                        <span className="rowActions">
+                          <button
+                            className="iconButton small"
+                            type="button"
+                            title="Изменить"
+                            aria-label="Изменить"
+                            onClick={() => startEditCurrency(currency)}
+                          >
+                            <EditIcon />
+                          </button>
+                          <button
+                            className="iconButton small danger"
+                            type="button"
+                            title="Удалить"
+                            onClick={() => removeCurrency(currency)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+          ) : null}
+
+          {accountModalOpen ? (
+            <div
+              className="modalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingAccountId !== null ? "Правка счёта" : "Новый счёт"}
+              onClick={closeAccountModal}
+            >
+              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+                <div className="modalHead">
+                  <h2>{editingAccountId !== null ? "Правка счёта" : "Новый счёт"}</h2>
+                  <button className="iconButton small" type="button" onClick={closeAccountModal} title="Закрыть">
+                    ×
+                  </button>
+                </div>
+                <form className="stackForm" onSubmit={handleSubmitAccount}>
+                  <label>
+                    Название
+                    <input
+                      required
+                      value={accountForm.name}
+                      onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Банк
+                    <input
+                      value={accountForm.bankName}
+                      onChange={(event) => setAccountForm({ ...accountForm, bankName: event.target.value })}
+                    />
+                  </label>
+                  <div className="formGrid two">
+                    <label>
+                      Валюта
+                      <select
+                        value={accountForm.currency}
+                        onChange={(event) => setAccountForm({ ...accountForm, currency: event.target.value })}
+                      >
+                        {accountForm.currency &&
+                        !currencies.some((c) => c.code === accountForm.currency) ? (
+                          <option value={accountForm.currency}>{accountForm.currency}</option>
+                        ) : null}
+                        {currencies.map((currency) => (
+                          <option key={currency.code} value={currency.code}>
+                            {currency.code}
+                            {currency.name ? ` — ${currency.name}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Тип
+                      <select
+                        value={accountForm.type}
+                        onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })}
+                      >
+                        {accountTypes.map((type) => (
+                          <option key={type.value} value={type.value}>
+                            {type.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    Начальный баланс
+                    <input
+                      inputMode="decimal"
+                      value={accountForm.openingBalance}
+                      onChange={(event) => setAccountForm({ ...accountForm, openingBalance: event.target.value })}
+                    />
                   </label>
                   <label>
                     Цвет
-                    <input
-                      className="colorInput"
-                      type="color"
-                      value={accountForm.color}
-                      onChange={(event) => setAccountForm({ ...accountForm, color: event.target.value })}
-                    />
+                    <span className="colorField">
+                      <input
+                        type="color"
+                        className="colorSwatch"
+                        aria-label="Выбрать цвет"
+                        value={accountForm.color}
+                        onChange={(event) => setAccountForm({ ...accountForm, color: event.target.value })}
+                      />
+                      <input
+                        placeholder="#2563eb"
+                        value={accountForm.color}
+                        onChange={(event) => setAccountForm({ ...accountForm, color: event.target.value })}
+                      />
+                    </span>
                   </label>
-                </div>
-                <label>
-                  Тип
-                  <select
-                    value={accountForm.type}
-                    onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })}
-                  >
-                    {accountTypes.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Начальный баланс
-                  <input
-                    inputMode="decimal"
-                    value={accountForm.openingBalance}
-                    onChange={(event) =>
-                      setAccountForm({ ...accountForm, openingBalance: event.target.value })
-                    }
-                  />
-                </label>
-                <button className="primaryButton" disabled={saving} type="submit">
-                  <span>{editingAccountId !== null ? "✓" : "+"}</span>
-                  {editingAccountId !== null ? "Сохранить" : "Добавить счёт"}
-                </button>
-                {editingAccountId !== null ? (
-                  <button className="textButton" type="button" onClick={resetAccountForm}>
-                    Отмена
+                  <button className="primaryButton" disabled={saving || currencies.length === 0} type="submit">
+                    <span>{editingAccountId !== null ? "✓" : "+"}</span>
+                    {editingAccountId !== null ? "Сохранить" : "Добавить"}
                   </button>
-                ) : null}
-              </form>
-            </section>
-          </section>
-
-          <aside className="rightRail">
-            <section className="surface">
-              <div className="sectionHead">
-                <h2>Категории</h2>
-                <span>{categories.length}</span>
+                </form>
               </div>
-              {categories.length === 0 ? (
-                <div className="mutedBlock">Пока нет категорий</div>
-              ) : (
-                <ul className="settingsList chips">
-                  {categories.map((category) => (
-                    <li key={category.id} className="chip">
-                      <span className="legendDot" style={{ background: category.color }} />
-                      <span>{category.name}</span>
-                      <button
-                        className="chipRemove"
-                        type="button"
-                        title="Удалить"
-                        onClick={() => removeCategory(category)}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <form className="stackForm settingsForm" onSubmit={handleCreateCategory}>
-                <div className="formGrid two">
+            </div>
+          ) : null}
+
+          {categoryModalOpen ? (
+            <div
+              className="modalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingCategoryId !== null ? "Правка категории" : "Новая категория"}
+              onClick={closeCategoryModal}
+            >
+              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+                <div className="modalHead">
+                  <h2>{editingCategoryId !== null ? "Правка категории" : "Новая категория"}</h2>
+                  <button className="iconButton small" type="button" onClick={closeCategoryModal} title="Закрыть">
+                    ×
+                  </button>
+                </div>
+                <form className="stackForm" onSubmit={handleSubmitCategory}>
                   <label>
                     Название
                     <input
@@ -1938,51 +2262,100 @@ export default function MoneyCounter() {
                   </label>
                   <label>
                     Цвет
+                    <span className="colorField">
+                      <input
+                        type="color"
+                        className="colorSwatch"
+                        aria-label="Выбрать цвет"
+                        value={categoryForm.color}
+                        onChange={(event) => setCategoryForm({ ...categoryForm, color: event.target.value })}
+                      />
+                      <input
+                        placeholder="#2563eb"
+                        value={categoryForm.color}
+                        onChange={(event) => setCategoryForm({ ...categoryForm, color: event.target.value })}
+                      />
+                    </span>
+                  </label>
+                  <button className="primaryButton" disabled={saving} type="submit">
+                    <span>{editingCategoryId !== null ? "✓" : "+"}</span>
+                    {editingCategoryId !== null ? "Сохранить" : "Добавить"}
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : null}
+
+          {currencyModalOpen ? (
+            <div
+              className="modalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingCurrencyCode !== null ? "Правка валюты" : "Новая валюта"}
+              onClick={closeCurrencyModal}
+            >
+              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+                <div className="modalHead">
+                  <h2>{editingCurrencyCode !== null ? "Правка валюты" : "Новая валюта"}</h2>
+                  <button className="iconButton small" type="button" onClick={closeCurrencyModal} title="Закрыть">
+                    ×
+                  </button>
+                </div>
+                <form className="stackForm" onSubmit={handleSubmitCurrency}>
+                  <label>
+                    Код валюты
                     <input
-                      className="colorInput"
-                      type="color"
-                      value={categoryForm.color}
-                      onChange={(event) => setCategoryForm({ ...categoryForm, color: event.target.value })}
+                      required
+                      maxLength={3}
+                      disabled={editingCurrencyCode !== null}
+                      placeholder="USD"
+                      value={currencyForm.code}
+                      onChange={(event) =>
+                        setCurrencyForm({ ...currencyForm, code: event.target.value.toUpperCase() })
+                      }
                     />
                   </label>
-                </div>
-                <button className="primaryButton" disabled={saving} type="submit">
-                  <span>+</span> Добавить категорию
-                </button>
-              </form>
-            </section>
-
-            <section className="surface">
-              <div className="sectionHead">
-                <h2>Автокатегории</h2>
-                <span>{rules.length}</span>
+                  <label>
+                    Название
+                    <input
+                      placeholder="US Dollar"
+                      value={currencyForm.name}
+                      onChange={(event) => setCurrencyForm({ ...currencyForm, name: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Символ
+                    <input
+                      placeholder="$"
+                      value={currencyForm.symbol}
+                      onChange={(event) => setCurrencyForm({ ...currencyForm, symbol: event.target.value })}
+                    />
+                  </label>
+                  <button className="primaryButton" disabled={saving} type="submit">
+                    <span>{editingCurrencyCode !== null ? "✓" : "+"}</span>
+                    {editingCurrencyCode !== null ? "Сохранить" : "Добавить"}
+                  </button>
+                </form>
               </div>
-              <p className="importHint">
-                Если описание операции содержит текст из правила, ей автоматически ставится
-                категория. Например: «EasyPark» → «Transport».
-              </p>
-              {rules.length > 0 ? (
-                <ul className="settingsList">
-                  {rules.map((rule) => (
-                    <li key={rule.id}>
-                      <span className="settingsListMain">
-                        <b>{rule.pattern}</b>
-                        <small>→ {rule.category}</small>
-                      </span>
-                      <button
-                        className="iconButton small danger"
-                        type="button"
-                        title="Удалить"
-                        onClick={() => removeRule(rule)}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <form className="stackForm settingsForm" onSubmit={handleCreateRule}>
-                <div className="formGrid two">
+            </div>
+          ) : null}
+
+          {ruleModalOpen ? (
+            <div
+              className="modalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingRuleId !== null ? "Правка правила" : "Новое правило"}
+              onClick={closeRuleModal}
+            >
+              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+                <div className="modalHead">
+                  <h2>{editingRuleId !== null ? "Правка правила" : "Новое правило"}</h2>
+                  <button className="iconButton small" type="button" onClick={closeRuleModal} title="Закрыть">
+                    ×
+                  </button>
+                </div>
+                <form className="stackForm" onSubmit={handleSubmitRule}>
                   <label>
                     Текст в описании
                     <input
@@ -2002,22 +2375,15 @@ export default function MoneyCounter() {
                       onChange={(event) => setRuleForm({ ...ruleForm, category: event.target.value })}
                     />
                   </label>
-                </div>
-                <button className="primaryButton" disabled={saving} type="submit">
-                  <span>+</span> Добавить правило
-                </button>
-              </form>
-              <button
-                className="secondaryButton"
-                type="button"
-                disabled={saving || rules.length === 0}
-                onClick={() => void applyRules()}
-              >
-                Применить к операциям без категории
-              </button>
-            </section>
-          </aside>
-        </div>
+                  <button className="primaryButton" disabled={saving} type="submit">
+                    <span>{editingRuleId !== null ? "✓" : "+"}</span>
+                    {editingRuleId !== null ? "Сохранить" : "Добавить"}
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {activeTab === "charts" ? (

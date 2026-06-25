@@ -78,6 +78,47 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  try {
+    await ensureSchema();
+    const payload = await readPayload(request);
+    const id = parseId(payload.id);
+    const pattern = String(payload.pattern ?? "").trim();
+    const category = String(payload.category ?? "").trim();
+    if (!id) {
+      return Response.json({ error: "Некорректное правило" }, { status: 400 });
+    }
+    if (!pattern) {
+      return Response.json({ error: "Укажите текст для поиска" }, { status: 400 });
+    }
+    if (!category) {
+      return Response.json({ error: "Укажите категорию" }, { status: 400 });
+    }
+
+    const d1 = getD1();
+    // Same as POST: make sure the target category exists in the vocabulary.
+    const existingCategory = await d1
+      .prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?)")
+      .bind(category)
+      .first<{ id: number }>();
+    if (!existingCategory) {
+      await d1.prepare("INSERT INTO categories (name) VALUES (?)").bind(category).run();
+    }
+
+    await d1
+      .prepare("UPDATE category_rules SET pattern = ?, category = ? WHERE id = ?")
+      .bind(pattern, category, id)
+      .run();
+    const rule = await d1
+      .prepare("SELECT id, pattern, category FROM category_rules WHERE id = ?")
+      .bind(id)
+      .first<RuleRow>();
+    return Response.json({ rule });
+  } catch (error) {
+    return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     await ensureSchema();

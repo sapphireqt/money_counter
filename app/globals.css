@@ -94,6 +94,76 @@ select:disabled {
   min-width: 0;
 }
 
+/* Настройки sub-navigation (Счета / Категории / Валюты). */
+.subNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 auto 16px;
+  max-width: 1540px;
+}
+
+.subNavButton {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted-strong);
+  font-weight: 760;
+  min-height: 36px;
+  padding: 0 16px;
+}
+
+.subNavButton.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+/* Count badge sitting right after a block title. Scoped under .sectionHead so
+   its colour beats the generic `.sectionHead span { color: muted }` rule. */
+.sectionHead .countBadge {
+  background: var(--surface-strong);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 8px;
+  padding: 1px 8px;
+  vertical-align: middle;
+}
+
+/* HEX colour field: a small native swatch next to a hex text input. */
+.colorField {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.colorField .colorSwatch {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0;
+  width: 44px;
+}
+
+.colorField input:not(.colorSwatch) {
+  flex: 1;
+}
+
+/* The two "apply rules" buttons share one wrapping row. */
+.applyRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.applyRow .secondaryButton {
+  flex: 1;
+  min-width: 200px;
+  width: auto;
+}
+
 /* On narrow screens the sidebar becomes a wrapping row above the content. */
 @media (max-width: 860px) {
   .appShell {
@@ -344,10 +414,6 @@ select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.16);
   outline: none;
-}
-
-.colorInput {
-  padding: 3px;
 }
 
 .primaryButton,
@@ -940,37 +1006,6 @@ dd {
 
 .settingsListMain small {
   color: var(--muted);
-}
-
-.settingsList.chips {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.settingsList.chips .chip {
-  border-radius: 999px;
-  gap: 8px;
-  padding: 6px 10px;
-}
-
-.chipRemove {
-  background: transparent;
-  border: 0;
-  color: var(--muted);
-  font-size: 16px;
-  line-height: 1;
-  padding: 0 0 0 2px;
-}
-
-.settingsForm {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-}
-
-.settingsForm h3 {
-  font-size: 13px;
-  font-weight: 760;
-  margin: 0;
 }
 
 /* --- Charts --- */

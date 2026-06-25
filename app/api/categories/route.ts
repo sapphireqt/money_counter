@@ -74,6 +74,57 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  try {
+    await ensureSchema();
+    const payload = await readPayload(request);
+    const id = parseId(payload.id);
+    if (!id) {
+      return Response.json({ error: "Некорректная категория" }, { status: 400 });
+    }
+
+    const d1 = getD1();
+    const assignments: string[] = [];
+    const values: string[] = [];
+    if ("name" in payload) {
+      const name = String(payload.name ?? "").trim();
+      if (!name) {
+        return Response.json({ error: "Название категории обязательно" }, { status: 400 });
+      }
+      // Category identity is case-insensitive — reject a rename that collides
+      // with a DIFFERENT existing category (the UNIQUE index is case-sensitive).
+      const clash = await d1
+        .prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?) AND id <> ?")
+        .bind(name, id)
+        .first<{ id: number }>();
+      if (clash) {
+        return Response.json({ error: "Категория с таким названием уже есть" }, { status: 400 });
+      }
+      assignments.push("name = ?");
+      values.push(name);
+    }
+    if ("color" in payload) {
+      assignments.push("color = ?");
+      values.push(normalizeColor(payload.color));
+    }
+    if (assignments.length === 0) {
+      return Response.json({ error: "Нет изменений" }, { status: 400 });
+    }
+
+    await d1
+      .prepare(`UPDATE categories SET ${assignments.join(", ")} WHERE id = ?`)
+      .bind(...values, id)
+      .run();
+    const category = await d1
+      .prepare("SELECT id, name, color FROM categories WHERE id = ?")
+      .bind(id)
+      .first<CategoryRow>();
+    return Response.json({ category });
+  } catch (error) {
+    return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     await ensureSchema();
