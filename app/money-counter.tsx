@@ -467,6 +467,9 @@ export default function MoneyCounter() {
   const [displayCurrency, setDisplayCurrency] = useState("");
   const [balanceRates, setBalanceRates] = useState<Record<string, number> | null>(null);
   const [periodRates, setPeriodRates] = useState<Record<string, number> | null>(null);
+  // Per-currency account balances as of the start of the selected period
+  // (null = loading), for the "Баланс на начало периода" card.
+  const [startTotals, setStartTotals] = useState<Record<string, number> | null>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [query, setQuery] = useState("");
@@ -766,9 +769,34 @@ export default function MoneyCounter() {
     })();
   }, [displayCurrency, currentMonth, mainPeriod, loadRates]);
 
+  // Account balances as of the start of the selected period (opening + every
+  // transaction before the 1st). Refetched on period change or after a mutation
+  // (accounts reloads), then summed per currency.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await requestJson<{ accounts: Account[] }>(
+          `/api/accounts?asOf=${mainPeriod}-01`
+        );
+        setStartTotals(
+          data.accounts.reduce<Record<string, number>>((map, account) => {
+            map[account.currency] = (map[account.currency] ?? 0) + account.balanceCents;
+            return map;
+          }, {})
+        );
+      } catch {
+        setStartTotals({});
+      }
+    })();
+  }, [mainPeriod, accounts]);
+
   const balanceConverted = useMemo(
     () => convertTotals(totalsByCurrency, balanceRates, displayCurrency),
     [totalsByCurrency, balanceRates, displayCurrency]
+  );
+  const startConverted = useMemo(
+    () => convertTotals(startTotals ?? {}, periodRates, displayCurrency),
+    [startTotals, periodRates, displayCurrency]
   );
   const incomeConverted = useMemo(
     () => convertTotals(periodIncome, periodRates, displayCurrency),
@@ -1443,8 +1471,12 @@ export default function MoneyCounter() {
 
           <section className="summaryGrid" aria-label="Сводка">
             <article className="metric">
-              <span>Баланс (все счета)</span>
-              <strong>{renderConverted(balanceConverted, balanceRates, `${currentMonth}-01`)}</strong>
+              <span>Баланс на начало периода</span>
+              <strong>
+                {startTotals === null
+                  ? "…"
+                  : renderConverted(startConverted, periodRates, `${mainPeriod}-01`)}
+              </strong>
             </article>
             <article className="metric">
               <span>Поступления периода</span>

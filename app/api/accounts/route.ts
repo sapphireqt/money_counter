@@ -2,6 +2,7 @@ import {
   normalizeAccountType,
   normalizeColor,
   normalizeCurrency,
+  normalizeDateInput,
   parseMoneyInputToCents,
 } from "../../../lib/finance";
 import { ensureSchema, getD1 } from "../../../db";
@@ -93,18 +94,21 @@ async function getAccountById(id: number) {
   return row ? mapAccount(row) : null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await ensureSchema();
 
-    const rows = await getD1()
-      .prepare(
-        `${accountSelect}
+    // ?asOf=YYYY-MM-DD → balance as of the START of that day (only transactions
+    // strictly before it), used for "balance at the start of a period".
+    // Filtering on the LEFT JOIN keeps accounts with no prior transactions.
+    const asOf = normalizeDateInput(new URL(request.url).searchParams.get("asOf") ?? "");
+    const joinFilter = asOf ? "AND t.date < ?" : "";
+    const sql = `${accountSelect} ${joinFilter}
          WHERE a.archived_at IS NULL
          GROUP BY a.id
-         ORDER BY LOWER(a.name), a.id`
-      )
-      .all<AccountRow>();
+         ORDER BY LOWER(a.name), a.id`;
+    const statement = getD1().prepare(sql);
+    const rows = await (asOf ? statement.bind(asOf) : statement).all<AccountRow>();
 
     return Response.json({
       accounts: (rows.results ?? []).map(mapAccount),
