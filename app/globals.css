@@ -47,8 +47,66 @@ select:disabled {
 }
 
 .appShell {
+  align-items: flex-start;
+  display: flex;
+  gap: 20px;
   min-height: 100vh;
-  padding: 24px;
+  padding: 20px;
+}
+
+/* Left section nav (Bootstrap-style sidebar). */
+.sidebar {
+  flex: 0 0 200px;
+  position: sticky;
+  top: 20px;
+}
+
+.sidebarNav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted-strong);
+  font-weight: 760;
+  min-height: 40px;
+  padding: 0 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.navButton:hover {
+  background: var(--surface-strong);
+}
+
+.navButton.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+.appMain {
+  flex: 1;
+  min-width: 0;
+}
+
+/* On narrow screens the sidebar becomes a wrapping row above the content. */
+@media (max-width: 860px) {
+  .appShell {
+    flex-direction: column;
+  }
+  .sidebar {
+    flex-basis: auto;
+    position: static;
+  }
+  .sidebarNav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }
 
 .topBar {
@@ -727,29 +785,6 @@ dd {
 }
 
 /* --- Tabs --- */
-.tabBar {
-  display: flex;
-  gap: 6px;
-  margin: 0 auto 16px;
-  max-width: 1540px;
-}
-
-.tabButton {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--muted-strong);
-  font-weight: 760;
-  min-height: 40px;
-  padding: 0 18px;
-}
-
-.tabButton.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #ffffff;
-}
-
 .workspace.twoCol {
   grid-template-columns: minmax(0, 1fr) 340px;
 }

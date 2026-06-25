@@ -92,7 +92,7 @@ type ImportPayloadRow = {
   notes: string;
 };
 
-type Tab = "main" | "settings" | "charts";
+type Tab = "main" | "settings" | "charts" | "forecast" | "pending";
 
 const DELIMITER_LABELS: Record<string, string> = {
   ",": "запятая",
@@ -1238,31 +1238,29 @@ export default function MoneyCounter() {
     { id: "main", label: "Операции" },
     { id: "settings", label: "Настройки" },
     { id: "charts", label: "Визуализация" },
+    { id: "forecast", label: "Прогнозирование" },
+    { id: "pending", label: "Займы" },
   ];
 
   return (
     <main className="appShell">
-      <header className="topBar">
-        <div>
-          <p className="eyebrow">Money Counter</p>
-          <h1>Счета и движение средств</h1>
-        </div>
-      </header>
+      <aside className="sidebar">
+        <nav className="sidebarNav" aria-label="Разделы">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`navButton ${activeTab === tab.id ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </aside>
 
-      <nav className="tabBar" aria-label="Разделы">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`tabButton ${activeTab === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      {notice ? <div className="notice">{notice}</div> : null}
+      <div className="appMain">
+        {notice ? <div className="notice">{notice}</div> : null}
 
       <datalist id="categoryOptions">
         {categories.map((category) => (
@@ -2077,6 +2075,29 @@ export default function MoneyCounter() {
           </div>
         </>
       ) : null}
+
+      {activeTab === "forecast" ? (
+        <div className="workspace oneCol">
+          <section className="surface">
+            <div className="sectionHead">
+              <h2>Прогнозирование</h2>
+            </div>
+            <div className="mutedBlock">Раздел в разработке.</div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === "pending" ? (
+        <div className="workspace oneCol">
+          <section className="surface">
+            <div className="sectionHead">
+              <h2>Займы</h2>
+            </div>
+            <div className="mutedBlock">Раздел в разработке.</div>
+          </section>
+        </div>
+      ) : null}
+      </div>
     </main>
   );
 }
