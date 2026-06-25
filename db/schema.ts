@@ -87,3 +87,12 @@ export const exchangeRates = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.date, table.currency] })]
 );
+
+// Currency reference book: one row per currency in use, keyed by ISO code.
+// Future-proofed with name/symbol for labels and later attributes/filters.
+export const currencies = sqliteTable("currencies", {
+  code: text("code").primaryKey(),
+  name: text("name").notNull().default(""),
+  symbol: text("symbol").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

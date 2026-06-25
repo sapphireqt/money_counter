@@ -57,6 +57,7 @@ type Transaction = {
 
 type Category = { id: number; name: string; color: string };
 type Rule = { id: number; pattern: string; category: string };
+type Currency = { code: string; name: string; symbol: string };
 type Stats = {
   monthly: Array<{ month: string; income: number; expense: number }>;
   byCategory: Array<{ category: string; total: number }>;
@@ -432,6 +433,7 @@ export default function MoneyCounter() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -551,6 +553,11 @@ export default function MoneyCounter() {
     setRules(data.rules);
   }, []);
 
+  const loadCurrencies = useCallback(async () => {
+    const data = await requestJson<{ currencies: Currency[] }>("/api/currencies");
+    setCurrencies(data.currencies);
+  }, []);
+
   const loadPeriods = useCallback(async () => {
     const data = await requestJson<{ periods: string[] }>("/api/periods");
     setPeriods(data.periods);
@@ -597,8 +604,14 @@ export default function MoneyCounter() {
   }, [chartFrom, chartTo, chartCurrency]);
 
   const reloadMeta = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadCategories(), loadRules(), loadPeriods()]);
-  }, [loadAccounts, loadCategories, loadRules, loadPeriods]);
+    await Promise.all([
+      loadAccounts(),
+      loadCategories(),
+      loadRules(),
+      loadCurrencies(),
+      loadPeriods(),
+    ]);
+  }, [loadAccounts, loadCategories, loadRules, loadCurrencies, loadPeriods]);
 
   useEffect(() => {
     void (async () => {
@@ -1823,13 +1836,23 @@ export default function MoneyCounter() {
                 <div className="formGrid two">
                   <label>
                     Валюта
-                    <input
-                      maxLength={3}
+                    <select
                       value={accountForm.currency}
                       onChange={(event) =>
-                        setAccountForm({ ...accountForm, currency: event.target.value.toUpperCase() })
+                        setAccountForm({ ...accountForm, currency: event.target.value })
                       }
-                    />
+                    >
+                      {accountForm.currency &&
+                      !currencies.some((c) => c.code === accountForm.currency) ? (
+                        <option value={accountForm.currency}>{accountForm.currency}</option>
+                      ) : null}
+                      {currencies.map((currency) => (
+                        <option key={currency.code} value={currency.code}>
+                          {currency.code}
+                          {currency.name ? ` — ${currency.name}` : ""}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label>
                     Цвет

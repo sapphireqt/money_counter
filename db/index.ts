@@ -93,5 +93,25 @@ export async function ensureSchema() {
         PRIMARY KEY (date, currency)
       )
     `),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS currencies (
+        code TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        symbol TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    // Seed the common currencies, plus any already used by accounts. OR IGNORE
+    // keeps it idempotent across the per-request ensureSchema() call.
+    d1.prepare(
+      `INSERT OR IGNORE INTO currencies (code, name, symbol) VALUES
+         ('USD', 'US Dollar', '$'),
+         ('EUR', 'Euro', '€'),
+         ('THB', 'Thai Baht', '฿'),
+         ('RUB', 'Russian Ruble', '₽')`
+    ),
+    d1.prepare(
+      "INSERT OR IGNORE INTO currencies (code) SELECT DISTINCT currency FROM accounts WHERE currency <> ''"
+    ),
   ]);
 }
