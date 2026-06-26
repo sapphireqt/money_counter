@@ -562,10 +562,8 @@ export default function MoneyCounter() {
   const loadAccounts = useCallback(async () => {
     const data = await requestJson<{ accounts: Account[] }>("/api/accounts");
     setAccounts(data.accounts);
-    setTransactionForm((current) => ({
-      ...current,
-      accountId: current.accountId || (data.accounts[0] ? String(data.accounts[0].id) : ""),
-    }));
+    // No default account in the new-operation form — the user picks one
+    // explicitly, so accountId is left empty ("Выберите счет").
     // Keep the chart currency valid: keep the current one if an account still
     // uses it, otherwise fall back to the first account's currency.
     setChartCurrency((current) =>
@@ -1112,7 +1110,7 @@ export default function MoneyCounter() {
       setEditingTransactionId(null);
       setFormOpen(false);
       setTransactionForm({
-        accountId: transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
+        accountId: "",
         date: today(),
         direction: "expense",
         amount: "",
@@ -1130,7 +1128,7 @@ export default function MoneyCounter() {
   function openAddTransaction() {
     setEditingTransactionId(null);
     setTransactionForm({
-      accountId: transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
+      accountId: "",
       date: today(),
       direction: "expense",
       amount: "",
@@ -1144,7 +1142,7 @@ export default function MoneyCounter() {
     setFormOpen(false);
     setEditingTransactionId(null);
     setTransactionForm({
-      accountId: transactionForm.accountId || (accounts[0] ? String(accounts[0].id) : ""),
+      accountId: "",
       date: today(),
       direction: "expense",
       amount: "",
@@ -2338,7 +2336,7 @@ export default function MoneyCounter() {
                     Код валюты
                     <input
                       required
-                      maxLength={3}
+                      maxLength={5}
                       disabled={editingCurrencyCode !== null}
                       placeholder="USD"
                       value={currencyForm.code}

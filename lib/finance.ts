@@ -21,7 +21,8 @@ export function normalizeCurrency(value: unknown) {
   const normalized =
     typeof value === "string" ? value.trim().toUpperCase() : "EUR";
 
-  return /^[A-Z]{3}$/.test(normalized) ? normalized : "EUR";
+  // 3 letters for fiat, up to 5 to allow crypto tickers (USDT, MATIC, …).
+  return /^[A-Z]{3,5}$/.test(normalized) ? normalized : "EUR";
 }
 
 export function normalizeColor(value: unknown) {
