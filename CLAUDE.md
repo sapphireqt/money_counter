@@ -43,21 +43,23 @@ Exactly these two steps — do NOT change the image tag.
 
 ## Architecture / key files
 
-- `app/money-counter.tsx` — the **entire UI**, one big client component (`"use client"`). Three tabs: **Операции** (main: period-filtered list, new/edit form, import panel), **Настройки** (accounts, categories, auto-rules), **Визуализация** (cashflow bars + category pie). Holds all state and data-loading; small presentational helpers (`MonthSelect`, `CategoryPie`) live in the same file. `app/page.tsx` just renders it.
-- `app/globals.css` — all styling (tabs, lists, charts, pie, import panel).
+- `app/money-counter.tsx` — the **entire UI**, one big client component (`"use client"`). A **left sidebar** switches sections: **Операции** (period-filtered, day-grouped list + summary cards + a right-hand «Счета» balance panel), **Настройки** (sub-tabs **Счета / Категории / Валюты**; auto-rules live under Категории), **Визуализация** (cashflow bars + category pie), plus empty placeholders **Прогнозирование** and **Займы** (live backlog). **Every list add/edit form opens in a modal** (top-right «Добавить» + a pencil per row) — mirror this pattern for new lists. Holds all state and data-loading; small helpers (`Money`, `Flagged`, `EditIcon`, `CategoryPie`, `MonthPicker`, `convertTotals`, `donutPath`) live in the same file. `app/page.tsx` just renders it.
+- `app/globals.css` — all styling (sidebar nav, lists, modals, charts, pie, import panel).
 - `lib/finance.ts` — **pure** money/date/format helpers: `parseMoneyInputToCents`, `parseFlexibleDate`/`normalizeDateInput`, `resolveSignedAmountCents`, `formatMoney`, `normalizeCurrency`, `normalizeColor`, `matchCategoryRule`, `accountTypes`.
 - `lib/import.ts` — **pure, framework-free** bank-statement import engine. Entry point `analyzeImport(text, {defaultCurrency})` → `{delimiter, headers, dataRows, mapping, rows, …}`. Also `detectDelimiter`, `parseDelimited`, `guessMapping`, `buildRows`, `resolveRowCents`, `detectAmountSigned`, `FIELD_DEFS`. Handles CSV/TSV/`;`/`|`, quotes/BOM/CRLF, EN/RU/ES/DE/FR/IT headers, split debit/credit, fees, signed vs direction-column amounts, and a header-row finder for preamble lines.
 - `db/index.ts` — `getD1()`, `getDb()` (drizzle), and `ensureSchema()` (the real runtime migration; see Gotchas).
-- `app/api/*/route.ts` — handlers: `accounts`, `transactions` (GET supports `from`/`to`/`accountId`/`q`/`type`/`limit`), `import`, `categories`, `rules`, `rules/apply`, `periods`, `stats`.
+- `app/api/*/route.ts` — handlers: `accounts` (GET also `?asOf=YYYY-MM-DD` → balance as of a date; POST/PATCH/DELETE), `transactions` (GET `from`/`to`/`accountId`/`q`/`type`/`limit`; POST/PATCH/DELETE), `import`, `categories` (CRUD; PATCH renames, guards case-insensitive clashes), `rules` (CRUD), `rules/apply` (`?overwrite=1` re-runs over ALL transactions, not just uncategorized), `currencies` (CRUD — the currency reference book), `rates` (FX, see Data model), `periods`, `stats`. No bulk-delete endpoint exists (delete is per-id).
 
 ### Import data flow (important)
-Parsing happens **client-side** in `lib/import.ts`. The browser sends already-parsed rows to `POST /api/import` as `{ rows, accountId? }`. The route does NOT re-parse columns — it only validates date/amount, resolves the account, applies category rules, dedups, and batch-inserts. A bank statement has no "account" column, so the UI makes the user pick/create the target account (`accountId`).
+Parsing happens **client-side** in `lib/import.ts`. The browser sends already-parsed rows to `POST /api/import` as `{ rows, accountId? }`. The route does NOT re-parse columns — it only validates date/amount, resolves the account, applies category rules, dedups, and batch-inserts. A bank statement has no "account" column, so the UI makes the user pick/create the target account (`accountId`). **Omit `accountId`** and the route instead resolves each row's account by `accountName`+`currency`, **auto-creating missing accounts** (opening balance 0) — this is how a multi-account historical import works (`scripts/import-sheets.mjs`).
 
 ## Data model & conventions
 
 - **Money is integer cents** everywhere (`amount_cents`, `opening_balance_cents`). Convert at the edges only.
 - **Dates are TEXT `YYYY-MM-DD`** (timezone-free). Range queries compare strings.
-- **Currency lives on the account**, not the transaction. **Never sum across currencies** — group per-currency (`totalsByCurrencyToText` in the UI) or filter by a single currency (the `/api/stats` `currency` param). Account balance = opening balance + sum of its transactions (computed in SQL in `accounts` route).
+- **Currency lives on the account**, not the transaction. **Never sum across currencies** in storage/SQL — group per-currency or filter by a single currency (the `/api/stats` `currency` param). Account balance = opening balance + sum of its transactions (computed in SQL in `accounts` route).
+- **Currencies are a reference book** (`currencies` table: `code` PK, `name`, `symbol`), seeded in `ensureSchema()` and managed under Настройки → Валюты; the account form picks its currency from it. `normalizeCurrency` accepts **3–5 letters** (fiat + crypto tickers like `USDT`).
+- **Display-currency conversion (UI only)**: the user can view all money in one chosen currency. `GET /api/rates?date&currencies` returns USD-based rates from the keyless **Frankfurter** API, cached in `exchange_rates` (historical rates are immutable). `convertTotals()` converts per-currency maps to the display currency; summary cards / balance panel convert at the period's (or current month's) **first-day** rate. A currency with no rate is summed-out and **flagged** in the UI (never silently wrong).
 - **Category is a free-text string** on `transactions.category` (the category *name*). The `categories` table is a managed vocabulary (for the picker + pie colors); identity is **case-insensitive** — keep all write paths consistent (compare via `LOWER(name)`).
 - **Auto-categorization**: `category_rules` (pattern → category). Applied **only when a row's category is empty**, on import and on manual `POST /api/transactions`, via `matchCategoryRule` (case-insensitive substring match on description, then payee). `POST /api/rules/apply` retro-applies to uncategorized transactions.
 
@@ -69,6 +71,8 @@ Parsing happens **client-side** in `lib/import.ts`. The browser sends already-pa
 - **Import dedup is DB-seeded only.** Fingerprints (`accountId|date|amountCents|description`) come from existing DB rows, so re-importing an overlapping period is idempotent, but two genuinely identical rows in one file both import.
 - **A bank "Type" column is deliberately NOT mapped to `category`** (it's a payment method like "Card Payment", not a spending category). Real `Category`/`Категория` columns still map. This keeps the user's auto-rules in control of categorization.
 - The transactions list uses `LIMIT` (500); always pair it with `from`/`to` period filters so rows aren't truncated.
+- **FX rates are fiat-only.** `/api/rates` requests only 3-letter codes and Frankfurter has no crypto, so a 4–5-char crypto currency gets no rate → its converted amounts render flagged («нет курса»). Expected, not a bug.
+- **`ca-certificates` in the Dockerfile is required** for outbound HTTPS: workerd verifies TLS against the system store, which `node:slim` lacks — without it the FX-rate fetch fails with «unable to get local issuer certificate». Don't remove that `apt-get` line.
 
 ## Testing
 
@@ -90,6 +94,7 @@ No test runner. Verify changes by layer:
   Then `node --experimental-strip-types --import ./register.mjs your-test.ts`, importing libs by absolute path.
 - **API + D1 flows**: `npm run dev`, then `curl`/`fetch` the endpoints (miniflare gives a real local D1). Create an account first, then import/transactions. The local SQLite lives at `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite` (the one with an `accounts` table) — inspect/clean it with `sqlite3` directly. Remember to clean up test rows.
 - A known-good fixture: a Revolut statement is comma-delimited despite a `.tsv` extension; its movement total reconciles to `finalBalance − balanceBeforeFirstRow`.
+- **One-off migration**: `scripts/import-sheets.mjs` imports monthly Google-Sheets tabs (CSV export) via `POST /api/import` — dry-run by default, `--post <baseUrl>` writes; idempotent via the import dedup. Run against prod through `kubectl port-forward` to the pod.
 
 ## Conventions
 
