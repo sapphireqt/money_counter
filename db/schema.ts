@@ -88,14 +88,6 @@ export const exchangeRates = sqliteTable(
   (table) => [primaryKey({ columns: [table.date, table.currency] })]
 );
 
-// A past calendar month explicitly reopened for edits. Months before the
-// current one are frozen (closed) unless listed here; the current month is
-// always open. Rows are added/removed by POST /api/periods.
-export const openPeriods = sqliteTable("open_periods", {
-  month: text("month").primaryKey(),
-  openedAt: text("opened_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-});
-
 // Currency reference book: one row per currency in use, keyed by ISO code.
 // Future-proofed with name/symbol for labels and later attributes/filters.
 export const currencies = sqliteTable("currencies", {

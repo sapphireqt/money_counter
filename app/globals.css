@@ -251,9 +251,15 @@ h2 {
 .summaryGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0 auto 16px;
   max-width: 1540px;
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .metric {
@@ -625,46 +631,11 @@ td {
   margin-bottom: 10px;
 }
 
-/* Frozen-period note under the «Счета» panel title. */
+/* Past-period note under the «Счета» panel title. */
 .panelNote {
   color: var(--muted);
   font-size: 12.5px;
   margin: -4px 0 10px;
-}
-
-/* Period status controls next to the month picker: a frozen/reopened chip and
-   a compact toggle button (the base .secondaryButton is full-width). */
-.periodControls {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  min-width: 0;
-}
-
-.periodChip {
-  border-radius: 999px;
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 4px 10px;
-  white-space: nowrap;
-}
-
-.periodChip.frozen {
-  background: var(--surface-strong);
-  color: var(--muted-strong);
-}
-
-.periodChip.reopened {
-  background: #fdf3df;
-  color: var(--warning);
-}
-
-.secondaryButton.compact {
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 0 10px;
-  width: auto;
 }
 
 .balanceTable {

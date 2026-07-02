@@ -5,7 +5,7 @@ import {
   resolveSignedAmountCents,
   type CategoryRule,
 } from "../../../lib/finance";
-import { ensureSchema, findClosedMonths, getD1 } from "../../../db";
+import { ensureSchema, getD1 } from "../../../db";
 
 type ImportRow = {
   accountName?: string;
@@ -85,26 +85,6 @@ export async function POST(request: Request) {
       return Response.json(
         { error: "За один импорт можно загрузить до 2000 строк" },
         { status: 400 }
-      );
-    }
-
-    // Freeze guard, checked up front (the main loop creates accounts as a side
-    // effect, so rejecting mid-way would leave partial state). All-or-nothing:
-    // a single row inside a closed month blocks the whole import until the
-    // month is reopened or the rows are removed from the file.
-    const closedMonths = await findClosedMonths(
-      rows
-        .map((row) => normalizeDateInput(row.date) ?? "")
-        .filter((date) => date !== "")
-    );
-    if (closedMonths.length > 0) {
-      return Response.json(
-        {
-          error:
-            `Импорт затрагивает закрытые периоды: ${closedMonths.join(", ")}. ` +
-            "Переоткройте их или уберите эти строки из файла.",
-        },
-        { status: 409 }
       );
     }
 
