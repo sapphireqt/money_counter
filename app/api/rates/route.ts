@@ -14,9 +14,10 @@ function toRouteErrorMessage(error: unknown) {
  * currency). Results are cached in D1 (historical rates are immutable); on a
  * cache miss the missing currencies are fetched in one call from the keyless
  * Frankfurter v2 API, and whatever it does not cover (crypto tickers like
- * TRX/USDT/BTC) is looked up on Kraken's keyless public OHLC API. Currencies
- * neither upstream covers are simply omitted from the response, so the client
- * can flag them.
+ * TRX/BTC) is looked up on Kraken's keyless public OHLC API, then on Binance
+ * for dates beyond Kraken's ~720-day window. USDT is pegged to 1 by design.
+ * Currencies no upstream covers are simply omitted from the response, so the
+ * client can flag them.
  *
  *   GET /api/rates?date=YYYY-MM-DD&currencies=EUR,USD,THB,TRX
  *   -> { date, base: "USD", rates: { EUR: 0.9461, USD: 1, THB: 34.317, ... } }
@@ -71,7 +72,21 @@ export async function GET(request: Request) {
         .run();
     }
 
-    const toFetch = missing.filter((code) => code !== "USD");
+    // USDT is pegged 1:1 to USD by design (the user's accounting convention,
+    // and the Binance fallback below quotes coins against USDT — fixing
+    // USDT = 1 keeps every conversion internally consistent). Overwrites any
+    // older cached market value (~0.999-1.001) the Kraken path once stored.
+    if (requested.includes("USDT") && rates.USDT !== 1) {
+      rates.USDT = 1;
+      await d1
+        .prepare(
+          "INSERT OR REPLACE INTO exchange_rates (date, currency, usd_rate) VALUES (?, 'USDT', 1)"
+        )
+        .bind(date)
+        .run();
+    }
+
+    const toFetch = missing.filter((code) => code !== "USD" && code !== "USDT");
 
     // Frankfurter rejects the WHOLE request with 422 when any unknown code is
     // in `quotes` (it does not skip them), so partition by its supported-
@@ -214,6 +229,49 @@ export async function GET(request: Request) {
           // Same policy as the fiat upstream: return what we have.
         }
       }
+
+      // Deep-history fallback: Kraken's OHLC window is only ~720 days, so
+      // codes still missing (older dates, pairs Kraken lacks) are looked up
+      // on Binance, which serves full daily history since a pair's listing
+      // (TRX since 2018, BTC since 2017). Binance quotes against USDT, and
+      // USDT is pegged to 1 USD above, so the close is taken as USD directly.
+      // api.binance.com is geo-blocked in some jurisdictions — failures just
+      // leave the code missing and the client flags it.
+      const binanceMissing = cryptoMissing.filter((code) => !(code in rates));
+      for (const code of binanceMissing) {
+        try {
+          const url =
+            `https://api.binance.com/api/v3/klines?symbol=${code}USDT` +
+            `&interval=1d&startTime=${dayStart * 1000}&limit=1`;
+          const response = await fetch(url, {
+            headers: { "User-Agent": "money-counter" },
+          });
+          if (!response.ok) continue; // unknown symbol -> HTTP 400
+          const data = (await response.json()) as unknown;
+          const candle = Array.isArray(data) ? data[0] : null;
+          if (!Array.isArray(candle)) continue;
+          // klines returns the first candle AT or AFTER startTime (day candles
+          // open at 00:00 UTC, and dayStart is aligned to that). A mismatched
+          // open time means the date predates the pair's listing — skip rather
+          // than cache a later day's price.
+          if (Number(candle[0]) !== dayStart * 1000) continue;
+          const close = Number(candle[4]);
+          if (!Number.isFinite(close) || close <= 0) continue;
+          rates[code] = 1 / close;
+          if (cacheable) {
+            inserts.push(
+              d1
+                .prepare(
+                  "INSERT OR REPLACE INTO exchange_rates (date, currency, usd_rate) VALUES (?, ?, ?)"
+                )
+                .bind(date, code, 1 / close)
+            );
+          }
+        } catch {
+          // Same policy: return what we have, the client flags the rest.
+        }
+      }
+
       if (inserts.length > 0) await d1.batch(inserts);
     }
 
