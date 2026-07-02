@@ -326,16 +326,61 @@ function CategoryPie({
   );
 }
 
+// Horizontal category bars under the «Счета» panel: the selected period's
+// expenses by category, largest first. Bars scale to the largest category (so
+// the ranking is readable), the number after each bar is the category's share
+// of the period's expenses. No axes on purpose — it's a ranking, not a chart
+// to read values off. The 44px term reserves room for the share label, so the
+// longest bar's label lands at the panel's right edge.
+function CategoryBars({
+  items,
+  currency,
+}: {
+  items: Array<{ label: string; cents: number; share: number; color: string }>;
+  currency: string;
+}) {
+  if (items.length === 0) {
+    return <div className="emptyBars">Нет расходов за период</div>;
+  }
+  const largest = items[0].cents;
+  return (
+    <div className="catBars">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="catBarRow"
+          title={`${item.label} — ${formatMoney(item.cents, currency)}`}
+        >
+          <span className="catBarLabel">{item.label}</span>
+          <span className="catBarTrack">
+            <span
+              className="catBarFill"
+              style={{
+                width: `calc((100% - 44px) * ${Math.max(item.cents / largest, 0.02).toFixed(4)})`,
+                background: item.color,
+              }}
+            />
+            <span className="catBarPct">
+              {item.share < 0.5 ? "<1%" : `${Math.round(item.share)}%`}
+            </span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const MONTH_SHORT = [
   "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
   "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
 ];
 
-// Custom month/period picker — a popover with a 12-month grid and year nav.
-// value/onChange are "yyyy-mm" strings. `max` is the newest selectable month
-// (the current month): any earlier month is freely selectable (unlimited
-// navigation into the past), future months are disabled. Month-only — no day
-// selection — so the value stays a plain "yyyy-mm" string.
+// Custom month/period picker — a single capsule: prev/next arrows flanking a
+// trigger that opens a popover with a 12-month grid and year nav. value/
+// onChange are "yyyy-mm" strings. `max` is the newest selectable month (the
+// current month): the next-arrow stops there, while going back is unlimited,
+// same as the calendar. Month-only — no day selection — so the value stays a
+// plain "yyyy-mm" string.
 function MonthPicker({
   value,
   onChange,
@@ -387,17 +432,38 @@ function MonthPicker({
 
   return (
     <div className="monthPicker" ref={containerRef}>
-      <button
-        type="button"
-        className="monthPickerTrigger"
-        aria-label={ariaLabel}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={toggle}
-      >
-        <span>{formatMonthLabel(value)}</span>
-        <span className="monthPickerCaret" aria-hidden="true">▾</span>
-      </button>
+      <span className="monthPickerCapsule">
+        <button
+          type="button"
+          className="monthPickerArrow"
+          aria-label="Предыдущий месяц"
+          title="Предыдущий месяц"
+          onClick={() => onChange(addMonths(value, -1))}
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          className="monthPickerTrigger"
+          aria-label={ariaLabel}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={toggle}
+        >
+          <span>{formatMonthLabel(value)}</span>
+          <span className="monthPickerCaret" aria-hidden="true">▾</span>
+        </button>
+        <button
+          type="button"
+          className="monthPickerArrow"
+          aria-label="Следующий месяц"
+          title="Следующий месяц"
+          disabled={value >= max}
+          onClick={() => onChange(addMonths(value, 1))}
+        >
+          ›
+        </button>
+      </span>
       {open ? (
         <div className="monthPickerPanel" role="dialog" aria-label={ariaLabel}>
           <div className="monthPickerHead">
@@ -729,6 +795,43 @@ export default function MoneyCounter() {
       return map;
     }, {});
   }, [transactions]);
+
+  // The period's expenses per category for the bars under the «Счета» panel,
+  // converted to the display currency at the period's first-day rate (same as
+  // the cards, so the bar total reconciles with «Расходы периода»), sorted
+  // largest-first. Currencies with no rate are collected for a flagged note.
+  const categoryBars = useMemo(() => {
+    const perCategory = new Map<string, Record<string, number>>();
+    for (const tx of transactions) {
+      if (tx.amountCents >= 0) continue;
+      const name = tx.category || "Без категории";
+      const totals = perCategory.get(name) ?? {};
+      totals[tx.accountCurrency] =
+        (totals[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
+      perCategory.set(name, totals);
+    }
+    const missing = new Set<string>();
+    const rows = [...perCategory.entries()]
+      .map(([label, totals]) => {
+        const conv = convertTotals(totals, periodRates, displayCurrency);
+        for (const code of conv.missing) missing.add(code);
+        return { label, cents: conv.cents };
+      })
+      .filter((row) => row.cents > 0)
+      .sort((a, b) => b.cents - a.cents);
+    const total = rows.reduce((sum, row) => sum + row.cents, 0);
+    return {
+      items: rows.map((row, index) => ({
+        ...row,
+        share: total > 0 ? (row.cents / total) * 100 : 0,
+        color:
+          row.label === "Без категории"
+            ? "#94a3b8"
+            : colorByCategory.get(row.label) ?? palette[index % palette.length],
+      })),
+      missing: [...missing],
+    };
+  }, [transactions, periodRates, displayCurrency, colorByCategory]);
 
   // --- currency conversion (summary cards) ----------------------------------
   const loadRates = useCallback(
@@ -1738,6 +1841,22 @@ export default function MoneyCounter() {
                   </tfoot>
                 ) : null}
               </table>
+
+              <h3 className="catBarsTitle">Расходы по категориям</h3>
+              {categoryBars.missing.length > 0 ? (
+                <p className="panelNote">
+                  <Flagged
+                    reason={`Без учёта ${categoryBars.missing.join(", ")} — нет курса на ${dmy(`${mainPeriod}-01`)}`}
+                  >
+                    учтены не все валюты
+                  </Flagged>
+                </p>
+              ) : null}
+              {periodRates === null ? (
+                <div className="emptyBars">…</div>
+              ) : (
+                <CategoryBars items={categoryBars.items} currency={displayCurrency} />
+              )}
             </section>
           </div>
 

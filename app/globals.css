@@ -638,6 +638,53 @@ td {
   margin: -4px 0 10px;
 }
 
+/* Category expense bars under the balance table: name | bar + share. */
+.catBarsTitle {
+  font-size: 15px;
+  margin: 20px 0 10px;
+}
+
+.catBars {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.catBarRow {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+.catBarLabel {
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catBarTrack {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.catBarFill {
+  border-radius: 4px;
+  display: block;
+  flex: 0 0 auto;
+  height: 14px;
+}
+
+.catBarPct {
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .balanceTable {
   min-width: 0;
   width: 100%;
@@ -901,25 +948,56 @@ dd {
   position: relative;
 }
 
-.monthPickerTrigger {
-  align-items: center;
+/* The picker is one capsule: prev/next arrows share the trigger's border;
+   next stops at the picker's `max` (current month), prev is unlimited. */
+.monthPickerCapsule {
+  align-items: stretch;
   background: #fbfcfd;
   border: 1px solid var(--line);
   border-radius: 8px;
+  display: inline-flex;
+  min-height: 40px;
+  overflow: hidden;
+}
+
+.monthPickerArrow {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted-strong);
+  display: inline-flex;
+  font-size: 17px;
+  justify-content: center;
+  width: 36px;
+}
+
+.monthPickerArrow:hover:not(:disabled) {
+  background: var(--surface-strong);
+}
+
+.monthPickerArrow:focus-visible {
+  box-shadow: inset 0 0 0 3px rgba(31, 111, 235, 0.25);
+  outline: none;
+}
+
+.monthPickerTrigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
   color: var(--foreground);
   display: inline-flex;
   font-weight: 600;
   gap: 10px;
   justify-content: space-between;
-  min-height: 40px;
-  min-width: 160px;
+  min-width: 150px;
   padding: 0 10px;
   width: 100%;
 }
 
 .monthPickerTrigger:focus-visible {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.16);
+  box-shadow: inset 0 0 0 3px rgba(31, 111, 235, 0.25);
   outline: none;
 }
 
