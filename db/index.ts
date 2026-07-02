@@ -16,6 +16,37 @@ export function getDb() {
   return drizzle(getD1(), { schema });
 }
 
+// Reporting periods are calendar months. The current (and any future) month is
+// always open; a past month is closed ("frozen") unless explicitly reopened —
+// reopened months are the rows of open_periods. Dates in the app are
+// timezone-free YYYY-MM-DD strings, so "current month" is the UTC one.
+export function currentMonthKey() {
+  return new Date().toISOString().slice(0, 7);
+}
+
+// Distinct closed months among the given YYYY-MM-DD dates, sorted. An empty
+// result means every date is writable.
+export async function findClosedMonths(dates: string[]) {
+  const current = currentMonthKey();
+  const past = [...new Set(dates.map((date) => date.slice(0, 7)))].filter(
+    (month) => month < current
+  );
+  if (past.length === 0) return [];
+  // Chunked IN lists: D1 caps bound parameters at 100 per statement, and a
+  // large historical import can span more distinct months than that.
+  const reopened = new Set<string>();
+  for (let offset = 0; offset < past.length; offset += 50) {
+    const chunk = past.slice(offset, offset + 50);
+    const placeholders = chunk.map(() => "?").join(",");
+    const rows = await getD1()
+      .prepare(`SELECT month FROM open_periods WHERE month IN (${placeholders})`)
+      .bind(...chunk)
+      .all<{ month: string }>();
+    for (const row of rows.results ?? []) reopened.add(row.month);
+  }
+  return past.filter((month) => !reopened.has(month)).sort();
+}
+
 export async function ensureSchema() {
   const d1 = getD1();
 
@@ -91,6 +122,12 @@ export async function ensureSchema() {
         currency TEXT NOT NULL,
         usd_rate REAL NOT NULL,
         PRIMARY KEY (date, currency)
+      )
+    `),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS open_periods (
+        month TEXT PRIMARY KEY,
+        opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `),
     d1.prepare(`

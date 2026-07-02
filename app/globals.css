@@ -625,6 +625,48 @@ td {
   margin-bottom: 10px;
 }
 
+/* Frozen-period note under the «Счета» panel title. */
+.panelNote {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: -4px 0 10px;
+}
+
+/* Period status controls next to the month picker: a frozen/reopened chip and
+   a compact toggle button (the base .secondaryButton is full-width). */
+.periodControls {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.periodChip {
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.periodChip.frozen {
+  background: var(--surface-strong);
+  color: var(--muted-strong);
+}
+
+.periodChip.reopened {
+  background: #fdf3df;
+  color: var(--warning);
+}
+
+.secondaryButton.compact {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  width: auto;
+}
+
 .balanceTable {
   min-width: 0;
   width: 100%;

@@ -454,6 +454,13 @@ export default function MoneyCounter() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
+  // Past months explicitly reopened for edits. Any other past month is a
+  // closed (frozen) reporting period; the current month is always open.
+  const [openMonths, setOpenMonths] = useState<string[]>([]);
+  // The server's notion of the current (UTC) month — the freeze boundary. Kept
+  // in sync via /api/periods so a tab left open across a month rollover agrees
+  // with the API about which months are closed.
+  const [serverMonth, setServerMonth] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
 
   const [mainPeriod, setMainPeriod] = useState(monthKey(today()));
@@ -470,6 +477,10 @@ export default function MoneyCounter() {
   // Per-currency account balances as of the start of the selected period
   // (null = loading), for the "Баланс на начало периода" card.
   const [startTotals, setStartTotals] = useState<Record<string, number> | null>(null);
+  // Frozen view of a closed period: account balances as of the period end and
+  // the period's last-day rates (null = loading or the period is live).
+  const [endAccounts, setEndAccounts] = useState<Account[] | null>(null);
+  const [endRates, setEndRates] = useState<Record<string, number> | null>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [query, setQuery] = useState("");
@@ -542,9 +553,16 @@ export default function MoneyCounter() {
     return list; // newest first
   }, [periods]);
 
-  // Newest selectable month for the pickers — the current month. (monthOptions
-  // is newest-first, so [0] is the current month.)
-  const currentMonth = monthOptions[0] ?? monthKey(today());
+  // Newest selectable month for the pickers and the freeze boundary — the
+  // current month. Prefer the server's answer (loadPeriods) so a long-lived
+  // tab agrees with the API after a UTC month rollover; fall back to the local
+  // clock before the first /api/periods response. (monthOptions is
+  // newest-first, so [0] is the locally derived current month.)
+  const currentMonth = serverMonth || (monthOptions[0] ?? monthKey(today()));
+
+  // The selected period is frozen when it is a past month not explicitly
+  // reopened; its numbers must show the historical end-of-period state.
+  const periodClosed = mainPeriod < currentMonth && !openMonths.includes(mainPeriod);
 
   const currencyOptions = useMemo(() => {
     const set = new Set<string>();
@@ -589,8 +607,14 @@ export default function MoneyCounter() {
   }, []);
 
   const loadPeriods = useCallback(async () => {
-    const data = await requestJson<{ periods: string[] }>("/api/periods");
+    const data = await requestJson<{
+      periods: string[];
+      openMonths?: string[];
+      currentMonth?: string;
+    }>("/api/periods");
     setPeriods(data.periods);
+    setOpenMonths(data.openMonths ?? []);
+    setServerMonth(data.currentMonth ?? "");
   }, []);
 
   const loadTransactions = useCallback(async () => {
@@ -692,13 +716,6 @@ export default function MoneyCounter() {
   }, [reloadMeta, loadTransactions, loadStats, activeTab]);
 
   // --- derived --------------------------------------------------------------
-  const totalsByCurrency = useMemo(() => {
-    return accounts.reduce<Record<string, number>>((totals, account) => {
-      totals[account.currency] = (totals[account.currency] ?? 0) + account.balanceCents;
-      return totals;
-    }, {});
-  }, [accounts]);
-
   const periodIncome = useMemo(() => {
     return transactions.reduce<Record<string, number>>((map, tx) => {
       if (tx.amountCents > 0) {
@@ -788,9 +805,61 @@ export default function MoneyCounter() {
     })();
   }, [mainPeriod, accounts]);
 
-  const balanceConverted = useMemo(
-    () => convertTotals(totalsByCurrency, balanceRates, displayCurrency),
-    [totalsByCurrency, balanceRates, displayCurrency]
+  // Frozen view data for a closed period: balances as of the period end (asOf
+  // is exclusive, so the next month's 1st includes every transaction of the
+  // period) and the period's last-day rates. `accounts` is a dependency so the
+  // frozen numbers refresh after edits in earlier reopened months. State is
+  // cleared up front and late responses are dropped (`cancelled`), so quickly
+  // switching between closed months never shows one month's balances converted
+  // at another month's rates.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setEndAccounts(null);
+      setEndRates(null);
+      if (!periodClosed) return;
+      try {
+        const data = await requestJson<{ accounts: Account[] }>(
+          `/api/accounts?asOf=${addMonths(mainPeriod, 1)}-01`
+        );
+        if (!cancelled) setEndAccounts(data.accounts);
+      } catch (error) {
+        if (!cancelled) {
+          setNotice(
+            error instanceof Error ? error.message : "Не удалось загрузить остатки периода"
+          );
+        }
+      }
+      try {
+        const rates = await loadRates(monthEnd(mainPeriod));
+        if (!cancelled) setEndRates(rates);
+      } catch {
+        if (!cancelled) setEndRates({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [periodClosed, mainPeriod, loadRates, accounts]);
+
+  // The «Счета» panel shows live balances at the current month's first-day
+  // rates — or, when the selected period is closed, the frozen end-of-period
+  // state: balances as of the period's last transaction at the period-end rate.
+  const panelAccounts = useMemo(
+    () => (periodClosed ? endAccounts ?? [] : accounts),
+    [periodClosed, endAccounts, accounts]
+  );
+  const panelRates = periodClosed ? endRates : balanceRates;
+  const panelRateDate = periodClosed ? monthEnd(mainPeriod) : `${currentMonth}-01`;
+  const panelTotals = useMemo(() => {
+    return panelAccounts.reduce<Record<string, number>>((totals, account) => {
+      totals[account.currency] = (totals[account.currency] ?? 0) + account.balanceCents;
+      return totals;
+    }, {});
+  }, [panelAccounts]);
+  const panelConverted = useMemo(
+    () => convertTotals(panelTotals, panelRates, displayCurrency),
+    [panelTotals, panelRates, displayCurrency]
   );
   const startConverted = useMemo(
     () => convertTotals(startTotals ?? {}, periodRates, displayCurrency),
@@ -864,19 +933,20 @@ export default function MoneyCounter() {
   };
 
   // Per-account balance for the "Счета" panel, in the display currency. Balances
-  // are signed (an account can go negative). Uses balanceRates (current month's
-  // 1st), so the rows reconcile with the "Баланс (все счета)" card / panel total.
+  // are signed (an account can go negative). Uses panelRates — the current
+  // month's 1st for a live period, the period end for a frozen one — so the
+  // rows always reconcile with the panel total.
   const renderAccountBalance = (account: Account): ReactNode => {
     const cents = account.balanceCents;
     const code = account.currency;
     if (!displayCurrency || code === displayCurrency) {
       return <Money cents={cents} currency={code} />;
     }
-    if (balanceRates === null) return "…";
-    const rateTo = balanceRates[displayCurrency];
-    const rateFrom = balanceRates[code];
+    if (panelRates === null) return "…";
+    const rateTo = panelRates[displayCurrency];
+    const rateFrom = panelRates[code];
     if (rateTo == null || rateFrom == null) {
-      return <Flagged reason={`Нет курса ${code} на ${dmy(`${currentMonth}-01`)}`}>—</Flagged>;
+      return <Flagged reason={`Нет курса ${code} на ${dmy(panelRateDate)}`}>—</Flagged>;
     }
     return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
   };
@@ -1173,6 +1243,28 @@ export default function MoneyCounter() {
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не удалена");
+    }
+  }
+
+  // Reopen the selected closed month for edits, or close it back. Closing
+  // re-freezes the panel at the (possibly updated) end-of-period state.
+  async function togglePeriodOpen(open: boolean) {
+    setSaving(true);
+    try {
+      await requestJson("/api/periods", {
+        method: "POST",
+        body: JSON.stringify({ month: mainPeriod, open }),
+      });
+      setNotice(
+        open
+          ? `Период «${formatMonthLabel(mainPeriod)}» переоткрыт для правок`
+          : `Период «${formatMonthLabel(mainPeriod)}» закрыт`
+      );
+      await loadPeriods();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось изменить период");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1494,12 +1586,37 @@ export default function MoneyCounter() {
                     the picker used to be (top-right). */}
                 <h2 className="opsTitle">Операции</h2>
                 <div className="sectionHead">
-                  <MonthPicker
-                    ariaLabel="Период"
-                    value={mainPeriod}
-                    onChange={setMainPeriod}
-                    max={currentMonth}
-                  />
+                  <div className="periodControls">
+                    <MonthPicker
+                      ariaLabel="Период"
+                      value={mainPeriod}
+                      onChange={setMainPeriod}
+                      max={currentMonth}
+                    />
+                    {/* Past months only: the current month is open by definition. */}
+                    {mainPeriod < currentMonth ? (
+                      <>
+                        <span
+                          className={`periodChip ${periodClosed ? "frozen" : "reopened"}`}
+                          title={
+                            periodClosed
+                              ? "Отчётный период закрыт: числа заморожены, правки заблокированы"
+                              : "Период переоткрыт: правки разрешены, числа пересчитываются"
+                          }
+                        >
+                          {periodClosed ? "Закрыт" : "Переоткрыт"}
+                        </span>
+                        <button
+                          className="secondaryButton compact"
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void togglePeriodOpen(periodClosed)}
+                        >
+                          {periodClosed ? "Переоткрыть" : "Закрыть"}
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                   <button
                     className="primaryButton"
                     type="button"
@@ -1586,7 +1703,8 @@ export default function MoneyCounter() {
                                     className="iconButton small"
                                     type="button"
                                     onClick={() => startEditTransaction(transaction)}
-                                    title="Править"
+                                    disabled={periodClosed}
+                                    title={periodClosed ? "Период закрыт" : "Править"}
                                     aria-label="Править"
                                   >
                                     <svg
@@ -1607,7 +1725,8 @@ export default function MoneyCounter() {
                                     className="iconButton small danger"
                                     type="button"
                                     onClick={() => removeTransaction(transaction)}
-                                    title="Удалить"
+                                    disabled={periodClosed}
+                                    title={periodClosed ? "Период закрыт" : "Удалить"}
                                   >
                                     ×
                                   </button>
@@ -1625,14 +1744,21 @@ export default function MoneyCounter() {
 
             <section className="surface accountsPanel" aria-label="Баланс по счетам">
               <h2>Счета</h2>
+              {periodClosed ? (
+                <p className="panelNote">
+                  Заморожено: остатки на {dmy(monthEnd(mainPeriod))}
+                </p>
+              ) : null}
               <table className="balanceTable">
                 <tbody>
-                  {accounts.length === 0 ? (
+                  {panelAccounts.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="emptyTable">Нет счетов</td>
+                      <td colSpan={3} className="emptyTable">
+                        {periodClosed && endAccounts === null ? "Загрузка" : "Нет счетов"}
+                      </td>
                     </tr>
                   ) : (
-                    accounts.map((account) => (
+                    panelAccounts.map((account) => (
                       <tr key={account.id}>
                         <td className="balName">{account.name}</td>
                         <td className="amountCell">{renderAccountBalance(account)}</td>
@@ -1643,12 +1769,12 @@ export default function MoneyCounter() {
                     ))
                   )}
                 </tbody>
-                {accounts.length > 0 ? (
+                {panelAccounts.length > 0 ? (
                   <tfoot>
                     <tr className="balTotal">
                       <td>Итого</td>
                       <td className="amountCell">
-                        {renderConverted(balanceConverted, balanceRates, `${currentMonth}-01`)}
+                        {renderConverted(panelConverted, panelRates, panelRateDate)}
                       </td>
                       <td />
                     </tr>

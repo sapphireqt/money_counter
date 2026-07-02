@@ -283,11 +283,27 @@ export function centsToInputValue(cents: number) {
 }
 
 export function formatMoneyParts(cents: number, currency: string) {
-  return new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency: normalizeCurrency(currency),
-    maximumFractionDigits: 2,
-  }).formatToParts(cents / 100);
+  const code = normalizeCurrency(currency);
+  try {
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).formatToParts(cents / 100);
+  } catch {
+    // Intl only accepts ISO-shaped (3-letter) currency codes and throws on
+    // crypto tickers like USDT. Emulate the ru-RU currency layout instead:
+    // "1 234,56" + narrow space + the code as the currency part.
+    const parts: Intl.NumberFormatPart[] = [
+      ...new Intl.NumberFormat("ru-RU", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).formatToParts(cents / 100),
+      { type: "literal", value: " " },
+      { type: "currency", value: code },
+    ];
+    return parts;
+  }
 }
 
 export function formatMoney(cents: number, currency: string) {

@@ -4,7 +4,7 @@ import {
   resolveSignedAmountCents,
   type CategoryRule,
 } from "../../../lib/finance";
-import { ensureSchema, getD1 } from "../../../db";
+import { ensureSchema, findClosedMonths, getD1 } from "../../../db";
 
 type TransactionRow = {
   id: number;
@@ -65,6 +65,18 @@ async function readPayload(request: Request) {
 
 function normalizeStatus(value: unknown) {
   return value === "pending" ? "pending" : "cleared";
+}
+
+// Closed reporting periods are frozen: any write touching a date inside one is
+// rejected until the month is reopened (Операции → «Переоткрыть»).
+function closedPeriodResponse(months: string[], action: string) {
+  const list = months.join(", ");
+  return Response.json(
+    {
+      error: `Период ${list} закрыт — переоткройте его, чтобы ${action}`,
+    },
+    { status: 409 }
+  );
 }
 
 async function getTransactionById(id: number) {
@@ -202,6 +214,11 @@ export async function POST(request: Request) {
       return Response.json({ error: "Некорректная сумма" }, { status: 400 });
     }
 
+    const closed = await findClosedMonths([date]);
+    if (closed.length > 0) {
+      return closedPeriodResponse(closed, "добавить операцию");
+    }
+
     const account = await getD1()
       .prepare("SELECT id FROM accounts WHERE id = ? AND archived_at IS NULL")
       .bind(accountId)
@@ -305,13 +322,14 @@ export async function PATCH(request: Request) {
       values.push(accountId);
     }
 
+    let newDate: string | null = null;
     if ("date" in payload) {
-      const date = normalizeDateInput(payload.date);
-      if (!date) {
+      newDate = normalizeDateInput(payload.date);
+      if (!newDate) {
         return Response.json({ error: "Некорректная дата" }, { status: 400 });
       }
       assignments.push("date = ?");
-      values.push(date);
+      values.push(newDate);
     }
 
     if ("amount" in payload || "amountCents" in payload) {
@@ -355,6 +373,22 @@ export async function PATCH(request: Request) {
       return Response.json({ error: "Нет изменений" }, { status: 400 });
     }
 
+    // Freeze guard: both the month the transaction currently sits in and (when
+    // the date changes) the month it moves to must be open.
+    const existing = await getD1()
+      .prepare("SELECT date FROM transactions WHERE id = ?")
+      .bind(id)
+      .first<{ date: string }>();
+    if (!existing) {
+      return Response.json({ error: "Операция не найдена" }, { status: 404 });
+    }
+    const closed = await findClosedMonths(
+      newDate ? [existing.date, newDate] : [existing.date]
+    );
+    if (closed.length > 0) {
+      return closedPeriodResponse(closed, "изменить операцию");
+    }
+
     assignments.push("updated_at = CURRENT_TIMESTAMP");
     await getD1()
       .prepare(
@@ -383,6 +417,17 @@ export async function DELETE(request: Request) {
 
     if (!id) {
       return Response.json({ error: "Некорректная операция" }, { status: 400 });
+    }
+
+    const existing = await getD1()
+      .prepare("SELECT date FROM transactions WHERE id = ?")
+      .bind(id)
+      .first<{ date: string }>();
+    if (existing) {
+      const closed = await findClosedMonths([existing.date]);
+      if (closed.length > 0) {
+        return closedPeriodResponse(closed, "удалить операцию");
+      }
     }
 
     await getD1()
