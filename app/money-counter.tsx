@@ -2176,6 +2176,7 @@ export default function MoneyCounter() {
               </section>
             </section>
 
+            <aside className="rightRail">
             <section className="surface accountsPanel" aria-label="Баланс по счетам">
               <h2>Счета</h2>
               {pastPeriod ? (
@@ -2215,8 +2216,10 @@ export default function MoneyCounter() {
                   </tfoot>
                 ) : null}
               </table>
+            </section>
 
-              <h3 className="catBarsTitle">Расходы по категориям</h3>
+            <section className="surface categoryPanel" aria-label="Расходы по категориям">
+              <h2>Расходы по категориям</h2>
               {categoryBars.missing.length > 0 ? (
                 <p className="panelNote">
                   <Flagged
@@ -2232,6 +2235,7 @@ export default function MoneyCounter() {
                 <CategoryBars items={categoryBars.items} currency={displayCurrency} />
               )}
             </section>
+            </aside>
           </div>
 
           {detectOpen ? (

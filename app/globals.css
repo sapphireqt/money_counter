@@ -632,7 +632,8 @@ td {
 
 /* "Счета" balance panel (right column of the Операции tab): per-account balance
    in the display currency, the account-currency balance beside it, and a total. */
-.accountsPanel h2 {
+.accountsPanel h2,
+.categoryPanel h2 {
   margin-bottom: 10px;
 }
 
@@ -728,12 +729,7 @@ td {
   white-space: nowrap;
 }
 
-/* Category expense bars under the balance table: name | bar + share. */
-.catBarsTitle {
-  font-size: 15px;
-  margin: 20px 0 10px;
-}
-
+/* Category expense bars («Расходы по категориям» panel): name | bar + share. */
 .catBars {
   display: flex;
   flex-direction: column;
