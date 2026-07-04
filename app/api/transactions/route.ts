@@ -18,6 +18,7 @@ type TransactionRow = {
   amount_cents: number;
   status: string;
   notes: string;
+  transfer_group: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -45,6 +46,7 @@ function mapTransaction(row: TransactionRow) {
     amountCents: row.amount_cents,
     status: row.status,
     notes: row.notes,
+    transferGroup: row.transfer_group,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -82,6 +84,7 @@ async function getTransactionById(id: number) {
         t.amount_cents,
         t.status,
         t.notes,
+        t.transfer_group,
         t.created_at,
         t.updated_at
        FROM transactions t
@@ -156,6 +159,7 @@ export async function GET(request: Request) {
           t.amount_cents,
           t.status,
           t.notes,
+          t.transfer_group,
           t.created_at,
           t.updated_at
          FROM transactions t
@@ -247,6 +251,7 @@ export async function POST(request: Request) {
           amount_cents,
           status,
           notes,
+          transfer_group,
           created_at,
           updated_at`
       )
@@ -385,10 +390,24 @@ export async function DELETE(request: Request) {
       return Response.json({ error: "Некорректная операция" }, { status: 400 });
     }
 
+    // Deleting one leg of a transfer would leave the partner marked as a
+    // transfer with nobody to pair with — unlink the whole group first.
+    const existing = await getD1()
+      .prepare("SELECT transfer_group FROM transactions WHERE id = ?")
+      .bind(id)
+      .first<{ transfer_group: string | null }>();
+
     await getD1()
       .prepare("DELETE FROM transactions WHERE id = ?")
       .bind(id)
       .run();
+
+    if (existing?.transfer_group) {
+      await getD1()
+        .prepare("UPDATE transactions SET transfer_group = NULL WHERE transfer_group = ?")
+        .bind(existing.transfer_group)
+        .run();
+    }
 
     return Response.json({ ok: true });
   } catch (error) {

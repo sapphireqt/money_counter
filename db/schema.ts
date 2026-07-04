@@ -43,6 +43,10 @@ export const transactions = sqliteTable(
     amountCents: integer("amount_cents").notNull(),
     status: text("status").notNull().default("cleared"),
     notes: text("notes").notNull().default(""),
+    // Non-null on the two legs of a money movement between own accounts: both
+    // rows share one opaque group id. Linked legs still count toward account
+    // balances but are excluded from income/expense/category aggregates.
+    transferGroup: text("transfer_group"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
@@ -50,6 +54,7 @@ export const transactions = sqliteTable(
     index("transactions_account_id_idx").on(table.accountId),
     index("transactions_date_idx").on(table.date),
     index("transactions_amount_cents_idx").on(table.amountCents),
+    index("transactions_transfer_group_idx").on(table.transferGroup),
   ]
 );
 

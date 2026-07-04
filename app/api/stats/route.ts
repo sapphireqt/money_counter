@@ -23,7 +23,9 @@ export async function GET(request: Request) {
   try {
     await ensureSchema();
     const params = new URL(request.url).searchParams;
-    const conditions = ["a.archived_at IS NULL"];
+    // Transfer legs move money between own accounts — they are neither income
+    // nor expense, so the charts must not count them.
+    const conditions = ["a.archived_at IS NULL", "t.transfer_group IS NULL"];
     const values: Array<number | string> = [];
 
     const accountId = parseId(params.get("accountId"));
@@ -43,7 +45,7 @@ export async function GET(request: Request) {
       conditions.push("t.date <= ?");
       values.push(to);
     }
-    if (currency && /^[A-Za-z]{3}$/.test(currency)) {
+    if (currency && /^[A-Za-z]{3,5}$/.test(currency)) {
       conditions.push("a.currency = ?");
       values.push(normalizeCurrency(currency));
     }

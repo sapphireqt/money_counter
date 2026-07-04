@@ -53,7 +53,28 @@ type Transaction = {
   amountCents: number;
   status: string;
   notes: string;
+  // Shared id of a transfer's two legs («Перемещение» between own accounts);
+  // null for ordinary operations. Linked legs count toward balances but not
+  // toward income/expense/category aggregates.
+  transferGroup: string | null;
 };
+
+// A row of the operations table: an ordinary transaction, or two loaded legs
+// of one transfer collapsed into a single «A → B» line.
+type DisplayRow =
+  | { kind: "tx"; tx: Transaction }
+  | { kind: "transfer"; out: Transaction; incoming: Transaction };
+
+// One side of a detected transfer pair as /api/transfers/detect returns it.
+type DetectLeg = {
+  id: number;
+  accountName: string;
+  currency: string;
+  date: string;
+  description: string;
+  amountCents: number;
+};
+type DetectPair = { out: DetectLeg; incoming: DetectLeg };
 
 type Category = { id: number; name: string; color: string };
 type Rule = { id: number; pattern: string; category: string };
@@ -76,7 +97,9 @@ type AccountForm = {
 type TransactionForm = {
   accountId: string;
   date: string;
-  direction: "expense" | "income";
+  // "transfer" is edit-mode only: it switches the modal into the
+  // pick-a-partner flow (or marks an already linked leg).
+  direction: "expense" | "income" | "transfer";
   amount: string;
   description: string;
   category: string;
@@ -564,6 +587,14 @@ export default function MoneyCounter() {
     description: "",
     category: "",
   });
+  // Pick-a-partner flow (edit modal, type «Перемещение»): opposite-sign
+  // candidates around the edited operation's date, and the chosen partner.
+  const [partnerCandidates, setPartnerCandidates] = useState<Transaction[] | null>(null);
+  const [partnerId, setPartnerId] = useState("");
+  // «Найти переводы»: auto-detected same-amount pairs awaiting confirmation.
+  const [detectPairs, setDetectPairs] = useState<DetectPair[] | null>(null);
+  const [detectChecked, setDetectChecked] = useState<Set<number>>(new Set());
+  const [detectOpen, setDetectOpen] = useState(false);
 
   const [accountForm, setAccountForm] = useState<AccountForm>({
     name: "",
@@ -778,9 +809,11 @@ export default function MoneyCounter() {
   }, [reloadMeta, loadTransactions, loadStats, activeTab]);
 
   // --- derived --------------------------------------------------------------
+  // Transfer legs (tx.transferGroup) are movements between own accounts, not
+  // income or spending — every aggregate below skips them.
   const periodIncome = useMemo(() => {
     return transactions.reduce<Record<string, number>>((map, tx) => {
-      if (tx.amountCents > 0) {
+      if (tx.amountCents > 0 && !tx.transferGroup) {
         map[tx.accountCurrency] = (map[tx.accountCurrency] ?? 0) + tx.amountCents;
       }
       return map;
@@ -789,7 +822,7 @@ export default function MoneyCounter() {
 
   const periodExpense = useMemo(() => {
     return transactions.reduce<Record<string, number>>((map, tx) => {
-      if (tx.amountCents < 0) {
+      if (tx.amountCents < 0 && !tx.transferGroup) {
         map[tx.accountCurrency] = (map[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
       }
       return map;
@@ -803,7 +836,7 @@ export default function MoneyCounter() {
   const categoryBars = useMemo(() => {
     const perCategory = new Map<string, Record<string, number>>();
     for (const tx of transactions) {
-      if (tx.amountCents >= 0) continue;
+      if (tx.amountCents >= 0 || tx.transferGroup) continue;
       const name = tx.category || "Без категории";
       const totals = perCategory.get(name) ?? {};
       totals[tx.accountCurrency] =
@@ -832,6 +865,73 @@ export default function MoneyCounter() {
       missing: [...missing],
     };
   }, [transactions, periodRates, displayCurrency, colorByCategory]);
+
+  // The transaction currently being edited in the modal (null while adding).
+  const editingTransaction = useMemo(
+    () => transactions.find((tx) => tx.id === editingTransactionId) ?? null,
+    [transactions, editingTransactionId]
+  );
+
+  // Candidates for the pick-a-partner flow: opposite-sign operations on OTHER
+  // accounts within ±7 days of the edited one, exact currency+amount matches
+  // first, then by date proximity. Fetched from the API (the partner may sit
+  // outside the currently loaded month). Late responses are dropped.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setPartnerCandidates(null);
+      setPartnerId("");
+      const tx = editingTransaction;
+      if (!formOpen || !tx || transactionForm.direction !== "transfer" || tx.transferGroup) {
+        return;
+      }
+      const [year, month, day] = tx.date.split("-").map(Number);
+      const base = Date.UTC(year, month - 1, day);
+      const iso = (ts: number) => new Date(ts).toISOString().slice(0, 10);
+      const dayOf = (date: string) => {
+        const [y, m, d] = date.split("-").map(Number);
+        return Date.UTC(y, m - 1, d) / 86400000;
+      };
+      try {
+        const params = new URLSearchParams({
+          from: iso(base - 7 * 86400000),
+          to: iso(base + 7 * 86400000),
+          limit: "500",
+        });
+        const data = await requestJson<{ transactions: Transaction[] }>(
+          `/api/transactions?${params}`
+        );
+        if (cancelled) return;
+        const wantIncoming = tx.amountCents < 0;
+        const candidates = data.transactions
+          .filter(
+            (cand) =>
+              cand.id !== tx.id &&
+              !cand.transferGroup &&
+              cand.accountId !== tx.accountId &&
+              (wantIncoming ? cand.amountCents > 0 : cand.amountCents < 0)
+          )
+          .sort((a, b) => {
+            const exact = (cand: Transaction) =>
+              cand.accountCurrency === tx.accountCurrency &&
+              Math.abs(cand.amountCents) === Math.abs(tx.amountCents)
+                ? 0
+                : 1;
+            if (exact(a) !== exact(b)) return exact(a) - exact(b);
+            return (
+              Math.abs(dayOf(a.date) - dayOf(tx.date)) -
+              Math.abs(dayOf(b.date) - dayOf(tx.date))
+            );
+          });
+        setPartnerCandidates(candidates);
+      } catch {
+        if (!cancelled) setPartnerCandidates([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formOpen, editingTransaction, transactionForm.direction]);
 
   // --- currency conversion (summary cards) ----------------------------------
   const loadRates = useCallback(
@@ -991,13 +1091,38 @@ export default function MoneyCounter() {
 
   // Operations grouped by day. The list is one month, sorted date DESC, so
   // same-date rows are already consecutive; the date becomes a group header
-  // instead of a per-row column.
+  // instead of a per-row column. When both legs of a transfer are loaded they
+  // collapse into a single «A → B» row at the newer leg's position; a leg
+  // whose partner is filtered out (other account/period) stays a lone row
+  // with a «перемещение» badge.
   const dayGroups = useMemo(() => {
-    const groups: { date: string; items: Transaction[] }[] = [];
+    const legsByGroup = new Map<string, Transaction[]>();
     for (const tx of transactions) {
+      if (!tx.transferGroup) continue;
+      const legs = legsByGroup.get(tx.transferGroup) ?? [];
+      legs.push(tx);
+      legsByGroup.set(tx.transferGroup, legs);
+    }
+    const placed = new Set<string>();
+    const groups: { date: string; items: DisplayRow[] }[] = [];
+    for (const tx of transactions) {
+      let row: DisplayRow | null = null;
+      if (tx.transferGroup) {
+        if (placed.has(tx.transferGroup)) continue;
+        const partner = (legsByGroup.get(tx.transferGroup) ?? []).find(
+          (leg) => leg.id !== tx.id
+        );
+        if (partner) {
+          placed.add(tx.transferGroup);
+          const out = tx.amountCents < 0 ? tx : partner;
+          const incoming = tx.amountCents < 0 ? partner : tx;
+          row = { kind: "transfer", out, incoming };
+        }
+      }
+      if (!row) row = { kind: "tx", tx };
       const last = groups[groups.length - 1];
-      if (last && last.date === tx.date) last.items.push(tx);
-      else groups.push({ date: tx.date, items: [tx] });
+      if (last && last.date === tx.date) last.items.push(row);
+      else groups.push({ date: tx.date, items: [row] });
     }
     return groups;
   }, [transactions]);
@@ -1269,12 +1394,55 @@ export default function MoneyCounter() {
     event.preventDefault();
     setSaving(true);
     try {
-      const method = editingTransactionId ? "PATCH" : "POST";
-      const url = editingTransactionId
-        ? `/api/transactions?id=${editingTransactionId}`
-        : "/api/transactions";
-      await requestJson(url, { method, body: JSON.stringify(transactionForm) });
-      setNotice(editingTransactionId ? "Операция обновлена" : "Операция добавлена");
+      if (
+        editingTransactionId &&
+        transactionForm.direction === "transfer" &&
+        !editingTransaction?.transferGroup
+      ) {
+        // Link mode: the edited operation plus the chosen opposite-sign
+        // partner become one «Перемещение».
+        const partner = partnerCandidates?.find(
+          (cand) => String(cand.id) === partnerId
+        );
+        if (!editingTransaction || !partner) {
+          setNotice("Выберите операцию-напарника");
+          return;
+        }
+        const outId =
+          editingTransaction.amountCents < 0 ? editingTransaction.id : partner.id;
+        const inId =
+          editingTransaction.amountCents < 0 ? partner.id : editingTransaction.id;
+        await requestJson("/api/transfers", {
+          method: "POST",
+          body: JSON.stringify({ outId, inId }),
+        });
+        setNotice("Операции связаны в перемещение");
+      } else {
+        const method = editingTransactionId ? "PATCH" : "POST";
+        const url = editingTransactionId
+          ? `/api/transactions?id=${editingTransactionId}`
+          : "/api/transactions";
+        // For a leg that STAYS a transfer only date/description are editable —
+        // amount/category fields are hidden and the account is locked.
+        const body =
+          transactionForm.direction === "transfer"
+            ? { date: transactionForm.date, description: transactionForm.description }
+            : transactionForm;
+        await requestJson(url, { method, body: JSON.stringify(body) });
+        // A linked leg switched back to Расход/Поступление: split the pair
+        // AFTER the field edits landed — a failed PATCH (e.g. bad amount)
+        // must not silently destroy the transfer.
+        if (
+          editingTransaction?.transferGroup &&
+          transactionForm.direction !== "transfer"
+        ) {
+          await requestJson(
+            `/api/transfers?group=${encodeURIComponent(editingTransaction.transferGroup)}`,
+            { method: "DELETE" }
+          );
+        }
+        setNotice(editingTransactionId ? "Операция обновлена" : "Операция добавлена");
+      }
       setEditingTransactionId(null);
       setFormOpen(false);
       setTransactionForm({
@@ -1288,6 +1456,9 @@ export default function MoneyCounter() {
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не сохранена");
+      // A multi-step save (PATCH + unlink) can fail half-way — resync the
+      // list with the DB instead of showing stale merged rows.
+      await refreshAfterMutation();
     } finally {
       setSaving(false);
     }
@@ -1324,7 +1495,11 @@ export default function MoneyCounter() {
     setTransactionForm({
       accountId: String(transaction.accountId),
       date: transaction.date,
-      direction: transaction.amountCents < 0 ? "expense" : "income",
+      direction: transaction.transferGroup
+        ? "transfer"
+        : transaction.amountCents < 0
+          ? "expense"
+          : "income",
       amount: centsToInputValue(Math.abs(transaction.amountCents)),
       description: transaction.description,
       category: transaction.category,
@@ -1341,6 +1516,89 @@ export default function MoneyCounter() {
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не удалена");
+    }
+  }
+
+  // Split a «Перемещение» back into two ordinary operations (their categories
+  // stay empty — re-categorize by hand or with rules).
+  async function unlinkTransfer(group: string) {
+    if (!window.confirm("Разъединить перемещение на две обычные операции?")) return;
+    try {
+      await requestJson(`/api/transfers?group=${encodeURIComponent(group)}`, {
+        method: "DELETE",
+      });
+      setNotice("Перемещение разъединено");
+      await refreshAfterMutation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось разъединить");
+    }
+  }
+
+  // «Найти переводы»: fetch conservative same-amount pair candidates and let
+  // the user confirm which to link.
+  async function openDetectTransfers() {
+    setSaving(true);
+    try {
+      const data = await requestJson<{ pairs: DetectPair[] }>("/api/transfers/detect");
+      setDetectPairs(data.pairs);
+      setDetectChecked(new Set(data.pairs.map((_, index) => index)));
+      setDetectOpen(true);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Поиск переводов не удался");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function toggleDetect(index: number) {
+    setDetectChecked((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  async function linkDetected() {
+    const pairs = (detectPairs ?? [])
+      .filter((_, index) => detectChecked.has(index))
+      .map((pair) => ({ outId: pair.out.id, inId: pair.incoming.id }));
+    if (pairs.length === 0) {
+      setDetectOpen(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      // Chunked: the server caps one batch at 200 pairs, and a multi-year
+      // history can detect more than that. Per-pair failures are surfaced,
+      // not swallowed.
+      let linked = 0;
+      const reasons: string[] = [];
+      for (let offset = 0; offset < pairs.length; offset += 100) {
+        const result = await requestJson<{
+          linked: number;
+          errors: Array<{ reason: string }>;
+        }>("/api/transfers", {
+          method: "POST",
+          body: JSON.stringify({ pairs: pairs.slice(offset, offset + 100) }),
+        });
+        linked += result.linked;
+        for (const err of result.errors ?? []) reasons.push(err.reason);
+      }
+      setNotice(
+        `Связано перемещений: ${linked}` +
+          (reasons.length > 0
+            ? `, пропущено ${reasons.length}: ${[...new Set(reasons)].join(", ")}`
+            : "")
+      );
+      setDetectOpen(false);
+      setDetectPairs(null);
+      await refreshAfterMutation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось связать");
+      await refreshAfterMutation();
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1579,6 +1837,32 @@ export default function MoneyCounter() {
     }
   }
 
+  // Apply ONE rule to every operation (overwriting categories where its
+  // pattern matches) — точечная переразметка without re-running all rules.
+  async function applyOneRule(rule: Rule) {
+    if (
+      !window.confirm(
+        `Применить правило «${rule.pattern}» → «${rule.category}» ко всем операциям? ` +
+          "Категория будет перезаписана везде, где совпадает шаблон."
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await requestJson<{ updated: number }>(
+        `/api/rules/apply?ruleId=${rule.id}`,
+        { method: "POST" }
+      );
+      setNotice(`Правило применено, обновлено операций: ${result.updated}`);
+      await refreshAfterMutation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось применить правило");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // --- render ---------------------------------------------------------------
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: "main", label: "Операции" },
@@ -1716,6 +2000,15 @@ export default function MoneyCounter() {
                     <option value="expense">Расходы</option>
                     <option value="income">Поступления</option>
                   </select>
+                  <button
+                    className="secondaryButton"
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void openDetectTransfers()}
+                    title="Найти пары расход+поступление, похожие на переводы между счетами"
+                  >
+                    Найти переводы
+                  </button>
                 </div>
 
                 <div className="tableWrap">
@@ -1743,56 +2036,106 @@ export default function MoneyCounter() {
                             <tr className="dayGroup">
                               <td colSpan={6}>{formatDayHeader(group.date)}</td>
                             </tr>
-                            {group.items.map((transaction) => (
-                              <tr key={transaction.id}>
-                                <td>{transaction.accountName}</td>
-                                <td>{transaction.description}</td>
-                                <td>{transaction.category || "—"}</td>
-                                <td
-                                  className={`amountCell ${
-                                    transaction.amountCents > 0 ? "positive" : ""
-                                  }`}
-                                >
-                                  {/* Expenses are plain black and shown without a
-                                      leading minus; only income is coloured (green). */}
-                                  {renderDisplayAmount(transaction)}
-                                </td>
-                                <td className="amountCell">
-                                  <span className="altAmount">{renderAccountAmount(transaction)}</span>
-                                </td>
-                                <td className="rowActions">
-                                  <button
-                                    className="iconButton small"
-                                    type="button"
-                                    onClick={() => startEditTransaction(transaction)}
-                                    title="Править"
-                                    aria-label="Править"
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      width="15"
-                                      height="15"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      aria-hidden="true"
+                            {group.items.map((row) =>
+                              row.kind === "transfer" ? (
+                                <tr key={`transfer-${row.out.transferGroup}`} className="transferRow">
+                                  <td>
+                                    {row.out.accountName} → {row.incoming.accountName}
+                                  </td>
+                                  <td>{row.out.description}</td>
+                                  <td>
+                                    <span className="transferBadge">⇄ перемещение</span>
+                                  </td>
+                                  <td className="amountCell">{renderDisplayAmount(row.out)}</td>
+                                  <td className="amountCell">
+                                    <span className="altAmount">
+                                      {row.out.accountCurrency === row.incoming.accountCurrency ? (
+                                        renderAccountAmount(row.out)
+                                      ) : (
+                                        <>
+                                          <Money
+                                            cents={Math.abs(row.out.amountCents)}
+                                            currency={row.out.accountCurrency}
+                                          />
+                                          {" → "}
+                                          <Money
+                                            cents={Math.abs(row.incoming.amountCents)}
+                                            currency={row.incoming.accountCurrency}
+                                          />
+                                        </>
+                                      )}
+                                    </span>
+                                  </td>
+                                  <td className="rowActions">
+                                    <button
+                                      className="iconButton small"
+                                      type="button"
+                                      onClick={() => startEditTransaction(row.out)}
+                                      title="Править"
+                                      aria-label="Править"
                                     >
-                                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    className="iconButton small danger"
-                                    type="button"
-                                    onClick={() => removeTransaction(transaction)}
-                                    title="Удалить"
+                                      <EditIcon />
+                                    </button>
+                                    <button
+                                      className="iconButton small"
+                                      type="button"
+                                      onClick={() =>
+                                        void unlinkTransfer(row.out.transferGroup ?? "")
+                                      }
+                                      title="Разъединить перемещение"
+                                      aria-label="Разъединить перемещение"
+                                    >
+                                      ✂
+                                    </button>
+                                  </td>
+                                </tr>
+                              ) : (
+                                <tr key={row.tx.id}>
+                                  <td>{row.tx.accountName}</td>
+                                  <td>{row.tx.description}</td>
+                                  <td>
+                                    {row.tx.transferGroup ? (
+                                      <span className="transferBadge">⇄ перемещение</span>
+                                    ) : (
+                                      row.tx.category || "—"
+                                    )}
+                                  </td>
+                                  <td
+                                    className={`amountCell ${
+                                      row.tx.amountCents > 0 && !row.tx.transferGroup
+                                        ? "positive"
+                                        : ""
+                                    }`}
                                   >
-                                    ×
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                                    {/* Expenses are plain black and shown without a
+                                        leading minus; only income is coloured (green). */}
+                                    {renderDisplayAmount(row.tx)}
+                                  </td>
+                                  <td className="amountCell">
+                                    <span className="altAmount">{renderAccountAmount(row.tx)}</span>
+                                  </td>
+                                  <td className="rowActions">
+                                    <button
+                                      className="iconButton small"
+                                      type="button"
+                                      onClick={() => startEditTransaction(row.tx)}
+                                      title="Править"
+                                      aria-label="Править"
+                                    >
+                                      <EditIcon />
+                                    </button>
+                                    <button
+                                      className="iconButton small danger"
+                                      type="button"
+                                      onClick={() => removeTransaction(row.tx)}
+                                      title="Удалить"
+                                    >
+                                      ×
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            )}
                           </Fragment>
                         ))
                       )}
@@ -1860,6 +2203,85 @@ export default function MoneyCounter() {
             </section>
           </div>
 
+          {detectOpen ? (
+            <div
+              className="modalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Найденные переводы"
+              onClick={() => setDetectOpen(false)}
+            >
+              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+                <div className="modalHead">
+                  <h2>
+                    Похоже на переводы{" "}
+                    <span className="countBadge">{detectPairs?.length ?? 0}</span>
+                  </h2>
+                  <button
+                    className="iconButton small"
+                    type="button"
+                    onClick={() => setDetectOpen(false)}
+                    title="Закрыть"
+                  >
+                    ×
+                  </button>
+                </div>
+                <p className="importHint">
+                  Пары «расход + поступление» с одинаковой суммой и валютой на разных
+                  счетах в пределах трёх дней. Отмеченные станут перемещениями и
+                  перестанут учитываться в доходах, расходах и категориях.
+                </p>
+                {(detectPairs ?? []).length === 0 ? (
+                  <p className="mutedBlock">Ничего похожего на переводы не нашлось.</p>
+                ) : (
+                  <ul className="partnerList detectList">
+                    {(detectPairs ?? []).map((pair, index) => (
+                      <li key={pair.out.id}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={detectChecked.has(index)}
+                            onChange={() => toggleDetect(index)}
+                          />
+                          <span className="partnerMain">
+                            <b>
+                              {pair.out.accountName} → {pair.incoming.accountName}
+                            </b>
+                            <small>
+                              {dmy(pair.out.date)}
+                              {pair.incoming.date !== pair.out.date
+                                ? ` → ${dmy(pair.incoming.date)}`
+                                : ""}{" "}
+                              · {pair.out.description || "—"}
+                            </small>
+                          </span>
+                          <span className="partnerAmount">
+                            <Money
+                              cents={Math.abs(pair.out.amountCents)}
+                              currency={pair.out.currency}
+                            />
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {(detectPairs ?? []).length > 0 ? (
+                  <div className="applyRow">
+                    <button
+                      className="primaryButton"
+                      type="button"
+                      disabled={saving || detectChecked.size === 0}
+                      onClick={() => void linkDetected()}
+                    >
+                      Связать выбранные ({detectChecked.size})
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           {formOpen ? (
             <div
               className="modalOverlay"
@@ -1879,9 +2301,13 @@ export default function MoneyCounter() {
                 <form className="transactionForm" onSubmit={handleSubmitTransaction}>
                   <label>
                     Счет
+                    {/* Locked in transfer mode: linking never moves a leg to
+                        another account, so an edit here would be discarded. */}
                     <select
                       required
-                      disabled={accounts.length === 0}
+                      disabled={
+                        accounts.length === 0 || transactionForm.direction === "transfer"
+                      }
                       value={transactionForm.accountId}
                       onChange={(event) =>
                         setTransactionForm({ ...transactionForm, accountId: event.target.value })
@@ -1897,9 +2323,15 @@ export default function MoneyCounter() {
                   </label>
                   <label>
                     Дата
+                    {/* Locked while PICKING a partner (linking does not save
+                        field edits); editable again once the leg is linked. */}
                     <input
                       required
                       type="date"
+                      disabled={
+                        transactionForm.direction === "transfer" &&
+                        !editingTransaction?.transferGroup
+                      }
                       value={transactionForm.date}
                       onChange={(event) =>
                         setTransactionForm({ ...transactionForm, date: event.target.value })
@@ -1919,53 +2351,147 @@ export default function MoneyCounter() {
                     >
                       <option value="expense">Расход</option>
                       <option value="income">Поступление</option>
-                    </select>
-                  </label>
-                  <label>
-                    Сумма
-                    <input
-                      required
-                      inputMode="decimal"
-                      value={transactionForm.amount}
-                      onChange={(event) =>
-                        setTransactionForm({ ...transactionForm, amount: event.target.value })
-                      }
-                    />
-                  </label>
-                  <label className="wideField">
-                    Описание
-                    <input
-                      value={transactionForm.description}
-                      onChange={(event) =>
-                        setTransactionForm({ ...transactionForm, description: event.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Категория
-                    <select
-                      value={transactionForm.category}
-                      onChange={(event) =>
-                        setTransactionForm({ ...transactionForm, category: event.target.value })
-                      }
-                    >
-                      <option value="">— без категории —</option>
-                      {transactionForm.category &&
-                      !categories.some((c) => c.name === transactionForm.category) ? (
-                        <option value={transactionForm.category}>
-                          {transactionForm.category}
-                        </option>
+                      {/* Linking is edit-only: a transfer is built from two
+                          EXISTING operations (e.g. imported statements). */}
+                      {editingTransactionId !== null ? (
+                        <option value="transfer">Перемещение между счетами</option>
                       ) : null}
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.name}>
-                          {category.name}
-                        </option>
-                      ))}
                     </select>
                   </label>
-                  <button className="primaryButton" disabled={saving || accounts.length === 0} type="submit">
+                  {transactionForm.direction === "transfer" ? (
+                    editingTransaction?.transferGroup ? (
+                      <>
+                        <p className="importHint wideField">
+                          Операция уже входит в перемещение: счёт и сумма фиксированы.
+                          Разъединить — кнопкой ✂ в списке, или выберите тип
+                          «Расход»/«Поступление» и сохраните.
+                        </p>
+                        <label className="wideField">
+                          Описание
+                          <input
+                            value={transactionForm.description}
+                            onChange={(event) =>
+                              setTransactionForm({
+                                ...transactionForm,
+                                description: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                      </>
+                    ) : (
+                      <div className="wideField partnerPicker">
+                        <p className="importHint">
+                          Выберите вторую операцию (другого знака, с другого счёта) —
+                          вместе они станут перемещением и уйдут из доходов, расходов
+                          и категорий. Кандидаты — в пределах ±7 дней; точные
+                          совпадения по сумме показаны первыми.
+                        </p>
+                        {partnerCandidates === null ? (
+                          <p className="mutedBlock">Загрузка…</p>
+                        ) : partnerCandidates.length === 0 ? (
+                          <p className="mutedBlock">
+                            Подходящих операций не нашлось (±7 дней от даты)
+                          </p>
+                        ) : (
+                          <ul className="partnerList">
+                            {partnerCandidates.map((cand) => (
+                              <li key={cand.id}>
+                                <label>
+                                  <input
+                                    type="radio"
+                                    name="transferPartner"
+                                    value={cand.id}
+                                    checked={partnerId === String(cand.id)}
+                                    onChange={() => setPartnerId(String(cand.id))}
+                                  />
+                                  <span className="partnerMain">
+                                    <b>{cand.accountName}</b>
+                                    <small>
+                                      {dmy(cand.date)} · {cand.description || "—"}
+                                    </small>
+                                  </span>
+                                  <span
+                                    className={`partnerAmount ${
+                                      cand.amountCents > 0 ? "positive" : ""
+                                    }`}
+                                  >
+                                    <Money
+                                      cents={Math.abs(cand.amountCents)}
+                                      currency={cand.accountCurrency}
+                                    />
+                                  </span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )
+                  ) : (
+                    <>
+                      <label>
+                        Сумма
+                        <input
+                          required
+                          inputMode="decimal"
+                          value={transactionForm.amount}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, amount: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="wideField">
+                        Описание
+                        <input
+                          value={transactionForm.description}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, description: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Категория
+                        <select
+                          value={transactionForm.category}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, category: event.target.value })
+                          }
+                        >
+                          <option value="">— без категории —</option>
+                          {transactionForm.category &&
+                          !categories.some((c) => c.name === transactionForm.category) ? (
+                            <option value={transactionForm.category}>
+                              {transactionForm.category}
+                            </option>
+                          ) : null}
+                          {categories.map((category) => (
+                            <option key={category.id} value={category.name}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                  <button
+                    className="primaryButton"
+                    disabled={
+                      saving ||
+                      accounts.length === 0 ||
+                      (transactionForm.direction === "transfer" &&
+                        !editingTransaction?.transferGroup &&
+                        !partnerId)
+                    }
+                    type="submit"
+                  >
                     <span>{editingTransactionId ? "✓" : "+"}</span>
-                    {editingTransactionId ? "Сохранить" : "Добавить"}
+                    {transactionForm.direction === "transfer" &&
+                    !editingTransaction?.transferGroup
+                      ? "Связать"
+                      : editingTransactionId
+                        ? "Сохранить"
+                        : "Добавить"}
                   </button>
                 </form>
 
@@ -2274,6 +2800,15 @@ export default function MoneyCounter() {
                             <small>→ {rule.category}</small>
                           </span>
                           <span className="rowActions">
+                            <button
+                              className="textButton ruleApplyButton"
+                              type="button"
+                              disabled={saving}
+                              title="Применить это правило ко всем операциям, включая уже размеченные"
+                              onClick={() => void applyOneRule(rule)}
+                            >
+                              ко всем
+                            </button>
                             <button
                               className="iconButton small"
                               type="button"

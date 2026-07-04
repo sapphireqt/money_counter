@@ -56,6 +56,7 @@ export async function ensureSchema() {
         amount_cents INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'cleared',
         notes TEXT NOT NULL DEFAULT '',
+        transfer_group TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -121,4 +122,22 @@ export async function ensureSchema() {
       "INSERT OR IGNORE INTO currencies (code) SELECT DISTINCT currency FROM accounts WHERE currency <> ''"
     ),
   ]);
+
+  // transfer_group arrived after the transactions table shipped, and CREATE
+  // TABLE IF NOT EXISTS never adds columns to an existing table — so ALTER and
+  // swallow the "duplicate column" error on every later run. The index is
+  // created here (not in the batch above) because on a pre-migration DB the
+  // column does not exist until the ALTER lands.
+  try {
+    await d1
+      .prepare("ALTER TABLE transactions ADD COLUMN transfer_group TEXT")
+      .run();
+  } catch {
+    // duplicate column name — already migrated
+  }
+  await d1
+    .prepare(
+      "CREATE INDEX IF NOT EXISTS transactions_transfer_group_idx ON transactions (transfer_group)"
+    )
+    .run();
 }

@@ -9,21 +9,33 @@ function toRouteErrorMessage(error: unknown) {
   return message;
 }
 
-// Apply every rule to transactions, matching against description and payee.
+// Apply rules to transactions, matching against description and payee.
 // By default only uncategorized transactions are touched; with ?overwrite=1 the
 // rules run over ALL transactions, overwriting the category wherever a rule
 // matches (transactions with no matching rule keep their current category).
+// With ?ruleId=N only that rule is applied — the per-rule «применить ко всем»
+// action, which implies overwrite. Transfer legs are never touched: a movement
+// between own accounts must not sit in a category.
 // Returns how many transactions were (re)categorized.
 export async function POST(request: Request) {
   try {
     await ensureSchema();
     const d1 = getD1();
-    const overwrite = new URL(request.url).searchParams.get("overwrite") === "1";
+    const params = new URL(request.url).searchParams;
+    const ruleId = Number(params.get("ruleId"));
+    const overwrite =
+      params.get("overwrite") === "1" || Number.isInteger(ruleId) && ruleId > 0;
 
     const ruleRows = await d1
-      .prepare("SELECT pattern, category FROM category_rules ORDER BY id")
-      .all<CategoryRule>();
-    const rules = ruleRows.results ?? [];
+      .prepare("SELECT id, pattern, category FROM category_rules ORDER BY id")
+      .all<CategoryRule & { id: number }>();
+    let rules = ruleRows.results ?? [];
+    if (Number.isInteger(ruleId) && ruleId > 0) {
+      rules = rules.filter((rule) => rule.id === ruleId);
+      if (rules.length === 0) {
+        return Response.json({ error: "Правило не найдено" }, { status: 404 });
+      }
+    }
 
     if (rules.length === 0) {
       return Response.json({ updated: 0 });
@@ -32,8 +44,8 @@ export async function POST(request: Request) {
     const txRows = await d1
       .prepare(
         overwrite
-          ? "SELECT id, description, payee, category FROM transactions"
-          : "SELECT id, description, payee, category FROM transactions WHERE category = '' OR category IS NULL"
+          ? "SELECT id, description, payee, category FROM transactions WHERE transfer_group IS NULL"
+          : "SELECT id, description, payee, category FROM transactions WHERE transfer_group IS NULL AND (category = '' OR category IS NULL)"
       )
       .all<{ id: number; description: string; payee: string; category: string }>();
 
