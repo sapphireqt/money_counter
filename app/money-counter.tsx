@@ -97,12 +97,17 @@ type AccountForm = {
 type TransactionForm = {
   accountId: string;
   date: string;
-  // "transfer" is edit-mode only: it switches the modal into the
-  // pick-a-partner flow (or marks an already linked leg).
+  // "transfer" in ADD mode creates a new linked pair (from/to accounts); in
+  // EDIT mode it switches the modal into the pick-a-partner flow (or marks
+  // an already linked leg).
   direction: "expense" | "income" | "transfer";
   amount: string;
   description: string;
   category: string;
+  // Transfer-only fields: the receiving account and (for cross-currency
+  // transfers) the amount that actually arrived, in its currency.
+  toAccountId: string;
+  amountIn: string;
 };
 
 type ImportPayloadRow = {
@@ -586,6 +591,8 @@ export default function MoneyCounter() {
     amount: "",
     description: "",
     category: "",
+    toAccountId: "",
+    amountIn: "",
   });
   // Pick-a-partner flow (edit modal, type «Перемещение»): opposite-sign
   // candidates around the edited operation's date, and the chosen partner.
@@ -1394,7 +1401,23 @@ export default function MoneyCounter() {
     event.preventDefault();
     setSaving(true);
     try {
-      if (
+      if (!editingTransactionId && transactionForm.direction === "transfer") {
+        // Add mode: create both linked legs in one atomic server call.
+        await requestJson("/api/transfers", {
+          method: "POST",
+          body: JSON.stringify({
+            create: {
+              fromAccountId: transactionForm.accountId,
+              toAccountId: transactionForm.toAccountId,
+              date: transactionForm.date,
+              amount: transactionForm.amount,
+              amountIn: transactionForm.amountIn,
+              description: transactionForm.description,
+            },
+          }),
+        });
+        setNotice("Перевод добавлен");
+      } else if (
         editingTransactionId &&
         transactionForm.direction === "transfer" &&
         !editingTransaction?.transferGroup
@@ -1452,6 +1475,8 @@ export default function MoneyCounter() {
         amount: "",
         description: "",
         category: "",
+        toAccountId: "",
+        amountIn: "",
       });
       await refreshAfterMutation();
     } catch (error) {
@@ -1473,6 +1498,8 @@ export default function MoneyCounter() {
       amount: "",
       description: "",
       category: "",
+      toAccountId: "",
+      amountIn: "",
     });
     setFormOpen(true);
   }
@@ -1487,6 +1514,8 @@ export default function MoneyCounter() {
       amount: "",
       description: "",
       category: "",
+      toAccountId: "",
+      amountIn: "",
     });
   }
 
@@ -1503,6 +1532,8 @@ export default function MoneyCounter() {
       amount: centsToInputValue(Math.abs(transaction.amountCents)),
       description: transaction.description,
       category: transaction.category,
+      toAccountId: "",
+      amountIn: "",
     });
     setActiveTab("main");
     setFormOpen(true);
@@ -2300,13 +2331,18 @@ export default function MoneyCounter() {
 
                 <form className="transactionForm" onSubmit={handleSubmitTransaction}>
                   <label>
-                    Счет
-                    {/* Locked in transfer mode: linking never moves a leg to
-                        another account, so an edit here would be discarded. */}
+                    {transactionForm.direction === "transfer" && !editingTransactionId
+                      ? "Со счёта"
+                      : "Счет"}
+                    {/* Locked in the EDIT transfer modes: linking never moves a
+                        leg to another account, so an edit here would be
+                        discarded. In ADD mode this is the source account. */}
                     <select
                       required
                       disabled={
-                        accounts.length === 0 || transactionForm.direction === "transfer"
+                        accounts.length === 0 ||
+                        (transactionForm.direction === "transfer" &&
+                          editingTransactionId !== null)
                       }
                       value={transactionForm.accountId}
                       onChange={(event) =>
@@ -2324,12 +2360,13 @@ export default function MoneyCounter() {
                   <label>
                     Дата
                     {/* Locked while PICKING a partner (linking does not save
-                        field edits); editable again once the leg is linked. */}
+                        field edits); editable in add mode and on linked legs. */}
                     <input
                       required
                       type="date"
                       disabled={
                         transactionForm.direction === "transfer" &&
+                        editingTransactionId !== null &&
                         !editingTransaction?.transferGroup
                       }
                       value={transactionForm.date}
@@ -2351,14 +2388,98 @@ export default function MoneyCounter() {
                     >
                       <option value="expense">Расход</option>
                       <option value="income">Поступление</option>
-                      {/* Linking is edit-only: a transfer is built from two
-                          EXISTING operations (e.g. imported statements). */}
-                      {editingTransactionId !== null ? (
-                        <option value="transfer">Перемещение между счетами</option>
-                      ) : null}
+                      {/* Add mode creates a new linked pair; edit mode links
+                          two EXISTING operations (e.g. imported statements). */}
+                      <option value="transfer">Перемещение между счетами</option>
                     </select>
                   </label>
-                  {transactionForm.direction === "transfer" ? (
+                  {transactionForm.direction === "transfer" && !editingTransactionId ? (
+                    <>
+                      <label>
+                        На счёт
+                        <select
+                          required
+                          value={transactionForm.toAccountId}
+                          onChange={(event) =>
+                            setTransactionForm({
+                              ...transactionForm,
+                              toAccountId: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Выберите счет</option>
+                          {accounts
+                            .filter((account) => String(account.id) !== transactionForm.accountId)
+                            .map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      {(() => {
+                        const fromCurrency = accounts.find(
+                          (account) => String(account.id) === transactionForm.accountId
+                        )?.currency;
+                        const toCurrency = accounts.find(
+                          (account) => String(account.id) === transactionForm.toAccountId
+                        )?.currency;
+                        const crossCurrency = Boolean(
+                          fromCurrency && toCurrency && fromCurrency !== toCurrency
+                        );
+                        return (
+                          <>
+                            <label>
+                              Сумма{fromCurrency ? ` (${fromCurrency})` : ""}
+                              <input
+                                required
+                                inputMode="decimal"
+                                value={transactionForm.amount}
+                                onChange={(event) =>
+                                  setTransactionForm({
+                                    ...transactionForm,
+                                    amount: event.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                            {/* Cross-currency: the user says how much actually
+                                arrived — the app never invents an FX rate for
+                                real money. */}
+                            {crossCurrency ? (
+                              <label>
+                                Зачислено ({toCurrency})
+                                <input
+                                  required
+                                  inputMode="decimal"
+                                  value={transactionForm.amountIn}
+                                  onChange={(event) =>
+                                    setTransactionForm({
+                                      ...transactionForm,
+                                      amountIn: event.target.value,
+                                    })
+                                  }
+                                />
+                              </label>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                      <label className="wideField">
+                        Описание
+                        <input
+                          placeholder="Перевод между счетами"
+                          value={transactionForm.description}
+                          onChange={(event) =>
+                            setTransactionForm({
+                              ...transactionForm,
+                              description: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                    </>
+                  ) : transactionForm.direction === "transfer" ? (
                     editingTransaction?.transferGroup ? (
                       <>
                         <p className="importHint wideField">
@@ -2480,6 +2601,7 @@ export default function MoneyCounter() {
                       saving ||
                       accounts.length === 0 ||
                       (transactionForm.direction === "transfer" &&
+                        editingTransactionId !== null &&
                         !editingTransaction?.transferGroup &&
                         !partnerId)
                     }
@@ -2487,6 +2609,7 @@ export default function MoneyCounter() {
                   >
                     <span>{editingTransactionId ? "✓" : "+"}</span>
                     {transactionForm.direction === "transfer" &&
+                    editingTransactionId !== null &&
                     !editingTransaction?.transferGroup
                       ? "Связать"
                       : editingTransactionId
