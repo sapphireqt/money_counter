@@ -378,8 +378,10 @@ td small {
   gap: 12px;
 }
 
+/* Two columns: fields pair up row by row (type|account, date|amount, …);
+   .wideField then spans the full row. */
 .transactionForm {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .formGrid {
@@ -539,15 +541,30 @@ select:focus {
 }
 
 .filters {
+  align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 150px 150px auto;
+  grid-template-columns: minmax(0, 1fr) 150px 170px 150px auto;
   margin-bottom: 12px;
+}
+
+/* Captioned filter control: a small muted label over the input/select. */
+.filterField {
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
 }
 
 .filters .secondaryButton {
   white-space: nowrap;
   width: auto;
+}
+
+@media (max-width: 1180px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .tableWrap {

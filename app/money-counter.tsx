@@ -576,6 +576,8 @@ export default function MoneyCounter() {
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  // Category name, "Без категории" for uncategorized, "" = no filter.
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -679,6 +681,27 @@ export default function MoneyCounter() {
     return map;
   }, [categories]);
 
+  // Options for the category filter: the reference book plus any category
+  // actually present in the loaded operations (older imports could write
+  // names past the book) plus the current selection, so it never vanishes
+  // from the list while active. Case-insensitive identity, like everywhere.
+  const categoryFilterOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const category of categories) {
+      names.set(category.name.toLowerCase(), category.name);
+    }
+    for (const tx of transactions) {
+      const name = tx.category.trim();
+      if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+    }
+    if (categoryFilter && categoryFilter !== "Без категории") {
+      if (!names.has(categoryFilter.toLowerCase())) {
+        names.set(categoryFilter.toLowerCase(), categoryFilter);
+      }
+    }
+    return [...names.values()].sort((a, b) => a.localeCompare(b, "ru"));
+  }, [categories, transactions, categoryFilter]);
+
   // --- data loading ---------------------------------------------------------
   const loadAccounts = useCallback(async () => {
     const data = await requestJson<{ accounts: Account[] }>("/api/accounts");
@@ -726,6 +749,7 @@ export default function MoneyCounter() {
       if (selectedAccountId !== "all") params.set("accountId", selectedAccountId);
       if (query.trim()) params.set("q", query.trim());
       if (typeFilter !== "all") params.set("type", typeFilter);
+      if (categoryFilter) params.set("category", categoryFilter);
       params.set("limit", "500");
 
       const data = await requestJson<{ transactions: Transaction[] }>(
@@ -735,7 +759,7 @@ export default function MoneyCounter() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось загрузить операции");
     }
-  }, [mainPeriod, selectedAccountId, query, typeFilter]);
+  }, [mainPeriod, selectedAccountId, query, typeFilter, categoryFilter]);
 
   const loadStats = useCallback(async () => {
     if (!chartCurrency) {
@@ -2004,33 +2028,55 @@ export default function MoneyCounter() {
                   </button>
                 </div>
                 <div className="filters">
-                  <input
-                    aria-label="Поиск"
-                    placeholder="Поиск"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                  <select
-                    aria-label="Счёт"
-                    value={selectedAccountId}
-                    onChange={(event) => setSelectedAccountId(event.target.value)}
-                  >
-                    <option value="all">Все счета</option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label="Тип операций"
-                    value={typeFilter}
-                    onChange={(event) => setTypeFilter(event.target.value)}
-                  >
-                    <option value="all">Все</option>
-                    <option value="expense">Расходы</option>
-                    <option value="income">Поступления</option>
-                  </select>
+                  <label className="filterField">
+                    Поиск
+                    <input
+                      placeholder="Описание, категория, счёт…"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                    />
+                  </label>
+                  <label className="filterField">
+                    Счёт
+                    <select
+                      value={selectedAccountId}
+                      onChange={(event) => setSelectedAccountId(event.target.value)}
+                    >
+                      <option value="all">Все счета</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="filterField">
+                    Категория
+                    <select
+                      value={categoryFilter}
+                      onChange={(event) => setCategoryFilter(event.target.value)}
+                    >
+                      <option value="">Все категории</option>
+                      <option value="Без категории">Без категории</option>
+                      {categoryFilterOptions.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="filterField">
+                    Тип операции
+                    <select
+                      value={typeFilter}
+                      onChange={(event) => setTypeFilter(event.target.value)}
+                    >
+                      <option value="all">Все</option>
+                      <option value="expense">Расходы</option>
+                      <option value="income">Поступления</option>
+                      <option value="transfer">Перемещения</option>
+                    </select>
+                  </label>
                   <button
                     className="secondaryButton"
                     type="button"
@@ -2333,52 +2379,10 @@ export default function MoneyCounter() {
                   </button>
                 </div>
 
+                {/* Two-column grid; the field set and pairing follow the type:
+                    ordinary — [Тип|Счёт][Дата|Сумма][Описание][Категория],
+                    transfer — [Тип|Дата][Со счёта|На счёт][Сумма|Зачислено]. */}
                 <form className="transactionForm" onSubmit={handleSubmitTransaction}>
-                  <label>
-                    {transactionForm.direction === "transfer" && !editingTransactionId
-                      ? "Со счёта"
-                      : "Счет"}
-                    {/* Locked in the EDIT transfer modes: linking never moves a
-                        leg to another account, so an edit here would be
-                        discarded. In ADD mode this is the source account. */}
-                    <select
-                      required
-                      disabled={
-                        accounts.length === 0 ||
-                        (transactionForm.direction === "transfer" &&
-                          editingTransactionId !== null)
-                      }
-                      value={transactionForm.accountId}
-                      onChange={(event) =>
-                        setTransactionForm({ ...transactionForm, accountId: event.target.value })
-                      }
-                    >
-                      <option value="">Выберите счет</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Дата
-                    {/* Locked while PICKING a partner (linking does not save
-                        field edits); editable in add mode and on linked legs. */}
-                    <input
-                      required
-                      type="date"
-                      disabled={
-                        transactionForm.direction === "transfer" &&
-                        editingTransactionId !== null &&
-                        !editingTransaction?.transferGroup
-                      }
-                      value={transactionForm.date}
-                      onChange={(event) =>
-                        setTransactionForm({ ...transactionForm, date: event.target.value })
-                      }
-                    />
-                  </label>
                   <label>
                     Тип
                     <select
@@ -2399,6 +2403,38 @@ export default function MoneyCounter() {
                   </label>
                   {transactionForm.direction === "transfer" && !editingTransactionId ? (
                     <>
+                      <label>
+                        Дата
+                        <input
+                          required
+                          type="date"
+                          value={transactionForm.date}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, date: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Со счёта
+                        <select
+                          required
+                          disabled={accounts.length === 0}
+                          value={transactionForm.accountId}
+                          onChange={(event) =>
+                            setTransactionForm({
+                              ...transactionForm,
+                              accountId: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Выберите счет</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <label>
                         На счёт
                         <select
@@ -2484,28 +2520,56 @@ export default function MoneyCounter() {
                       </label>
                     </>
                   ) : transactionForm.direction === "transfer" ? (
-                    editingTransaction?.transferGroup ? (
-                      <>
-                        <p className="importHint wideField">
-                          Операция уже входит в перемещение: счёт и сумма фиксированы.
-                          Разъединить — кнопкой ✂ в списке, или выберите тип
-                          «Расход»/«Поступление» и сохраните.
-                        </p>
-                        <label className="wideField">
-                          Описание
-                          <input
-                            value={transactionForm.description}
-                            onChange={(event) =>
-                              setTransactionForm({
-                                ...transactionForm,
-                                description: event.target.value,
-                              })
-                            }
-                          />
-                        </label>
-                      </>
-                    ) : (
-                      <div className="wideField partnerPicker">
+                    <>
+                      <label>
+                        Дата
+                        {/* Locked while PICKING a partner (linking does not
+                            save field edits); editable on a linked leg. */}
+                        <input
+                          required
+                          type="date"
+                          disabled={!editingTransaction?.transferGroup}
+                          value={transactionForm.date}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, date: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Счет
+                        {/* Locked: linking never moves a leg to another
+                            account, an edit here would be discarded. */}
+                        <select required disabled value={transactionForm.accountId}>
+                          <option value="">Выберите счет</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {editingTransaction?.transferGroup ? (
+                        <>
+                          <p className="importHint wideField">
+                            Операция уже входит в перемещение: счёт и сумма фиксированы.
+                            Разъединить — кнопкой ✂ в списке, или выберите тип
+                            «Расход»/«Поступление» и сохраните.
+                          </p>
+                          <label className="wideField">
+                            Описание
+                            <input
+                              value={transactionForm.description}
+                              onChange={(event) =>
+                                setTransactionForm({
+                                  ...transactionForm,
+                                  description: event.target.value,
+                                })
+                              }
+                            />
+                          </label>
+                        </>
+                      ) : (
+                        <div className="wideField partnerPicker">
                         <p className="importHint">
                           Выберите вторую операцию (другого знака, с другого счёта) —
                           вместе они станут перемещением и уйдут из доходов, расходов
@@ -2552,9 +2616,42 @@ export default function MoneyCounter() {
                           </ul>
                         )}
                       </div>
-                    )
+                      )}
+                    </>
                   ) : (
                     <>
+                      <label>
+                        Счет
+                        <select
+                          required
+                          disabled={accounts.length === 0}
+                          value={transactionForm.accountId}
+                          onChange={(event) =>
+                            setTransactionForm({
+                              ...transactionForm,
+                              accountId: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Выберите счет</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Дата
+                        <input
+                          required
+                          type="date"
+                          value={transactionForm.date}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, date: event.target.value })
+                          }
+                        />
+                      </label>
                       <label>
                         Сумма
                         <input

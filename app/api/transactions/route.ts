@@ -127,12 +127,33 @@ export async function GET(request: Request) {
       values.push(likeQuery, likeQuery, likeQuery, likeQuery);
     }
 
+    // Income/expense mean real money in/out, so transfer legs are excluded —
+    // they get their own explicit filter value instead.
     if (type === "income") {
-      conditions.push("t.amount_cents > 0");
+      conditions.push("t.amount_cents > 0 AND t.transfer_group IS NULL");
     }
 
     if (type === "expense") {
-      conditions.push("t.amount_cents < 0");
+      conditions.push("t.amount_cents < 0 AND t.transfer_group IS NULL");
+    }
+
+    if (type === "transfer") {
+      conditions.push("t.transfer_group IS NOT NULL");
+    }
+
+    // Category filter: exact name, case-insensitive. «Без категории» also
+    // matches the empty category, excluding transfer legs (their category is
+    // empty by design, not because they need attention).
+    const category = searchParams.get("category")?.trim();
+    if (category) {
+      if (category === "Без категории") {
+        conditions.push(
+          "(t.transfer_group IS NULL AND (t.category = '' OR LOWER(t.category) = LOWER(?)))"
+        );
+      } else {
+        conditions.push("LOWER(t.category) = LOWER(?)");
+      }
+      values.push(category);
     }
 
     if (from) {
