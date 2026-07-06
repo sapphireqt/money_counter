@@ -890,9 +890,18 @@ td {
 }
 
 .balName {
-  max-width: 84px;
+  max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balanceTable td + td,
+.balanceTable th + th {
+  padding-left: 6px;
+}
+
+.balanceTable .amountCell {
   white-space: nowrap;
 }
 
@@ -905,7 +914,7 @@ td {
 }
 
 .flowCell {
-  font-size: 12px;
+  font-size: 11.5px;
   white-space: nowrap;
 }
 
@@ -913,8 +922,20 @@ td {
   color: #c3ccd3;
 }
 
-/* Easter egg: hovering a converted balance reveals the native amount and the
-   exact conversion rate. No underline, no cursor change — you just know. */
+/* Converted balance with the native amount always visible beneath it. */
+.balStack {
+  display: grid;
+  justify-items: end;
+  white-space: nowrap;
+}
+
+.balNative {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Easter egg: hovering a converted balance reveals the exact conversion
+   rate and its date. No underline, no cursor change — you just know. */
 .ratesPeek {
   position: relative;
 }

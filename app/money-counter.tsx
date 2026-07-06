@@ -2413,20 +2413,28 @@ export default function MoneyCounter() {
                       <tr key={account.id}>
                         <td className="balName">{account.name}</td>
                         <td className="amountCell">
-                          {/* Easter egg: hovering the figure reveals the native
-                              amount and the exact rate it converts at. */}
+                          {/* Converted on top, the ALWAYS-VISIBLE native amount
+                              beneath. Easter egg: hovering reveals the exact
+                              conversion rate and its date. */}
                           <span className="ratesPeek">
-                            {renderAccountBalance(account)}
-                            {displayCurrency && account.currency !== displayCurrency ? (
-                              <span className="ratesPop">
-                                <Money
-                                  cents={account.balanceCents}
-                                  currency={account.currency}
-                                />
-                                {rateInfo(account.currency)
-                                  ? ` · ${rateInfo(account.currency)}`
-                                  : ""}
-                              </span>
+                            <span className="balStack">
+                              {/* Wrapped in a span: Money renders a Fragment of
+                                  text parts, and bare parts would each become
+                                  their own grid item (the € on its own row). */}
+                              <span>{renderAccountBalance(account)}</span>
+                              {displayCurrency && account.currency !== displayCurrency ? (
+                                <small className="balNative">
+                                  <Money
+                                    cents={account.balanceCents}
+                                    currency={account.currency}
+                                  />
+                                </small>
+                              ) : null}
+                            </span>
+                            {displayCurrency &&
+                            account.currency !== displayCurrency &&
+                            rateInfo(account.currency) ? (
+                              <span className="ratesPop">{rateInfo(account.currency)}</span>
                             ) : null}
                           </span>
                         </td>
