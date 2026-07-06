@@ -106,7 +106,7 @@ export async function GET(request: Request) {
     const sql = `${accountSelect} ${joinFilter}
          WHERE a.archived_at IS NULL
          GROUP BY a.id
-         ORDER BY LOWER(a.name), a.id`;
+         ORDER BY a.sort_order, LOWER(a.name), a.id`;
     const statement = getD1().prepare(sql);
     const rows = await (asOf ? statement.bind(asOf) : statement).all<AccountRow>();
 

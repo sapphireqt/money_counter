@@ -32,7 +32,7 @@ export async function GET() {
   try {
     await ensureSchema();
     const rows = await getD1()
-      .prepare("SELECT id, name, color FROM categories ORDER BY LOWER(name)")
+      .prepare("SELECT id, name, color FROM categories ORDER BY sort_order, LOWER(name)")
       .all<CategoryRow>();
     return Response.json({ categories: rows.results ?? [] });
   } catch (error) {

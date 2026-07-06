@@ -36,6 +36,7 @@ export async function ensureSchema() {
         type TEXT NOT NULL DEFAULT 'checking',
         opening_balance_cents INTEGER NOT NULL DEFAULT 0,
         color TEXT NOT NULL DEFAULT '#2563eb',
+        sort_order INTEGER NOT NULL DEFAULT 9999,
         archived_at TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -77,6 +78,7 @@ export async function ensureSchema() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         color TEXT NOT NULL DEFAULT '#2563eb',
+        sort_order INTEGER NOT NULL DEFAULT 9999,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `),
@@ -144,6 +146,19 @@ export async function ensureSchema() {
       .run();
   } catch {
     // duplicate column name — already migrated
+  }
+  // Custom manual ordering for the reference lists (Настройки, drag-and-drop).
+  // 9999 = "not ordered yet": such rows fall back to the alphabetical tail.
+  for (const table of ["accounts", "categories"]) {
+    try {
+      await d1
+        .prepare(
+          `ALTER TABLE ${table} ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 9999`
+        )
+        .run();
+    } catch {
+      // duplicate column name — already migrated
+    }
   }
   await d1
     .prepare(

@@ -19,6 +19,8 @@ export const accounts = sqliteTable(
     type: text("type").notNull().default("checking"),
     openingBalanceCents: integer("opening_balance_cents").notNull().default(0),
     color: text("color").notNull().default("#2563eb"),
+    // Manual order from Настройки (drag-and-drop); 9999 = alphabetical tail.
+    sortOrder: integer("sort_order").notNull().default(9999),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -67,6 +69,8 @@ export const categories = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
     color: text("color").notNull().default("#2563eb"),
+    // Manual order from Настройки (drag-and-drop); 9999 = alphabetical tail.
+    sortOrder: integer("sort_order").notNull().default(9999),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [uniqueIndex("categories_name_idx").on(table.name)]

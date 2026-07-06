@@ -367,38 +367,50 @@ function CategoryPie({
 // longest bar's label lands at the panel's right edge.
 function CategoryBars({
   items,
+  uncategorized,
   currency,
 }: {
   items: Array<{ label: string; cents: number; share: number; color: string }>;
+  uncategorized: { label: string; cents: number; share: number; color: string } | null;
   currency: string;
 }) {
-  if (items.length === 0) {
+  const all = uncategorized ? [...items, uncategorized] : items;
+  if (all.length === 0) {
     return <div className="emptyBars">Нет расходов за период</div>;
   }
-  const largest = items[0].cents;
+  // Bars scale to the single largest value — including «Без категории», so
+  // lengths stay comparable across the divider.
+  const largest = Math.max(...all.map((item) => item.cents));
+  const renderRow = (item: (typeof all)[number]) => (
+    <div
+      key={item.label}
+      className="catBarRow"
+      title={`${item.label} — ${formatMoney(item.cents, currency)}`}
+    >
+      <span className="catBarLabel">{item.label}</span>
+      <span className="catBarTrack">
+        <span
+          className="catBarFill"
+          style={{
+            width: `calc((100% - 44px) * ${Math.max(item.cents / largest, 0.02).toFixed(4)})`,
+            background: item.color,
+          }}
+        />
+        <span className="catBarPct">
+          {item.share < 0.5 ? "<1%" : `${Math.round(item.share)}%`}
+        </span>
+      </span>
+    </div>
+  );
   return (
     <div className="catBars">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="catBarRow"
-          title={`${item.label} — ${formatMoney(item.cents, currency)}`}
-        >
-          <span className="catBarLabel">{item.label}</span>
-          <span className="catBarTrack">
-            <span
-              className="catBarFill"
-              style={{
-                width: `calc((100% - 44px) * ${Math.max(item.cents / largest, 0.02).toFixed(4)})`,
-                background: item.color,
-              }}
-            />
-            <span className="catBarPct">
-              {item.share < 0.5 ? "<1%" : `${Math.round(item.share)}%`}
-            </span>
-          </span>
-        </div>
-      ))}
+      {items.map(renderRow)}
+      {uncategorized ? (
+        <>
+          {items.length > 0 ? <div className="catBarsDivider" /> : null}
+          {renderRow(uncategorized)}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -695,20 +707,26 @@ export default function MoneyCounter() {
   // names past the book) plus the current selection, so it never vanishes
   // from the list while active. Case-insensitive identity, like everywhere.
   const categoryFilterOptions = useMemo(() => {
+    // Reference-book names first, in their manual order; names seen only in
+    // the loaded operations follow as an alphabetical tail.
     const names = new Map<string, string>();
     for (const category of categories) {
       names.set(category.name.toLowerCase(), category.name);
     }
+    const extras = new Map<string, string>();
     for (const tx of transactions) {
       const name = tx.category.trim();
-      if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+      if (name && !names.has(name.toLowerCase())) extras.set(name.toLowerCase(), name);
     }
     if (categoryFilter && categoryFilter !== "Без категории") {
       if (!names.has(categoryFilter.toLowerCase())) {
-        names.set(categoryFilter.toLowerCase(), categoryFilter);
+        extras.set(categoryFilter.toLowerCase(), categoryFilter);
       }
     }
-    return [...names.values()].sort((a, b) => a.localeCompare(b, "ru"));
+    return [
+      ...names.values(),
+      ...[...extras.values()].sort((a, b) => a.localeCompare(b, "ru")),
+    ];
   }, [categories, transactions, categoryFilter]);
 
   // --- data loading ---------------------------------------------------------
@@ -894,15 +912,18 @@ export default function MoneyCounter() {
       .filter((row) => row.cents > 0)
       .sort((a, b) => b.cents - a.cents);
     const total = rows.reduce((sum, row) => sum + row.cents, 0);
+    const items = rows.map((row, index) => ({
+      ...row,
+      share: total > 0 ? (row.cents / total) * 100 : 0,
+      color:
+        row.label === "Без категории"
+          ? "#94a3b8"
+          : colorByCategory.get(row.label) ?? palette[index % palette.length],
+    }));
+    // «Без категории» renders below a divider, after the real categories.
     return {
-      items: rows.map((row, index) => ({
-        ...row,
-        share: total > 0 ? (row.cents / total) * 100 : 0,
-        color:
-          row.label === "Без категории"
-            ? "#94a3b8"
-            : colorByCategory.get(row.label) ?? palette[index % palette.length],
-      })),
+      items: items.filter((item) => item.label !== "Без категории"),
+      uncategorized: items.find((item) => item.label === "Без категории") ?? null,
       missing: [...missing],
     };
   }, [transactions, periodRates, displayCurrency, colorByCategory]);
@@ -1680,6 +1701,51 @@ export default function MoneyCounter() {
     }
   }
 
+  // --- manual ordering (Настройки, drag-and-drop) -------------------------
+  const [dragAccountId, setDragAccountId] = useState<number | null>(null);
+  const [dragCategoryId, setDragCategoryId] = useState<number | null>(null);
+
+  function movedList<T extends { id: number }>(list: T[], draggedId: number, targetId: number): T[] {
+    const fromIndex = list.findIndex((item) => item.id === draggedId);
+    const toIndex = list.findIndex((item) => item.id === targetId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return list;
+    const next = [...list];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    return next;
+  }
+
+  // Optimistic: the list reorders immediately, the server persists indices;
+  // on failure the lists reload from the DB. The order drives every account/
+  // category dropdown and the «Счета» panel.
+  async function persistOrder(kind: "accounts" | "categories", ids: number[]) {
+    try {
+      await requestJson(`/api/${kind}/reorder`, {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось сохранить порядок");
+      await reloadMeta();
+    }
+  }
+
+  function dropAccount(targetId: number) {
+    if (dragAccountId === null || dragAccountId === targetId) return;
+    const next = movedList(accounts, dragAccountId, targetId);
+    setAccounts(next);
+    setDragAccountId(null);
+    void persistOrder("accounts", next.map((account) => account.id));
+  }
+
+  function dropCategory(targetId: number) {
+    if (dragCategoryId === null || dragCategoryId === targetId) return;
+    const next = movedList(categories, dragCategoryId, targetId);
+    setCategories(next);
+    setDragCategoryId(null);
+    void persistOrder("categories", next.map((category) => category.id));
+  }
+
   function resetAccountForm() {
     setEditingAccountId(null);
     setAccountForm({
@@ -2322,7 +2388,11 @@ export default function MoneyCounter() {
               {periodRates === null ? (
                 <div className="emptyBars">…</div>
               ) : (
-                <CategoryBars items={categoryBars.items} currency={displayCurrency} />
+                <CategoryBars
+                  items={categoryBars.items}
+                  uncategorized={categoryBars.uncategorized}
+                  currency={displayCurrency}
+                />
               )}
             </section>
             </aside>
@@ -3003,7 +3073,16 @@ export default function MoneyCounter() {
                 ) : (
                   <ul className="settingsList">
                     {accounts.map((account) => (
-                      <li key={account.id}>
+                      <li
+                        key={account.id}
+                        draggable
+                        onDragStart={() => setDragAccountId(account.id)}
+                        onDragEnd={() => setDragAccountId(null)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => dropAccount(account.id)}
+                        className={dragAccountId === account.id ? "dragging" : ""}
+                      >
+                        <span className="dragHandle" title="Перетащите, чтобы изменить порядок">⠿</span>
                         <span className="accountDot" style={{ background: account.color }} />
                         <span className="settingsListMain">
                           <b>{account.name}</b>
@@ -3057,7 +3136,16 @@ export default function MoneyCounter() {
                   ) : (
                     <ul className="settingsList">
                       {categories.map((category) => (
-                        <li key={category.id}>
+                        <li
+                          key={category.id}
+                          draggable
+                          onDragStart={() => setDragCategoryId(category.id)}
+                          onDragEnd={() => setDragCategoryId(null)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => dropCategory(category.id)}
+                          className={dragCategoryId === category.id ? "dragging" : ""}
+                        >
+                          <span className="dragHandle" title="Перетащите, чтобы изменить порядок">⠿</span>
                           <span className="accountDot" style={{ background: category.color }} />
                           <span className="settingsListMain">
                             <b>{category.name}</b>

@@ -248,12 +248,19 @@ h2 {
   width: auto;
 }
 
+/* Sticky: the summary cards pin to the top while the operations list
+   scrolls; the background hides rows passing underneath the card gaps. */
 .summaryGrid {
+  background: var(--background);
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 0 auto 16px;
+  margin: 0 auto;
   max-width: 1540px;
+  padding-bottom: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 
 @media (max-width: 1100px) {
@@ -820,6 +827,30 @@ td {
   white-space: nowrap;
 }
 
+/* «Без категории» sits below the real categories, past this divider. */
+.catBarsDivider {
+  border-top: 1px solid var(--line);
+  margin: 4px 0;
+}
+
+/* Drag-and-drop ordering in Настройки. */
+.settingsList li {
+  cursor: grab;
+}
+
+.settingsList li.dragging {
+  background: var(--surface-strong);
+  opacity: 0.6;
+}
+
+.dragHandle {
+  color: #c3ccd3;
+  cursor: grab;
+  flex: 0 0 auto;
+  font-size: 13px;
+  user-select: none;
+}
+
 .balanceTable {
   min-width: 0;
   width: 100%;
@@ -998,6 +1029,19 @@ dd {
   .rightRail {
     grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Sticky right rail (wide screens only — below 1180px it moves under the main
+   column, where pinning makes no sense). Pinned below the stuck summary
+   cards; taller-than-viewport content scrolls inside the rail itself. */
+@media (min-width: 1181px) {
+  .workspace.twoCol .rightRail {
+    align-content: start;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+    position: sticky;
+    top: 124px;
   }
 }
 
