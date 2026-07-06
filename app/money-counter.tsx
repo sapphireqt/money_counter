@@ -1243,6 +1243,39 @@ export default function MoneyCounter() {
     return <Money cents={account.balanceCents} currency={account.currency} />;
   };
 
+  // --- rates debug panel -----------------------------------------------------
+  // The exact numbers conversion runs on: 1 unit of an account currency in the
+  // display currency, straight from the same USD-based maps the cards and the
+  // «Счета» panel use. One column per distinct rate date.
+  const rateDebugColumns = (() => {
+    const periodDate = `${mainPeriod}-01`;
+    const columns = [{ date: periodDate, label: "операции", rates: periodRates }];
+    if (panelRateDate !== periodDate) {
+      columns.push({ date: panelRateDate, label: "счета", rates: panelRates });
+    }
+    return columns;
+  })();
+  const rateDebugCurrencies = currencyOptions.filter(
+    (code) => code !== displayCurrency
+  );
+
+  const renderDebugRate = (
+    rates: Record<string, number> | null,
+    code: string,
+    dateIso: string
+  ): ReactNode => {
+    if (!displayCurrency) return "—";
+    if (rates === null) return "…";
+    const rateTo = rates[displayCurrency];
+    const rateFrom = rates[code];
+    if (rateTo == null || rateFrom == null) {
+      return <Flagged reason={`Нет курса ${code} на ${dmy(dateIso)}`}>—</Flagged>;
+    }
+    return (rateTo / rateFrom).toLocaleString("ru-RU", {
+      maximumSignificantDigits: 5,
+    });
+  };
+
   const chartBars = useMemo(() => {
     const monthly = stats?.monthly ?? [];
     const largest = Math.max(1, ...monthly.flatMap((m) => [m.income, m.expense]));
@@ -2393,6 +2426,42 @@ export default function MoneyCounter() {
                   uncategorized={categoryBars.uncategorized}
                   currency={displayCurrency}
                 />
+              )}
+            </section>
+
+            <section className="surface categoryPanel" aria-label="Курсы конвертации">
+              <h2>Курсы</h2>
+              <p className="panelNote">
+                Отладка: чем конвертируются суммы в {displayCurrency || "…"}
+              </p>
+              {rateDebugCurrencies.length === 0 ? (
+                <p className="mutedBlock">Все счета уже в валюте отображения</p>
+              ) : (
+                <table className="ratesDebug">
+                  <thead>
+                    <tr>
+                      <th />
+                      {rateDebugColumns.map((column) => (
+                        <th key={column.date} title={`Курс на ${dmy(column.date)}`}>
+                          {dmy(column.date)}
+                          <small>{column.label}</small>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rateDebugCurrencies.map((code) => (
+                      <tr key={code}>
+                        <td className="pair">1 {code} → {displayCurrency}</td>
+                        {rateDebugColumns.map((column) => (
+                          <td key={column.date}>
+                            {renderDebugRate(column.rates, code, column.date)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </section>
             </aside>

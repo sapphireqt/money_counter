@@ -833,6 +833,41 @@ td {
   margin: 4px 0;
 }
 
+/* Rates debug panel: 1 <currency> -> display currency, per rate date.
+   min-width overrides the global `table { min-width: 760px }`. */
+.ratesDebug {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  min-width: 0;
+  width: 100%;
+}
+
+.ratesDebug th {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 0 0 6px;
+  text-align: right;
+}
+
+.ratesDebug th small {
+  display: block;
+  font-weight: 400;
+}
+
+.ratesDebug td {
+  border-top: 1px solid var(--surface-strong);
+  padding: 4px 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ratesDebug td.pair {
+  color: var(--muted-strong);
+  text-align: left;
+  white-space: nowrap;
+}
+
 /* Drag-and-drop ordering in Настройки. */
 .settingsList li {
   cursor: grab;
@@ -1038,6 +1073,9 @@ dd {
 @media (min-width: 1181px) {
   .workspace.twoCol .rightRail {
     align-content: start;
+    /* An overflow container stops clamping auto grid tracks to its own width
+       (children blow up to max-content) — pin the single column explicitly. */
+    grid-template-columns: minmax(0, 1fr);
     max-height: calc(100vh - 140px);
     overflow-y: auto;
     position: sticky;
