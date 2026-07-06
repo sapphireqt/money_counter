@@ -1233,19 +1233,19 @@ export default function MoneyCounter() {
     return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
   };
 
-  // Easter-egg popup on a balance figure: the native amount plus the exact
-  // rate it converts at. Plain text line; empty string = nothing to show.
+  // Easter-egg popup on the native-currency figure: just the exact rate it
+  // converts at. Plain text line; empty string = nothing to show.
   const rateInfo = (code: string): string => {
     if (!displayCurrency || periodRates === null) return "";
     const rateTo = periodRates[displayCurrency];
     const rateFrom = periodRates[code];
     if (rateTo == null || rateFrom == null) {
-      return `нет курса ${code} на ${dmy(periodRateDate)}`;
+      return `нет курса ${code}`;
     }
     const rate = (rateTo / rateFrom).toLocaleString("ru-RU", {
       maximumSignificantDigits: 5,
     });
-    return `1 ${code} = ${rate} ${displayCurrency} · ${dmy(periodRateDate)}`;
+    return `1 ${code} = ${rate} ${displayCurrency}`;
   };
 
   // Per-account money in/out over the loaded period, per currency. Transfer
@@ -2413,28 +2413,26 @@ export default function MoneyCounter() {
                     panelAccounts.map((account) => (
                       <tr key={account.id}>
                         <td className="balName">{account.name}</td>
+                        <td className="amountCell">{renderAccountBalance(account)}</td>
                         <td className="amountCell">
-                          {/* Easter egg: hovering the converted figure reveals
-                              the exact conversion rate and its date. */}
+                          {/* Easter egg: hovering the native figure reveals the
+                              exact conversion rate. */}
                           <span className="ratesPeek">
-                            <span>{renderAccountBalance(account)}</span>
+                            <span className="altAmount">
+                              {displayCurrency && account.currency !== displayCurrency ? (
+                                <Money
+                                  cents={account.balanceCents}
+                                  currency={account.currency}
+                                />
+                              ) : (
+                                "—"
+                              )}
+                            </span>
                             {displayCurrency &&
                             account.currency !== displayCurrency &&
                             rateInfo(account.currency) ? (
                               <span className="ratesPop">{rateInfo(account.currency)}</span>
                             ) : null}
-                          </span>
-                        </td>
-                        <td className="amountCell">
-                          <span className="altAmount">
-                            {displayCurrency && account.currency !== displayCurrency ? (
-                              <Money
-                                cents={account.balanceCents}
-                                currency={account.currency}
-                              />
-                            ) : (
-                              "—"
-                            )}
                           </span>
                         </td>
                         <td className="amountCell flowCell">
