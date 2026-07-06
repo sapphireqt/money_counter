@@ -576,19 +576,19 @@ export default function MoneyCounter() {
   const [chartTo, setChartTo] = useState(monthKey(today()));
   const [chartCurrency, setChartCurrency] = useState("");
 
-  // Currency the summary cards are shown in (persisted in localStorage). The
-  // balance uses the current month's first-day rate; period income/expense use
-  // the selected period's first-day rate. null rate map = not loaded yet.
+  // Currency the summary cards are shown in (persisted in localStorage).
+  // ONE rate map per view (null = not loaded yet): the last day of the
+  // selected past month, or the last day of the PREVIOUS month when the
+  // current month is shown — so rates never move during a month and every
+  // number of the period (cards, rows, panel) converts at the same date.
   const [displayCurrency, setDisplayCurrency] = useState("");
-  const [balanceRates, setBalanceRates] = useState<Record<string, number> | null>(null);
   const [periodRates, setPeriodRates] = useState<Record<string, number> | null>(null);
   // Per-currency account balances as of the start of the selected period
   // (null = loading), for the "Баланс на начало периода" card.
   const [startTotals, setStartTotals] = useState<Record<string, number> | null>(null);
   // Historical view of a past period: account balances as of the period end
-  // and the period's last-day rates (null = loading or the period is current).
+  // (null = loading or the period is current).
   const [endAccounts, setEndAccounts] = useState<Account[] | null>(null);
-  const [endRates, setEndRates] = useState<Record<string, number> | null>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [query, setQuery] = useState("");
@@ -689,6 +689,12 @@ export default function MoneyCounter() {
   // converted at the period's last-day rate. Everything stays editable —
   // edits simply recalculate the historical numbers.
   const pastPeriod = mainPeriod < currentMonth;
+
+  // The single conversion-rate date for everything on screen (see the
+  // periodRates comment above).
+  const periodRateDate = pastPeriod
+    ? monthEnd(mainPeriod)
+    : monthEnd(addMonths(currentMonth, -1));
 
   const currencyOptions = useMemo(() => {
     const set = new Set<string>();
@@ -889,8 +895,8 @@ export default function MoneyCounter() {
   }, [transactions]);
 
   // The period's expenses per category for the bars under the «Счета» panel,
-  // converted to the display currency at the period's first-day rate (same as
-  // the cards, so the bar total reconciles with «Расходы периода»), sorted
+  // converted to the display currency at the single view rate (same as the
+  // cards, so the bar total reconciles with «Расходы периода»), sorted
   // largest-first. Currencies with no rate are collected for a flagged note.
   const categoryBars = useMemo(() => {
     const perCategory = new Map<string, Record<string, number>>();
@@ -1026,24 +1032,25 @@ export default function MoneyCounter() {
     if (displayCurrency) window.localStorage.setItem("mc.displayCurrency", displayCurrency);
   }, [displayCurrency]);
 
-  // Fetch the two rate maps: current month's 1st (balance) and the selected
-  // period's 1st (income/expense). A single request when the dates coincide.
+  // Fetch the view's rate map; late responses are dropped so quick period
+  // switches never leave another month's rates applied.
   useEffect(() => {
-    if (!displayCurrency) return;
-    const balanceDate = `${currentMonth}-01`;
-    const periodDate = `${mainPeriod}-01`;
+    let cancelled = false;
     void (async () => {
+      setPeriodRates(null);
+      if (!displayCurrency) return;
       try {
-        const balance = await loadRates(balanceDate);
-        setBalanceRates(balance);
-        setPeriodRates(periodDate === balanceDate ? balance : await loadRates(periodDate));
+        const rates = await loadRates(periodRateDate);
+        if (!cancelled) setPeriodRates(rates);
       } catch {
         // Loaded-but-empty: conversion flags every non-target currency.
-        setBalanceRates({});
-        setPeriodRates({});
+        if (!cancelled) setPeriodRates({});
       }
     })();
-  }, [displayCurrency, currentMonth, mainPeriod, loadRates]);
+    return () => {
+      cancelled = true;
+    };
+  }, [displayCurrency, periodRateDate, loadRates]);
 
   // Account balances as of the start of the selected period (opening + every
   // transaction before the 1st). Refetched on period change or after a mutation
@@ -1068,15 +1075,12 @@ export default function MoneyCounter() {
 
   // Historical view data for a past period: balances as of the period end
   // (asOf is exclusive, so the next month's 1st includes every transaction of
-  // the period) and the period's last-day rates. `accounts` is a dependency so
-  // the numbers refresh after any mutation. State is cleared up front and late
-  // responses are dropped (`cancelled`), so quickly switching between months
-  // never shows one month's balances converted at another month's rates.
+  // the period). `accounts` is a dependency so the numbers refresh after any
+  // mutation. State is cleared up front and late responses are dropped.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       setEndAccounts(null);
-      setEndRates(null);
       if (!pastPeriod) return;
       try {
         const data = await requestJson<{ accounts: Account[] }>(
@@ -1090,27 +1094,20 @@ export default function MoneyCounter() {
           );
         }
       }
-      try {
-        const rates = await loadRates(monthEnd(mainPeriod));
-        if (!cancelled) setEndRates(rates);
-      } catch {
-        if (!cancelled) setEndRates({});
-      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [pastPeriod, mainPeriod, loadRates, accounts]);
+  }, [pastPeriod, mainPeriod, accounts]);
 
-  // The «Счета» panel shows live balances at the current month's first-day
-  // rates — or, for a past period, the historical end-of-period state:
-  // balances as of the period's last transaction at the period-end rate.
+  // The «Счета» panel shows live balances — or, for a past period, the
+  // historical end-of-period state. Conversion shares the single view rate.
   const panelAccounts = useMemo(
     () => (pastPeriod ? endAccounts ?? [] : accounts),
     [pastPeriod, endAccounts, accounts]
   );
-  const panelRates = pastPeriod ? endRates : balanceRates;
-  const panelRateDate = pastPeriod ? monthEnd(mainPeriod) : `${currentMonth}-01`;
+  const panelRates = periodRates;
+  const panelRateDate = periodRateDate;
   const panelTotals = useMemo(() => {
     return panelAccounts.reduce<Record<string, number>>((totals, account) => {
       totals[account.currency] = (totals[account.currency] ?? 0) + account.balanceCents;
@@ -1199,7 +1196,7 @@ export default function MoneyCounter() {
   };
 
   // The operation amount in the display currency (the constant selector choice).
-  // Conversion uses the period's first-day rate (periodRates), so rows reconcile
+  // Conversion uses the single view rate (periodRates), so rows reconcile
   // with the summary cards. Falls back to the raw amount when no display currency
   // is set, to "…" while rates load, and to a flagged "—" when no rate exists.
   const renderDisplayAmount = (transaction: Transaction): ReactNode => {
@@ -1212,7 +1209,7 @@ export default function MoneyCounter() {
     const rateTo = periodRates[displayCurrency];
     const rateFrom = periodRates[account];
     if (rateTo == null || rateFrom == null) {
-      return <Flagged reason={`Нет курса ${account} на ${dmy(`${mainPeriod}-01`)}`}>—</Flagged>;
+      return <Flagged reason={`Нет курса ${account} на ${dmy(periodRateDate)}`}>—</Flagged>;
     }
     return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
   };
@@ -1236,44 +1233,66 @@ export default function MoneyCounter() {
     return <Money cents={Math.round((cents * rateTo) / rateFrom)} currency={displayCurrency} />;
   };
 
-  // The same balance in the account's own currency (secondary column); empty
-  // when it already equals the display currency.
-  const renderAccountBalanceNative = (account: Account): ReactNode => {
-    if (!displayCurrency || account.currency === displayCurrency) return "—";
-    return <Money cents={account.balanceCents} currency={account.currency} />;
-  };
-
-  // --- rates debug panel -----------------------------------------------------
-  // The exact numbers conversion runs on: 1 unit of an account currency in the
-  // display currency, straight from the same USD-based maps the cards and the
-  // «Счета» panel use. One column per distinct rate date.
-  const rateDebugColumns = (() => {
-    const periodDate = `${mainPeriod}-01`;
-    const columns = [{ date: periodDate, label: "операции", rates: periodRates }];
-    if (panelRateDate !== periodDate) {
-      columns.push({ date: panelRateDate, label: "счета", rates: panelRates });
-    }
-    return columns;
-  })();
-  const rateDebugCurrencies = currencyOptions.filter(
-    (code) => code !== displayCurrency
-  );
-
-  const renderDebugRate = (
-    rates: Record<string, number> | null,
-    code: string,
-    dateIso: string
-  ): ReactNode => {
-    if (!displayCurrency) return "—";
-    if (rates === null) return "…";
-    const rateTo = rates[displayCurrency];
-    const rateFrom = rates[code];
+  // Easter-egg popup on a balance figure: the native amount plus the exact
+  // rate it converts at. Plain text line; empty string = nothing to show.
+  const rateInfo = (code: string): string => {
+    if (!displayCurrency || periodRates === null) return "";
+    const rateTo = periodRates[displayCurrency];
+    const rateFrom = periodRates[code];
     if (rateTo == null || rateFrom == null) {
-      return <Flagged reason={`Нет курса ${code} на ${dmy(dateIso)}`}>—</Flagged>;
+      return `нет курса ${code} на ${dmy(periodRateDate)}`;
     }
-    return (rateTo / rateFrom).toLocaleString("ru-RU", {
+    const rate = (rateTo / rateFrom).toLocaleString("ru-RU", {
       maximumSignificantDigits: 5,
     });
+    return `1 ${code} = ${rate} ${displayCurrency} · ${dmy(periodRateDate)}`;
+  };
+
+  // Per-account money in/out over the loaded period, per currency. Transfer
+  // legs COUNT here — this is the account's cashflow (its balance movement),
+  // unlike the transfer-free summary cards.
+  const accountFlows = useMemo(() => {
+    const map = new Map<number, { inflow: Record<string, number>; outflow: Record<string, number> }>();
+    for (const tx of transactions) {
+      const entry = map.get(tx.accountId) ?? { inflow: {}, outflow: {} };
+      const bucket = tx.amountCents > 0 ? entry.inflow : entry.outflow;
+      bucket[tx.accountCurrency] =
+        (bucket[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
+      map.set(tx.accountId, entry);
+    }
+    return map;
+  }, [transactions]);
+
+  const flowTotals = useMemo(() => {
+    const inflow: Record<string, number> = {};
+    const outflow: Record<string, number> = {};
+    for (const entry of accountFlows.values()) {
+      for (const [code, cents] of Object.entries(entry.inflow)) {
+        inflow[code] = (inflow[code] ?? 0) + cents;
+      }
+      for (const [code, cents] of Object.entries(entry.outflow)) {
+        outflow[code] = (outflow[code] ?? 0) + cents;
+      }
+    }
+    return { inflow, outflow };
+  }, [accountFlows]);
+
+  // A «+»/«−» cell of the panel: the flow converted at the view rate; muted
+  // dash when the account had no such operations in the period.
+  const renderFlowCell = (totals: Record<string, number> | undefined): ReactNode => {
+    if (!totals || Object.keys(totals).length === 0) {
+      return <span className="flowZero">—</span>;
+    }
+    if (!displayCurrency || periodRates === null) return "…";
+    const conv = convertTotals(totals, periodRates, displayCurrency);
+    if (conv.missing.length > 0) {
+      return (
+        <Flagged reason={`Нет курса ${conv.missing.join(", ")} на ${dmy(periodRateDate)}`}>
+          —
+        </Flagged>
+      );
+    }
+    return <Money cents={conv.cents} currency={displayCurrency} />;
   };
 
   const chartBars = useMemo(() => {
@@ -2102,16 +2121,16 @@ export default function MoneyCounter() {
               <strong>
                 {startTotals === null
                   ? "…"
-                  : renderConverted(startConverted, periodRates, `${mainPeriod}-01`)}
+                  : renderConverted(startConverted, periodRates, periodRateDate)}
               </strong>
             </article>
             <article className="metric">
               <span>Поступления периода</span>
-              <strong>{renderConverted(incomeConverted, periodRates, `${mainPeriod}-01`)}</strong>
+              <strong>{renderConverted(incomeConverted, periodRates, periodRateDate)}</strong>
             </article>
             <article className="metric">
               <span>Расходы периода</span>
-              <strong>{renderConverted(expenseConverted, periodRates, `${mainPeriod}-01`)}</strong>
+              <strong>{renderConverted(expenseConverted, periodRates, periodRateDate)}</strong>
             </article>
             <article className="metric">
               {/* Past months: total as it stood at the period's end, at the
@@ -2249,11 +2268,11 @@ export default function MoneyCounter() {
                               row.kind === "transfer" ? (
                                 <tr key={`transfer-${row.out.transferGroup}`} className="transferRow">
                                   <td className="markCol">
-                                    <span className="markTransfer" title="Перемещение между счетами">⇄</span>
+                                    <span className="markTransfer" data-tip="Перемещение между счетами">⇄</span>
                                     {row.out.flagged || row.incoming.flagged ? (
                                       <span
                                         className="markFlag"
-                                        title={row.out.notes || row.incoming.notes || "Требует внимания"}
+                                        data-tip={row.out.notes || row.incoming.notes || "Требует внимания"}
                                       >
                                         ⚑
                                       </span>
@@ -2311,10 +2330,10 @@ export default function MoneyCounter() {
                                 <tr key={row.tx.id}>
                                   <td className="markCol">
                                     {row.tx.transferGroup ? (
-                                      <span className="markTransfer" title="Перемещение между счетами (второе плечо вне фильтра)">⇄</span>
+                                      <span className="markTransfer" data-tip="Перемещение между счетами (второе плечо вне фильтра)">⇄</span>
                                     ) : null}
                                     {row.tx.flagged ? (
-                                      <span className="markFlag" title={row.tx.notes || "Требует внимания"}>⚑</span>
+                                      <span className="markFlag" data-tip={row.tx.notes || "Требует внимания"}>⚑</span>
                                     ) : null}
                                   </td>
                                   <td>{row.tx.accountName}</td>
@@ -2374,10 +2393,18 @@ export default function MoneyCounter() {
                 </p>
               ) : null}
               <table className="balanceTable">
+                <thead>
+                  <tr className="balHead">
+                    <th />
+                    <th>Остаток</th>
+                    <th>+</th>
+                    <th>−</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {panelAccounts.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="emptyTable">
+                      <td colSpan={4} className="emptyTable">
                         {pastPeriod && endAccounts === null ? "Загрузка" : "Нет счетов"}
                       </td>
                     </tr>
@@ -2385,9 +2412,29 @@ export default function MoneyCounter() {
                     panelAccounts.map((account) => (
                       <tr key={account.id}>
                         <td className="balName">{account.name}</td>
-                        <td className="amountCell">{renderAccountBalance(account)}</td>
                         <td className="amountCell">
-                          <span className="altAmount">{renderAccountBalanceNative(account)}</span>
+                          {/* Easter egg: hovering the figure reveals the native
+                              amount and the exact rate it converts at. */}
+                          <span className="ratesPeek">
+                            {renderAccountBalance(account)}
+                            {displayCurrency && account.currency !== displayCurrency ? (
+                              <span className="ratesPop">
+                                <Money
+                                  cents={account.balanceCents}
+                                  currency={account.currency}
+                                />
+                                {rateInfo(account.currency)
+                                  ? ` · ${rateInfo(account.currency)}`
+                                  : ""}
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="amountCell flowCell">
+                          {renderFlowCell(accountFlows.get(account.id)?.inflow)}
+                        </td>
+                        <td className="amountCell flowCell">
+                          {renderFlowCell(accountFlows.get(account.id)?.outflow)}
                         </td>
                       </tr>
                     ))
@@ -2400,7 +2447,12 @@ export default function MoneyCounter() {
                       <td className="amountCell">
                         {renderConverted(panelConverted, panelRates, panelRateDate)}
                       </td>
-                      <td />
+                      <td className="amountCell flowCell">
+                        {renderFlowCell(flowTotals.inflow)}
+                      </td>
+                      <td className="amountCell flowCell">
+                        {renderFlowCell(flowTotals.outflow)}
+                      </td>
                     </tr>
                   </tfoot>
                 ) : null}
@@ -2412,7 +2464,7 @@ export default function MoneyCounter() {
               {categoryBars.missing.length > 0 ? (
                 <p className="panelNote">
                   <Flagged
-                    reason={`Без учёта ${categoryBars.missing.join(", ")} — нет курса на ${dmy(`${mainPeriod}-01`)}`}
+                    reason={`Без учёта ${categoryBars.missing.join(", ")} — нет курса на ${dmy(periodRateDate)}`}
                   >
                     учтены не все валюты
                   </Flagged>
@@ -2429,41 +2481,6 @@ export default function MoneyCounter() {
               )}
             </section>
 
-            <section className="surface categoryPanel" aria-label="Курсы конвертации">
-              <h2>Курсы</h2>
-              <p className="panelNote">
-                Отладка: чем конвертируются суммы в {displayCurrency || "…"}
-              </p>
-              {rateDebugCurrencies.length === 0 ? (
-                <p className="mutedBlock">Все счета уже в валюте отображения</p>
-              ) : (
-                <table className="ratesDebug">
-                  <thead>
-                    <tr>
-                      <th />
-                      {rateDebugColumns.map((column) => (
-                        <th key={column.date} title={`Курс на ${dmy(column.date)}`}>
-                          {dmy(column.date)}
-                          <small>{column.label}</small>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rateDebugCurrencies.map((code) => (
-                      <tr key={code}>
-                        <td className="pair">1 {code} → {displayCurrency}</td>
-                        {rateDebugColumns.map((column) => (
-                          <td key={column.date}>
-                            {renderDebugRate(column.rates, code, column.date)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
             </aside>
           </div>
 
