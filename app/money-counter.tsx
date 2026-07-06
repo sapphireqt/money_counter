@@ -237,6 +237,28 @@ function Flagged({ reason, children }: { reason: string; children: ReactNode }) 
   );
 }
 
+// Ellipsis-clamped text that shows the fast tooltip ONLY when it is actually
+// truncated: measured on mouseenter (before the tooltip's 0.2s delay), so
+// fully visible names get no redundant popup.
+function ClampedName({ text }: { text: string }) {
+  const [clamped, setClamped] = useState(false);
+  const spanRef = useRef<HTMLSpanElement>(null);
+  return (
+    <span
+      className="accCellWrap"
+      {...(clamped ? { "data-tip": text } : {})}
+      onMouseEnter={() => {
+        const el = spanRef.current;
+        if (el) setClamped(el.scrollWidth > el.clientWidth + 1);
+      }}
+    >
+      <span ref={spanRef} className="accName">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 // Pencil "edit" icon used by list rows (right-leaning, currentColor stroke).
 function EditIcon() {
   return (
@@ -1268,37 +1290,23 @@ export default function MoneyCounter() {
     return `1 ${code} = ${rate} ${displayCurrency}`;
   };
 
-  // Per-account money in/out over the loaded period, per currency. Transfer
-  // legs COUNT here — this is the account's cashflow (its balance movement),
-  // unlike the transfer-free summary cards.
-  const accountFlows = useMemo(() => {
-    const map = new Map<number, { inflow: Record<string, number>; outflow: Record<string, number> }>();
+  // Per-account SPENDING over the loaded period, per currency. Transfer legs
+  // are excluded — the «Траты» column tracks real spending only, so its total
+  // matches the «Расходы периода» card.
+  const accountSpend = useMemo(() => {
+    const map = new Map<number, Record<string, number>>();
     for (const tx of transactions) {
-      const entry = map.get(tx.accountId) ?? { inflow: {}, outflow: {} };
-      const bucket = tx.amountCents > 0 ? entry.inflow : entry.outflow;
-      bucket[tx.accountCurrency] =
-        (bucket[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
-      map.set(tx.accountId, entry);
+      if (tx.amountCents >= 0 || tx.transferGroup) continue;
+      const totals = map.get(tx.accountId) ?? {};
+      totals[tx.accountCurrency] =
+        (totals[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
+      map.set(tx.accountId, totals);
     }
     return map;
   }, [transactions]);
 
-  const flowTotals = useMemo(() => {
-    const inflow: Record<string, number> = {};
-    const outflow: Record<string, number> = {};
-    for (const entry of accountFlows.values()) {
-      for (const [code, cents] of Object.entries(entry.inflow)) {
-        inflow[code] = (inflow[code] ?? 0) + cents;
-      }
-      for (const [code, cents] of Object.entries(entry.outflow)) {
-        outflow[code] = (outflow[code] ?? 0) + cents;
-      }
-    }
-    return { inflow, outflow };
-  }, [accountFlows]);
-
-  // A «+»/«−» cell of the panel: the flow converted at the view rate; muted
-  // dash when the account had no such operations in the period.
+  // A «Траты» cell of the panel: the spend converted at the view rate; muted
+  // dash when the account had no spending in the period.
   const renderFlowCell = (totals: Record<string, number> | undefined): ReactNode => {
     if (!totals || Object.keys(totals).length === 0) {
       return <span className="flowZero">—</span>;
@@ -2299,14 +2307,9 @@ export default function MoneyCounter() {
                                     ) : null}
                                   </td>
                                   <td>
-                                    <span
-                                      className="accCellWrap"
-                                      data-tip={`${row.out.accountName} → ${row.incoming.accountName}`}
-                                    >
-                                      <span className="accName">
-                                        {row.out.accountName} → {row.incoming.accountName}
-                                      </span>
-                                    </span>
+                                    <ClampedName
+                                      text={`${row.out.accountName} → ${row.incoming.accountName}`}
+                                    />
                                   </td>
                                   <td>{row.out.description}</td>
                                   <td>—</td>
@@ -2384,9 +2387,7 @@ export default function MoneyCounter() {
                                     ) : null}
                                   </td>
                                   <td>
-                                    <span className="accCellWrap" data-tip={row.tx.accountName}>
-                                      <span className="accName">{row.tx.accountName}</span>
-                                    </span>
+                                    <ClampedName text={row.tx.accountName} />
                                   </td>
                                   <td>{row.tx.description}</td>
                                   <td>{row.tx.category || "—"}</td>
@@ -2471,14 +2472,13 @@ export default function MoneyCounter() {
                     <th />
                     <th>Остаток</th>
                     <th>В валюте счёта</th>
-                    <th>Приходы</th>
-                    <th>Расходы</th>
+                    <th>Траты</th>
                   </tr>
                 </thead>
                 <tbody>
                   {panelAccounts.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="emptyTable">
+                      <td colSpan={4} className="emptyTable">
                         {pastPeriod && endAccounts === null ? "Загрузка" : "Нет счетов"}
                       </td>
                     </tr>
@@ -2509,10 +2509,7 @@ export default function MoneyCounter() {
                           </span>
                         </td>
                         <td className="amountCell flowCell">
-                          {renderFlowCell(accountFlows.get(account.id)?.inflow)}
-                        </td>
-                        <td className="amountCell flowCell">
-                          {renderFlowCell(accountFlows.get(account.id)?.outflow)}
+                          {renderFlowCell(accountSpend.get(account.id))}
                         </td>
                       </tr>
                     ))
@@ -2527,10 +2524,7 @@ export default function MoneyCounter() {
                       </td>
                       <td />
                       <td className="amountCell flowCell">
-                        {renderFlowCell(flowTotals.inflow)}
-                      </td>
-                      <td className="amountCell flowCell">
-                        {renderFlowCell(flowTotals.outflow)}
+                        {renderFlowCell(periodExpense)}
                       </td>
                     </tr>
                   </tfoot>
