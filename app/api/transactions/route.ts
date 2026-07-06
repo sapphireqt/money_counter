@@ -19,6 +19,7 @@ type TransactionRow = {
   status: string;
   notes: string;
   transfer_group: string | null;
+  flagged: number;
   created_at: string;
   updated_at: string;
 };
@@ -47,6 +48,7 @@ function mapTransaction(row: TransactionRow) {
     status: row.status,
     notes: row.notes,
     transferGroup: row.transfer_group,
+    flagged: row.flagged === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -85,6 +87,7 @@ async function getTransactionById(id: number) {
         t.status,
         t.notes,
         t.transfer_group,
+        t.flagged,
         t.created_at,
         t.updated_at
        FROM transactions t
@@ -141,6 +144,10 @@ export async function GET(request: Request) {
       conditions.push("t.transfer_group IS NOT NULL");
     }
 
+    if (searchParams.get("flagged") === "1") {
+      conditions.push("t.flagged = 1");
+    }
+
     // Category filter: exact name, case-insensitive. «Без категории» also
     // matches the empty category, excluding transfer legs (their category is
     // empty by design, not because they need attention).
@@ -181,6 +188,7 @@ export async function GET(request: Request) {
           t.status,
           t.notes,
           t.transfer_group,
+          t.flagged,
           t.created_at,
           t.updated_at
          FROM transactions t
@@ -257,9 +265,10 @@ export async function POST(request: Request) {
           payee,
           amount_cents,
           status,
-          notes
+          notes,
+          flagged
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING
           id,
           account_id,
@@ -273,6 +282,7 @@ export async function POST(request: Request) {
           status,
           notes,
           transfer_group,
+          flagged,
           created_at,
           updated_at`
       )
@@ -284,7 +294,8 @@ export async function POST(request: Request) {
         payee,
         amountCents,
         normalizeStatus(payload.status),
-        String(payload.notes ?? "").trim()
+        String(payload.notes ?? "").trim(),
+        payload.flagged ? 1 : 0
       )
       .first<TransactionRow>();
 
@@ -375,6 +386,11 @@ export async function PATCH(request: Request) {
     if ("notes" in payload) {
       assignments.push("notes = ?");
       values.push(String(payload.notes ?? "").trim());
+    }
+
+    if ("flagged" in payload) {
+      assignments.push("flagged = ?");
+      values.push(payload.flagged ? 1 : 0);
     }
 
     if (assignments.length === 0) {

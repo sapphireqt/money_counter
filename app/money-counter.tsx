@@ -57,6 +57,8 @@ type Transaction = {
   // null for ordinary operations. Linked legs count toward balances but not
   // toward income/expense/category aggregates.
   transferGroup: string | null;
+  // «Требует внимания» marker; the explanation usually lives in `notes`.
+  flagged: boolean;
 };
 
 // A row of the operations table: an ordinary transaction, or two loaded legs
@@ -108,6 +110,9 @@ type TransactionForm = {
   // transfers) the amount that actually arrived, in its currency.
   toAccountId: string;
   amountIn: string;
+  // «Требует внимания» + its explanation (persisted in transactions.notes).
+  flagged: boolean;
+  notes: string;
 };
 
 type ImportPayloadRow = {
@@ -578,6 +583,8 @@ export default function MoneyCounter() {
   const [typeFilter, setTypeFilter] = useState("all");
   // Category name, "Без категории" for uncategorized, "" = no filter.
   const [categoryFilter, setCategoryFilter] = useState("");
+  // Show only rows marked «Требует внимания».
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -595,6 +602,8 @@ export default function MoneyCounter() {
     category: "",
     toAccountId: "",
     amountIn: "",
+    flagged: false,
+    notes: "",
   });
   // Pick-a-partner flow (edit modal, type «Перемещение»): opposite-sign
   // candidates around the edited operation's date, and the chosen partner.
@@ -750,6 +759,7 @@ export default function MoneyCounter() {
       if (query.trim()) params.set("q", query.trim());
       if (typeFilter !== "all") params.set("type", typeFilter);
       if (categoryFilter) params.set("category", categoryFilter);
+      if (flaggedOnly) params.set("flagged", "1");
       params.set("limit", "500");
 
       const data = await requestJson<{ transactions: Transaction[] }>(
@@ -759,7 +769,7 @@ export default function MoneyCounter() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось загрузить операции");
     }
-  }, [mainPeriod, selectedAccountId, query, typeFilter, categoryFilter]);
+  }, [mainPeriod, selectedAccountId, query, typeFilter, categoryFilter, flaggedOnly]);
 
   const loadStats = useCallback(async () => {
     if (!chartCurrency) {
@@ -1473,7 +1483,12 @@ export default function MoneyCounter() {
         // amount/category fields are hidden and the account is locked.
         const body =
           transactionForm.direction === "transfer"
-            ? { date: transactionForm.date, description: transactionForm.description }
+            ? {
+                date: transactionForm.date,
+                description: transactionForm.description,
+                notes: transactionForm.notes,
+                flagged: transactionForm.flagged,
+              }
             : transactionForm;
         await requestJson(url, { method, body: JSON.stringify(body) });
         // A linked leg switched back to Расход/Поступление: split the pair
@@ -1501,6 +1516,8 @@ export default function MoneyCounter() {
         category: "",
         toAccountId: "",
         amountIn: "",
+        flagged: false,
+        notes: "",
       });
       await refreshAfterMutation();
     } catch (error) {
@@ -1524,6 +1541,8 @@ export default function MoneyCounter() {
       category: "",
       toAccountId: "",
       amountIn: "",
+      flagged: false,
+      notes: "",
     });
     setFormOpen(true);
   }
@@ -1540,6 +1559,8 @@ export default function MoneyCounter() {
       category: "",
       toAccountId: "",
       amountIn: "",
+      flagged: false,
+      notes: "",
     });
   }
 
@@ -1558,6 +1579,8 @@ export default function MoneyCounter() {
       category: transaction.category,
       toAccountId: "",
       amountIn: "",
+      flagged: false,
+      notes: "",
     });
     setActiveTab("main");
     setFormOpen(true);
@@ -2078,6 +2101,15 @@ export default function MoneyCounter() {
                     </select>
                   </label>
                   <button
+                    className={`secondaryButton flagToggle ${flaggedOnly ? "on" : ""}`}
+                    type="button"
+                    aria-pressed={flaggedOnly}
+                    onClick={() => setFlaggedOnly((current) => !current)}
+                    title="Показать только операции с пометкой «Требует внимания»"
+                  >
+                    ⚑
+                  </button>
+                  <button
                     className="secondaryButton"
                     type="button"
                     disabled={saving}
@@ -2092,6 +2124,7 @@ export default function MoneyCounter() {
                   <table className="opsTable">
                     <thead>
                       <tr>
+                        <th className="markCol" aria-label="Пометки" />
                         <th>Счет</th>
                         <th>Описание</th>
                         <th>Категория</th>
@@ -2103,7 +2136,7 @@ export default function MoneyCounter() {
                     <tbody>
                       {transactions.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="emptyTable">
+                          <td colSpan={7} className="emptyTable">
                             {loading ? "Загрузка" : "Нет операций за период"}
                           </td>
                         </tr>
@@ -2111,18 +2144,27 @@ export default function MoneyCounter() {
                         dayGroups.map((group) => (
                           <Fragment key={group.date}>
                             <tr className="dayGroup">
-                              <td colSpan={6}>{formatDayHeader(group.date)}</td>
+                              <td colSpan={7}>{formatDayHeader(group.date)}</td>
                             </tr>
                             {group.items.map((row) =>
                               row.kind === "transfer" ? (
                                 <tr key={`transfer-${row.out.transferGroup}`} className="transferRow">
+                                  <td className="markCol">
+                                    <span className="markTransfer" title="Перемещение между счетами">⇄</span>
+                                    {row.out.flagged || row.incoming.flagged ? (
+                                      <span
+                                        className="markFlag"
+                                        title={row.out.notes || row.incoming.notes || "Требует внимания"}
+                                      >
+                                        ⚑
+                                      </span>
+                                    ) : null}
+                                  </td>
                                   <td>
                                     {row.out.accountName} → {row.incoming.accountName}
                                   </td>
                                   <td>{row.out.description}</td>
-                                  <td>
-                                    <span className="transferBadge">⇄ перемещение</span>
-                                  </td>
+                                  <td>—</td>
                                   <td className="amountCell">{renderDisplayAmount(row.out)}</td>
                                   <td className="amountCell">
                                     <span className="altAmount">
@@ -2168,15 +2210,17 @@ export default function MoneyCounter() {
                                 </tr>
                               ) : (
                                 <tr key={row.tx.id}>
+                                  <td className="markCol">
+                                    {row.tx.transferGroup ? (
+                                      <span className="markTransfer" title="Перемещение между счетами (второе плечо вне фильтра)">⇄</span>
+                                    ) : null}
+                                    {row.tx.flagged ? (
+                                      <span className="markFlag" title={row.tx.notes || "Требует внимания"}>⚑</span>
+                                    ) : null}
+                                  </td>
                                   <td>{row.tx.accountName}</td>
                                   <td>{row.tx.description}</td>
-                                  <td>
-                                    {row.tx.transferGroup ? (
-                                      <span className="transferBadge">⇄ перемещение</span>
-                                    ) : (
-                                      row.tx.category || "—"
-                                    )}
-                                  </td>
+                                  <td>{row.tx.category || "—"}</td>
                                   <td
                                     className={`amountCell ${
                                       row.tx.amountCents > 0 && !row.tx.transferGroup
@@ -2567,6 +2611,29 @@ export default function MoneyCounter() {
                               }
                             />
                           </label>
+                          <label className="wideField">
+                            Заметка
+                            <input
+                              placeholder="Почему помечено / что проверить"
+                              value={transactionForm.notes}
+                              onChange={(event) =>
+                                setTransactionForm({ ...transactionForm, notes: event.target.value })
+                              }
+                            />
+                          </label>
+                          <label className="flagCheck wideField">
+                            <input
+                              type="checkbox"
+                              checked={transactionForm.flagged}
+                              onChange={(event) =>
+                                setTransactionForm({
+                                  ...transactionForm,
+                                  flagged: event.target.checked,
+                                })
+                              }
+                            />
+                            ⚑ Требует внимания
+                          </label>
                         </>
                       ) : (
                         <div className="wideField partnerPicker">
@@ -2693,6 +2760,26 @@ export default function MoneyCounter() {
                             </option>
                           ))}
                         </select>
+                      </label>
+                      <label className="wideField">
+                        Заметка
+                        <input
+                          placeholder="Почему помечено / что проверить"
+                          value={transactionForm.notes}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, notes: event.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="flagCheck wideField">
+                        <input
+                          type="checkbox"
+                          checked={transactionForm.flagged}
+                          onChange={(event) =>
+                            setTransactionForm({ ...transactionForm, flagged: event.target.checked })
+                          }
+                        />
+                        ⚑ Требует внимания
                       </label>
                     </>
                   )}

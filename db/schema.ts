@@ -47,6 +47,9 @@ export const transactions = sqliteTable(
     // rows share one opaque group id. Linked legs still count toward account
     // balances but are excluded from income/expense/category aggregates.
     transferGroup: text("transfer_group"),
+    // User attention marker («Требует внимания») — purely visual, usually
+    // paired with an explanation in `notes`.
+    flagged: integer("flagged").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },

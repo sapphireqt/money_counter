@@ -57,6 +57,7 @@ export async function ensureSchema() {
         status TEXT NOT NULL DEFAULT 'cleared',
         notes TEXT NOT NULL DEFAULT '',
         transfer_group TEXT,
+        flagged INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -123,14 +124,23 @@ export async function ensureSchema() {
     ),
   ]);
 
-  // transfer_group arrived after the transactions table shipped, and CREATE
-  // TABLE IF NOT EXISTS never adds columns to an existing table — so ALTER and
-  // swallow the "duplicate column" error on every later run. The index is
-  // created here (not in the batch above) because on a pre-migration DB the
-  // column does not exist until the ALTER lands.
+  // transfer_group and flagged arrived after the transactions table shipped,
+  // and CREATE TABLE IF NOT EXISTS never adds columns to an existing table —
+  // so ALTER and swallow the "duplicate column" error on every later run. The
+  // index is created here (not in the batch above) because on a pre-migration
+  // DB the column does not exist until the ALTER lands.
   try {
     await d1
       .prepare("ALTER TABLE transactions ADD COLUMN transfer_group TEXT")
+      .run();
+  } catch {
+    // duplicate column name — already migrated
+  }
+  try {
+    await d1
+      .prepare(
+        "ALTER TABLE transactions ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0"
+      )
       .run();
   } catch {
     // duplicate column name — already migrated

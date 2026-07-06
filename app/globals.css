@@ -544,7 +544,7 @@ select:focus {
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 150px 170px 150px auto;
+  grid-template-columns: minmax(0, 1fr) 150px 170px 150px auto auto;
   margin-bottom: 12px;
 }
 
@@ -661,19 +661,51 @@ td {
   margin: -4px 0 10px;
 }
 
-/* Transfers («перемещение»): the badge in the category column and the
-   partner/detected-pair pickers inside modals. */
-.transferBadge {
-  background: var(--surface-strong);
-  border-radius: 999px;
-  color: var(--muted-strong);
-  font-size: 12px;
-  padding: 3px 9px;
+/* Row markers: a one-character silent column before each row — "⇄" for
+   transfer legs, "⚑" for rows marked «Требует внимания» (the note text is the
+   hover tooltip). */
+.markCol {
+  padding-left: 2px;
+  padding-right: 2px;
   white-space: nowrap;
+  width: 20px;
+}
+
+.markTransfer {
+  color: var(--muted-strong);
+  cursor: help;
+  font-size: 13px;
+}
+
+.markFlag {
+  color: var(--warning);
+  cursor: help;
+  font-size: 13px;
 }
 
 .transferRow td {
   color: var(--muted-strong);
+}
+
+/* «⚑ Требует внимания» checkbox in the transaction form. */
+.flagCheck {
+  align-items: center;
+  color: var(--muted-strong);
+  display: flex;
+  gap: 8px;
+}
+
+.flagCheck input {
+  height: 16px;
+  min-height: 0;
+  width: 16px;
+}
+
+/* Flagged-only filter toggle. */
+.flagToggle.on {
+  background: #fdf3df;
+  border-color: #ecd9ac;
+  color: var(--warning);
 }
 
 .partnerPicker {
