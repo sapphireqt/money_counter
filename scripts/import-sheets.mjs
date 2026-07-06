@@ -96,8 +96,23 @@ function normLabel(s) {
     .toLowerCase();
 }
 
+// The sheet gained an extra column in April 2026: older tabs keep the amount
+// in G (idx 6) and the transfer FX-loss in M (idx 12), newer ones in H (idx 7)
+// and N (idx 13). Detect per file by which column actually holds numbers on
+// transaction rows.
+function detectLayout(records) {
+  let g = 0;
+  let h = 0;
+  for (const rec of records) {
+    if (!isoDate(rec[0]) || !/[➕➖]/.test(String(rec[1] ?? ""))) continue;
+    if (Number.isFinite(num(rec[6]))) g += 1;
+    if (Number.isFinite(num(rec[7]))) h += 1;
+  }
+  return h >= g ? { amount: 7, loss: 13, name: "H/N (апрель+)" } : { amount: 6, loss: 12, name: "G/M (до апреля)" };
+}
+
 // --- transform one CSV file into import rows ---------------------------------
-function buildRows(records, report) {
+function buildRows(records, report, layout) {
   const out = [];
   for (const rec of records) {
     const date = isoDate(rec[0]);
@@ -112,7 +127,7 @@ function buildRows(records, report) {
     const acct = ACCOUNTS[label];
     if (!acct) { report.unmapped.set(bRaw.trim(), (report.unmapped.get(bRaw.trim()) ?? 0) + 1); continue; }
 
-    const amount = num(rec[7]); // H "Чек"
+    const amount = num(rec[layout.amount]); // "Чек" (H or G, see detectLayout)
     if (!Number.isFinite(amount) || amount === 0) { report.badAmount += 1; continue; }
     const rawCat = String(rec[3] ?? "").trim();
     const category = rawCat === "N/A" ? "" : rawCat;
@@ -123,7 +138,7 @@ function buildRows(records, report) {
     const dest = destMatch ? ACCOUNTS[normLabel(destMatch[1])] : null;
     if (dest) {
       if (!isExpense) report.transferWrongSign += 1; // expected ➖ on the debit side
-      const loss = Number.isFinite(num(rec[13])) ? num(rec[13]) : 0; // N "ПОТЕРИ КУРСА"
+      const loss = Number.isFinite(num(rec[layout.loss])) ? num(rec[layout.loss]) : 0; // "ПОТЕРИ КУРСА" (N or M)
       const received = Math.round((amount - loss) * 100) / 100;
       report.transfers += 1;
       // debit on the source account...
@@ -168,8 +183,9 @@ let rows = [];
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const recs = parseCsv(text);
-  const built = buildRows(recs, report);
-  console.log(`• ${file}: ${recs.length} строк CSV → ${built.length} операций`);
+  const layout = detectLayout(recs);
+  const built = buildRows(recs, report, layout);
+  console.log(`• ${file}: ${recs.length} строк CSV → ${built.length} операций [раскладка ${layout.name}]`);
   rows = rows.concat(built);
 }
 
