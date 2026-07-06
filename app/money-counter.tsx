@@ -1579,8 +1579,8 @@ export default function MoneyCounter() {
       category: transaction.category,
       toAccountId: "",
       amountIn: "",
-      flagged: false,
-      notes: "",
+      flagged: transaction.flagged,
+      notes: transaction.notes,
     });
     setActiveTab("main");
     setFormOpen(true);
