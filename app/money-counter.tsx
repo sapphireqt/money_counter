@@ -621,6 +621,8 @@ export default function MoneyCounter() {
   // candidates around the edited operation's date, and the chosen partner.
   const [partnerCandidates, setPartnerCandidates] = useState<Transaction[] | null>(null);
   const [partnerId, setPartnerId] = useState("");
+  // Per-row «⋮» actions menu: the key of the open one (tx-<id> / transfer-<group>).
+  const [rowMenu, setRowMenu] = useState<string | null>(null);
   // «Найти переводы»: auto-detected same-amount pairs awaiting confirmation.
   const [detectPairs, setDetectPairs] = useState<DetectPair[] | null>(null);
   const [detectChecked, setDetectChecked] = useState<Set<number>>(new Set());
@@ -849,6 +851,24 @@ export default function MoneyCounter() {
       await loadStats();
     })();
   }, [activeTab, loadStats]);
+
+  // Close the row actions menu on outside click / Escape (same pattern as the
+  // month picker popover).
+  useEffect(() => {
+    if (rowMenu === null) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!(event.target as Element | null)?.closest(".rowMenuWrap")) setRowMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRowMenu(null);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [rowMenu]);
 
   // While the modal is open: close on Escape and lock background scrolling.
   useEffect(() => {
@@ -2279,7 +2299,14 @@ export default function MoneyCounter() {
                                     ) : null}
                                   </td>
                                   <td>
-                                    {row.out.accountName} → {row.incoming.accountName}
+                                    <span
+                                      className="accCellWrap"
+                                      data-tip={`${row.out.accountName} → ${row.incoming.accountName}`}
+                                    >
+                                      <span className="accName">
+                                        {row.out.accountName} → {row.incoming.accountName}
+                                      </span>
+                                    </span>
                                   </td>
                                   <td>{row.out.description}</td>
                                   <td>—</td>
@@ -2304,26 +2331,46 @@ export default function MoneyCounter() {
                                     </span>
                                   </td>
                                   <td className="rowActions">
-                                    <button
-                                      className="iconButton small"
-                                      type="button"
-                                      onClick={() => startEditTransaction(row.out)}
-                                      title="Править"
-                                      aria-label="Править"
-                                    >
-                                      <EditIcon />
-                                    </button>
-                                    <button
-                                      className="iconButton small"
-                                      type="button"
-                                      onClick={() =>
-                                        void unlinkTransfer(row.out.transferGroup ?? "")
-                                      }
-                                      title="Разъединить перемещение"
-                                      aria-label="Разъединить перемещение"
-                                    >
-                                      ✂
-                                    </button>
+                                    <span className="rowMenuWrap">
+                                      <button
+                                        className="iconButton small"
+                                        type="button"
+                                        aria-label="Действия"
+                                        aria-haspopup="menu"
+                                        aria-expanded={rowMenu === `transfer-${row.out.transferGroup}`}
+                                        onClick={() =>
+                                          setRowMenu((current) =>
+                                            current === `transfer-${row.out.transferGroup}`
+                                              ? null
+                                              : `transfer-${row.out.transferGroup}`
+                                          )
+                                        }
+                                      >
+                                        ⋮
+                                      </button>
+                                      {rowMenu === `transfer-${row.out.transferGroup}` ? (
+                                        <span className="rowMenu" role="menu">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setRowMenu(null);
+                                              startEditTransaction(row.out);
+                                            }}
+                                          >
+                                            Править
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setRowMenu(null);
+                                              void unlinkTransfer(row.out.transferGroup ?? "");
+                                            }}
+                                          >
+                                            Разъединить
+                                          </button>
+                                        </span>
+                                      ) : null}
+                                    </span>
                                   </td>
                                 </tr>
                               ) : (
@@ -2336,7 +2383,11 @@ export default function MoneyCounter() {
                                       <span className="markFlag" data-tip={row.tx.notes || "Требует внимания"}>⚑</span>
                                     ) : null}
                                   </td>
-                                  <td>{row.tx.accountName}</td>
+                                  <td>
+                                    <span className="accCellWrap" data-tip={row.tx.accountName}>
+                                      <span className="accName">{row.tx.accountName}</span>
+                                    </span>
+                                  </td>
                                   <td>{row.tx.description}</td>
                                   <td>{row.tx.category || "—"}</td>
                                   <td
@@ -2354,23 +2405,45 @@ export default function MoneyCounter() {
                                     <span className="altAmount">{renderAccountAmount(row.tx)}</span>
                                   </td>
                                   <td className="rowActions">
-                                    <button
-                                      className="iconButton small"
-                                      type="button"
-                                      onClick={() => startEditTransaction(row.tx)}
-                                      title="Править"
-                                      aria-label="Править"
-                                    >
-                                      <EditIcon />
-                                    </button>
-                                    <button
-                                      className="iconButton small danger"
-                                      type="button"
-                                      onClick={() => removeTransaction(row.tx)}
-                                      title="Удалить"
-                                    >
-                                      ×
-                                    </button>
+                                    <span className="rowMenuWrap">
+                                      <button
+                                        className="iconButton small"
+                                        type="button"
+                                        aria-label="Действия"
+                                        aria-haspopup="menu"
+                                        aria-expanded={rowMenu === `tx-${row.tx.id}`}
+                                        onClick={() =>
+                                          setRowMenu((current) =>
+                                            current === `tx-${row.tx.id}` ? null : `tx-${row.tx.id}`
+                                          )
+                                        }
+                                      >
+                                        ⋮
+                                      </button>
+                                      {rowMenu === `tx-${row.tx.id}` ? (
+                                        <span className="rowMenu" role="menu">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setRowMenu(null);
+                                              startEditTransaction(row.tx);
+                                            }}
+                                          >
+                                            Править
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="danger"
+                                            onClick={() => {
+                                              setRowMenu(null);
+                                              void removeTransaction(row.tx);
+                                            }}
+                                          >
+                                            Удалить
+                                          </button>
+                                        </span>
+                                      ) : null}
+                                    </span>
                                   </td>
                                 </tr>
                               )

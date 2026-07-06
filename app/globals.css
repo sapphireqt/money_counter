@@ -659,9 +659,18 @@ td {
   min-width: 640px;
 }
 
-.opsTable td:nth-child(2),
-.opsTable th:nth-child(2) {
-  max-width: 108px;
+/* Account name: clamped with an ellipsis on the inner span (so the fast
+   data-tip tooltip on the wrapper is not clipped by overflow:hidden) and the
+   full value on hover. */
+.accCellWrap {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+.opsTable .accName {
+  display: block;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -670,6 +679,43 @@ td {
 .opsTable .amountCell {
   font-size: 13px;
   white-space: nowrap;
+}
+
+/* Row actions collapsed into a «⋮» menu. */
+.rowMenuWrap {
+  display: inline-block;
+  position: relative;
+}
+
+.rowMenu {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  min-width: 136px;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 60;
+}
+
+.rowMenu button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rowMenu button:hover {
+  background: var(--surface-strong);
+}
+
+.rowMenu button.danger {
+  color: var(--expense);
 }
 
 /* Day-group header row: the date as a heading over the operations it groups,
