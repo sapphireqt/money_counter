@@ -309,6 +309,14 @@ td small,
   gap: 16px;
 }
 
+/* Pin the single column: an auto grid track's automatic minimum is the
+   item's min-content (e.g. a table's min-width), which would push the column
+   past its workspace track and under the rail. */
+.mainColumn,
+.rightRail {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .surface {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -547,11 +555,13 @@ select:focus {
   text-align: center;
 }
 
+/* Wrapping flex: in the narrowed main column the controls flow to a second
+   line instead of crushing the search field to zero width. */
 .filters {
   align-items: end;
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 150px 170px 150px auto auto;
   margin-bottom: 12px;
 }
 
@@ -559,19 +569,25 @@ select:focus {
 .filterField {
   color: var(--muted);
   display: grid;
+  flex: 0 1 auto;
   font-size: 12px;
   gap: 4px;
 }
 
-.filters .secondaryButton {
-  white-space: nowrap;
+.filterField:first-child {
+  flex: 1 1 150px;
+  min-width: 130px;
+}
+
+.filterField select {
+  min-width: 118px;
   width: auto;
 }
 
-@media (max-width: 1180px) {
-  .filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.filters .secondaryButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  width: auto;
 }
 
 .tableWrap {
@@ -634,6 +650,26 @@ td {
 .opsTable td {
   border-bottom: none;
   padding: 5px 8px;
+}
+
+/* The right rail got wider at the operations table's expense: a lower
+   min-width than the global 760px, a clamped account column, and compact
+   amount columns. */
+.opsTable {
+  min-width: 640px;
+}
+
+.opsTable td:nth-child(2),
+.opsTable th:nth-child(2) {
+  max-width: 108px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opsTable .amountCell {
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 /* Day-group header row: the date as a heading over the operations it groups,
@@ -890,7 +926,7 @@ td {
 }
 
 .balName {
-  max-width: 72px;
+  max-width: 104px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -914,24 +950,12 @@ td {
 }
 
 .flowCell {
-  font-size: 11.5px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .flowZero {
   color: #c3ccd3;
-}
-
-/* Converted balance with the native amount always visible beneath it. */
-.balStack {
-  display: grid;
-  justify-items: end;
-  white-space: nowrap;
-}
-
-.balNative {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 /* Easter egg: hovering a converted balance reveals the exact conversion
@@ -1188,7 +1212,7 @@ dd {
 
 /* --- Tabs --- */
 .workspace.twoCol {
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 480px;
 }
 
 .workspace.oneCol {

@@ -2397,14 +2397,15 @@ export default function MoneyCounter() {
                   <tr className="balHead">
                     <th />
                     <th>Остаток</th>
-                    <th>+</th>
-                    <th>−</th>
+                    <th>В валюте счёта</th>
+                    <th>Приходы</th>
+                    <th>Расходы</th>
                   </tr>
                 </thead>
                 <tbody>
                   {panelAccounts.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="emptyTable">
+                      <td colSpan={5} className="emptyTable">
                         {pastPeriod && endAccounts === null ? "Загрузка" : "Нет счетов"}
                       </td>
                     </tr>
@@ -2413,29 +2414,27 @@ export default function MoneyCounter() {
                       <tr key={account.id}>
                         <td className="balName">{account.name}</td>
                         <td className="amountCell">
-                          {/* Converted on top, the ALWAYS-VISIBLE native amount
-                              beneath. Easter egg: hovering reveals the exact
-                              conversion rate and its date. */}
+                          {/* Easter egg: hovering the converted figure reveals
+                              the exact conversion rate and its date. */}
                           <span className="ratesPeek">
-                            <span className="balStack">
-                              {/* Wrapped in a span: Money renders a Fragment of
-                                  text parts, and bare parts would each become
-                                  their own grid item (the € on its own row). */}
-                              <span>{renderAccountBalance(account)}</span>
-                              {displayCurrency && account.currency !== displayCurrency ? (
-                                <small className="balNative">
-                                  <Money
-                                    cents={account.balanceCents}
-                                    currency={account.currency}
-                                  />
-                                </small>
-                              ) : null}
-                            </span>
+                            <span>{renderAccountBalance(account)}</span>
                             {displayCurrency &&
                             account.currency !== displayCurrency &&
                             rateInfo(account.currency) ? (
                               <span className="ratesPop">{rateInfo(account.currency)}</span>
                             ) : null}
+                          </span>
+                        </td>
+                        <td className="amountCell">
+                          <span className="altAmount">
+                            {displayCurrency && account.currency !== displayCurrency ? (
+                              <Money
+                                cents={account.balanceCents}
+                                currency={account.currency}
+                              />
+                            ) : (
+                              "—"
+                            )}
                           </span>
                         </td>
                         <td className="amountCell flowCell">
@@ -2455,6 +2454,7 @@ export default function MoneyCounter() {
                       <td className="amountCell">
                         {renderConverted(panelConverted, panelRates, panelRateDate)}
                       </td>
+                      <td />
                       <td className="amountCell flowCell">
                         {renderFlowCell(flowTotals.inflow)}
                       </td>
