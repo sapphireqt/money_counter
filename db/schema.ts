@@ -21,6 +21,12 @@ export const accounts = sqliteTable(
     color: text("color").notNull().default("#2563eb"),
     // Manual order from Настройки (drag-and-drop); 9999 = alphabetical tail.
     sortOrder: integer("sort_order").notNull().default(9999),
+    // Account lifetime, both optional (null = always existed): the opening
+    // balance counts from openedAt, operations must fall inside the range,
+    // and the «Счета» panel hides the account outside it (unless a non-zero
+    // balance says otherwise).
+    openedAt: text("opened_at"),
+    closedAt: text("closed_at"),
     archivedAt: text("archived_at"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),

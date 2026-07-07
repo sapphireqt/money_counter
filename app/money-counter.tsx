@@ -37,6 +37,11 @@ type Account = {
   type: string;
   openingBalanceCents: number;
   color: string;
+  // Lifetime bounds (null = «всегда»): the opening balance counts from
+  // openedAt, and the «Счета» panel hides the account outside the range
+  // unless a non-zero balance says otherwise.
+  openedAt: string | null;
+  closedAt: string | null;
   balanceCents: number;
   transactionCount: number;
 };
@@ -94,6 +99,8 @@ type AccountForm = {
   type: string;
   openingBalance: string;
   color: string;
+  openedAt: string;
+  closedAt: string;
 };
 
 type TransactionForm = {
@@ -670,6 +677,8 @@ export default function MoneyCounter() {
     type: "checking",
     openingBalance: "",
     color: palette[0],
+    openedAt: today(),
+    closedAt: "",
   });
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [categoryForm, setCategoryForm] = useState({ name: "", color: palette[1] });
@@ -1167,10 +1176,20 @@ export default function MoneyCounter() {
 
   // The «Счета» panel shows live balances — or, for a past period, the
   // historical end-of-period state. Conversion shares the single view rate.
-  const panelAccounts = useMemo(
-    () => (pastPeriod ? endAccounts ?? [] : accounts),
-    [pastPeriod, endAccounts, accounts]
-  );
+  // Accounts whose lifetime lies outside the viewed period are hidden — but
+  // ONLY while their balance is zero: a non-zero balance always shows, so
+  // money never silently drops out of «Итого».
+  const panelAccounts = useMemo(() => {
+    const source = pastPeriod ? endAccounts ?? [] : accounts;
+    const viewStart = pastPeriod ? `${mainPeriod}-01` : today();
+    const viewEnd = pastPeriod ? monthEnd(mainPeriod) : today();
+    return source.filter((account) => {
+      if (account.balanceCents !== 0) return true;
+      const openedInTime = !account.openedAt || account.openedAt <= viewEnd;
+      const notYetClosed = !account.closedAt || account.closedAt >= viewStart;
+      return openedInTime && notYetClosed;
+    });
+  }, [pastPeriod, endAccounts, accounts, mainPeriod]);
   const panelRates = periodRates;
   const panelRateDate = periodRateDate;
   const panelTotals = useMemo(() => {
@@ -1893,6 +1912,10 @@ export default function MoneyCounter() {
       type: "checking",
       openingBalance: "",
       color: palette[accounts.length % palette.length],
+      // New accounts default to «открыт сегодня» — so a March-created account
+      // does not leak its opening balance into January's history.
+      openedAt: today(),
+      closedAt: "",
     });
   }
 
@@ -1910,6 +1933,8 @@ export default function MoneyCounter() {
       type: account.type,
       openingBalance: centsToInputValue(account.openingBalanceCents),
       color: account.color,
+      openedAt: account.openedAt ?? "",
+      closedAt: account.closedAt ?? "",
     });
     setAccountModalOpen(true);
   }
@@ -3443,6 +3468,8 @@ export default function MoneyCounter() {
                             {account.currency} ·{" "}
                             <Money cents={account.balanceCents} currency={account.currency} /> ·{" "}
                             {account.transactionCount} оп.
+                            {account.openedAt ? ` · с ${dmy(account.openedAt)}` : ""}
+                            {account.closedAt ? ` · по ${dmy(account.closedAt)}` : ""}
                           </small>
                         </span>
                         <span className="rowActions">
@@ -3729,6 +3756,47 @@ export default function MoneyCounter() {
                       onChange={(event) => setAccountForm({ ...accountForm, openingBalance: event.target.value })}
                     />
                   </label>
+                  <div className="formGrid two lifetimeGrid">
+                    <label>
+                      Открыт
+                      <input
+                        type="date"
+                        onClick={(event) => {
+                          try {
+                            event.currentTarget.showPicker();
+                          } catch {
+                            // older browsers: the native icon still works
+                          }
+                        }}
+                        value={accountForm.openedAt}
+                        onChange={(event) =>
+                          setAccountForm({ ...accountForm, openedAt: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Закрыт
+                      <input
+                        type="date"
+                        onClick={(event) => {
+                          try {
+                            event.currentTarget.showPicker();
+                          } catch {
+                            // older browsers: the native icon still works
+                          }
+                        }}
+                        value={accountForm.closedAt}
+                        onChange={(event) =>
+                          setAccountForm({ ...accountForm, closedAt: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <p className="importHint">
+                    Пустая дата — «всегда». Начальный баланс появляется с даты
+                    открытия; вне этих дат счёт скрыт из «Счетов», а операции
+                    с датами вне периода отклоняются.
+                  </p>
                   <label>
                     Цвет
                     <span className="colorField">

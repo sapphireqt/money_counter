@@ -71,6 +71,21 @@ function normalizeStatus(value: unknown) {
   return value === "pending" ? "pending" : "cleared";
 }
 
+// The date must fall inside the account's lifetime (both bounds inclusive;
+// null bound = unbounded). Returns an error message or null.
+function outsideLifetime(
+  account: { name?: string; opened_at: string | null; closed_at: string | null },
+  date: string
+) {
+  if (account.opened_at && date < account.opened_at) {
+    return `Счёт открыт ${account.opened_at.split("-").reverse().join(".")} — дата операции раньше`;
+  }
+  if (account.closed_at && date > account.closed_at) {
+    return `Счёт закрыт ${account.closed_at.split("-").reverse().join(".")} — дата операции позже`;
+  }
+  return null;
+}
+
 async function getTransactionById(id: number) {
   const row = await getD1()
     .prepare(
@@ -236,12 +251,19 @@ export async function POST(request: Request) {
     }
 
     const account = await getD1()
-      .prepare("SELECT id FROM accounts WHERE id = ? AND archived_at IS NULL")
+      .prepare(
+        "SELECT id, opened_at, closed_at FROM accounts WHERE id = ? AND archived_at IS NULL"
+      )
       .bind(accountId)
-      .first<{ id: number }>();
+      .first<{ id: number; opened_at: string | null; closed_at: string | null }>();
 
     if (!account) {
       return Response.json({ error: "Счет не найден" }, { status: 404 });
+    }
+
+    const lifetimeError = outsideLifetime(account, date);
+    if (lifetimeError) {
+      return Response.json({ error: lifetimeError }, { status: 400 });
     }
 
     const payee = String(payload.payee ?? "").trim();
@@ -395,6 +417,32 @@ export async function PATCH(request: Request) {
 
     if (assignments.length === 0) {
       return Response.json({ error: "Нет изменений" }, { status: 400 });
+    }
+
+    // Moving an operation in time or across accounts must keep it inside the
+    // target account's lifetime.
+    if ("date" in payload || "accountId" in payload) {
+      const current = await getD1()
+        .prepare("SELECT account_id, date FROM transactions WHERE id = ?")
+        .bind(id)
+        .first<{ account_id: number; date: string }>();
+      if (!current) {
+        return Response.json({ error: "Операция не найдена" }, { status: 404 });
+      }
+      const effectiveAccountId =
+        "accountId" in payload ? (parseId(payload.accountId) ?? current.account_id) : current.account_id;
+      const effectiveDate =
+        "date" in payload ? (normalizeDateInput(payload.date) ?? current.date) : current.date;
+      const target = await getD1()
+        .prepare("SELECT opened_at, closed_at FROM accounts WHERE id = ?")
+        .bind(effectiveAccountId)
+        .first<{ opened_at: string | null; closed_at: string | null }>();
+      if (target) {
+        const lifetimeError = outsideLifetime(target, effectiveDate);
+        if (lifetimeError) {
+          return Response.json({ error: lifetimeError }, { status: 400 });
+        }
+      }
     }
 
     assignments.push("updated_at = CURRENT_TIMESTAMP");

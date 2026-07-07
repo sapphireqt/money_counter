@@ -408,6 +408,11 @@ td small {
   grid-template-columns: 1fr 72px;
 }
 
+/* Account lifetime: two equal date fields side by side. */
+.formGrid.lifetimeGrid {
+  grid-template-columns: 1fr 1fr;
+}
+
 .wideField {
   grid-column: span 2;
 }

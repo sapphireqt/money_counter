@@ -37,6 +37,8 @@ export async function ensureSchema() {
         opening_balance_cents INTEGER NOT NULL DEFAULT 0,
         color TEXT NOT NULL DEFAULT '#2563eb',
         sort_order INTEGER NOT NULL DEFAULT 9999,
+        opened_at TEXT,
+        closed_at TEXT,
         archived_at TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -155,6 +157,18 @@ export async function ensureSchema() {
         .prepare(
           `ALTER TABLE ${table} ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 9999`
         )
+        .run();
+    } catch {
+      // duplicate column name — already migrated
+    }
+  }
+  // Account lifetime (both optional; null = "always existed"). The opening
+  // balance materializes ON opened_at, and operations are validated to fall
+  // inside [opened_at, closed_at].
+  for (const column of ["opened_at", "closed_at"]) {
+    try {
+      await d1
+        .prepare(`ALTER TABLE accounts ADD COLUMN ${column} TEXT`)
         .run();
     } catch {
       // duplicate column name — already migrated

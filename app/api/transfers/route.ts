@@ -57,14 +57,28 @@ async function createTransfer(create: CreatePayload) {
 
   const rows = await d1
     .prepare(
-      "SELECT id, name, currency FROM accounts WHERE id IN (?, ?) AND archived_at IS NULL"
+      "SELECT id, name, currency, opened_at, closed_at FROM accounts WHERE id IN (?, ?) AND archived_at IS NULL"
     )
     .bind(fromId, toId)
-    .all<{ id: number; name: string; currency: string }>();
+    .all<{ id: number; name: string; currency: string; opened_at: string | null; closed_at: string | null }>();
   const from = (rows.results ?? []).find((a) => a.id === fromId);
   const to = (rows.results ?? []).find((a) => a.id === toId);
   if (!from || !to) {
     return Response.json({ error: "Счет не найден" }, { status: 404 });
+  }
+  for (const account of [from, to]) {
+    if (account.opened_at && date < account.opened_at) {
+      return Response.json(
+        { error: `Счёт «${account.name}» открыт ${account.opened_at.split("-").reverse().join(".")} — дата перевода раньше` },
+        { status: 400 }
+      );
+    }
+    if (account.closed_at && date > account.closed_at) {
+      return Response.json(
+        { error: `Счёт «${account.name}» закрыт ${account.closed_at.split("-").reverse().join(".")} — дата перевода позже` },
+        { status: 400 }
+      );
+    }
   }
 
   // Same currency: the received amount defaults to the sent one. Different

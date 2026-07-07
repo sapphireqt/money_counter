@@ -24,6 +24,8 @@ type AccountLookup = {
   id: number;
   name: string;
   currency: string;
+  opened_at?: string | null;
+  closed_at?: string | null;
 };
 
 const palette = [
@@ -91,7 +93,7 @@ export async function POST(request: Request) {
     const d1 = getD1();
     const existingAccounts = await d1
       .prepare(
-        "SELECT id, name, currency FROM accounts WHERE archived_at IS NULL ORDER BY id"
+        "SELECT id, name, currency, opened_at, closed_at FROM accounts WHERE archived_at IS NULL ORDER BY id"
       )
       .all<AccountLookup>();
     const accountsByKey = new Map<string, AccountLookup>();
@@ -231,6 +233,13 @@ export async function POST(request: Request) {
         String(row.category ?? "").trim() ||
         matchCategoryRule(description, rules) ||
         matchCategoryRule(payee, rules);
+
+      // Statement rows outside the account's declared lifetime are conflicts —
+      // reject per-row instead of silently importing them.
+      if ((account.opened_at && date < account.opened_at) || (account.closed_at && date > account.closed_at)) {
+        rejected.push({ row: rowNumber, reason: "вне периода существования счёта" });
+        continue;
+      }
 
       const keys = await loadExistingKeys(account.id);
       const fingerprint = dedupeKey(account.id, date, amountCents, description);

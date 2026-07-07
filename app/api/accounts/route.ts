@@ -15,6 +15,8 @@ type AccountRow = {
   type: string;
   opening_balance_cents: number;
   color: string;
+  opened_at: string | null;
+  closed_at: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -31,10 +33,13 @@ const accountSelect = `
     a.type,
     a.opening_balance_cents,
     a.color,
+    a.opened_at,
+    a.closed_at,
     a.archived_at,
     a.created_at,
     a.updated_at,
-    a.opening_balance_cents + COALESCE(SUM(t.amount_cents), 0) AS balance_cents,
+    CASE WHEN a.opened_at IS NOT NULL AND a.opened_at > date('now') THEN 0
+         ELSE a.opening_balance_cents END + COALESCE(SUM(t.amount_cents), 0) AS balance_cents,
     COUNT(t.id) AS transaction_count
   FROM accounts a
   LEFT JOIN transactions t ON t.account_id = a.id
@@ -59,6 +64,8 @@ function mapAccount(row: AccountRow) {
     type: row.type,
     openingBalanceCents: row.opening_balance_cents,
     color: row.color,
+    openedAt: row.opened_at,
+    closedAt: row.closed_at,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -103,12 +110,20 @@ export async function GET(request: Request) {
     // Filtering on the LEFT JOIN keeps accounts with no prior transactions.
     const asOf = normalizeDateInput(new URL(request.url).searchParams.get("asOf") ?? "");
     const joinFilter = asOf ? "AND t.date < ?" : "";
-    const sql = `${accountSelect} ${joinFilter}
+    // With asOf, the opening balance only counts once the account is open:
+    // it materializes ON opened_at (exclusive here, like tx.date < asOf).
+    const select = asOf
+      ? accountSelect.replace(
+          /CASE WHEN a\.opened_at IS NOT NULL AND a\.opened_at > date\('now'\) THEN 0/,
+          "CASE WHEN a.opened_at IS NOT NULL AND a.opened_at >= ? THEN 0"
+        )
+      : accountSelect;
+    const sql = `${select} ${joinFilter}
          WHERE a.archived_at IS NULL
          GROUP BY a.id
          ORDER BY a.sort_order, LOWER(a.name), a.id`;
     const statement = getD1().prepare(sql);
-    const rows = await (asOf ? statement.bind(asOf) : statement).all<AccountRow>();
+    const rows = await (asOf ? statement.bind(asOf, asOf) : statement).all<AccountRow>();
 
     return Response.json({
       accounts: (rows.results ?? []).map(mapAccount),
@@ -137,6 +152,14 @@ export async function POST(request: Request) {
     const currency = normalizeCurrency(payload.currency);
     const type = normalizeAccountType(payload.type);
     const color = normalizeColor(payload.color);
+    const openedAt = normalizeDateInput(payload.openedAt) ?? null;
+    const closedAt = normalizeDateInput(payload.closedAt) ?? null;
+    if (openedAt && closedAt && closedAt < openedAt) {
+      return Response.json(
+        { error: "Дата закрытия раньше даты открытия" },
+        { status: 400 }
+      );
+    }
 
     const row = await getD1()
       .prepare(
@@ -146,9 +169,11 @@ export async function POST(request: Request) {
           currency,
           type,
           opening_balance_cents,
-          color
+          color,
+          opened_at,
+          closed_at
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING
           id,
           name,
@@ -157,13 +182,15 @@ export async function POST(request: Request) {
           type,
           opening_balance_cents,
           color,
+          opened_at,
+          closed_at,
           archived_at,
           created_at,
           updated_at,
           opening_balance_cents AS balance_cents,
           0 AS transaction_count`
       )
-      .bind(name, bankName, currency, type, openingBalanceCents, color)
+      .bind(name, bankName, currency, type, openingBalanceCents, color, openedAt, closedAt)
       .first<AccountRow>();
 
     if (!row) {
@@ -231,6 +258,31 @@ export async function PATCH(request: Request) {
     if ("color" in payload) {
       assignments.push("color = ?");
       values.push(normalizeColor(payload.color));
+    }
+
+    if ("openedAt" in payload || "closedAt" in payload) {
+      const current = await getD1()
+        .prepare("SELECT opened_at, closed_at FROM accounts WHERE id = ?")
+        .bind(id)
+        .first<{ opened_at: string | null; closed_at: string | null }>();
+      const openedAt =
+        "openedAt" in payload ? normalizeDateInput(payload.openedAt) ?? null : current?.opened_at ?? null;
+      const closedAt =
+        "closedAt" in payload ? normalizeDateInput(payload.closedAt) ?? null : current?.closed_at ?? null;
+      if (openedAt && closedAt && closedAt < openedAt) {
+        return Response.json(
+          { error: "Дата закрытия раньше даты открытия" },
+          { status: 400 }
+        );
+      }
+      if ("openedAt" in payload) {
+        assignments.push("opened_at = ?");
+        values.push(openedAt as unknown as string);
+      }
+      if ("closedAt" in payload) {
+        assignments.push("closed_at = ?");
+        values.push(closedAt as unknown as string);
+      }
     }
 
     if (assignments.length === 0) {
