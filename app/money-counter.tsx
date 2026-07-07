@@ -266,6 +266,55 @@ function ClampedName({ text }: { text: string }) {
   );
 }
 
+// Date field with a GUARANTEED дд.мм.гггг display: native date inputs format
+// per the browser locale (Chrome ignores the page lang), so the visible face
+// is ours and the hidden native input only supplies the calendar popup and
+// the ISO value. value/onChange stay ISO yyyy-mm-dd.
+function DateField({
+  value,
+  onChange,
+  required,
+  disabled,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  required?: boolean;
+  disabled?: boolean;
+}) {
+  const pickerRef = useRef<HTMLInputElement>(null);
+  return (
+    <span className="dateField">
+      <button
+        type="button"
+        className="dateFieldFace"
+        disabled={disabled}
+        onClick={() => {
+          const picker = pickerRef.current;
+          if (!picker) return;
+          try {
+            picker.showPicker();
+          } catch {
+            picker.focus();
+          }
+        }}
+      >
+        {value ? dmy(value) : <span className="dateFieldEmpty">дд.мм.гггг</span>}
+      </button>
+      <input
+        ref={pickerRef}
+        type="date"
+        className="dateFieldNative"
+        tabIndex={-1}
+        aria-hidden="true"
+        required={required}
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </span>
+  );
+}
+
 // Pencil "edit" icon used by list rows (right-leaning, currentColor stroke).
 function EditIcon() {
   return (
@@ -2767,20 +2816,10 @@ export default function MoneyCounter() {
                     <>
                       <label>
                         Дата
-                        <input
+                        <DateField
                           required
-                          type="date"
-                          onClick={(event) => {
-                            try {
-                              event.currentTarget.showPicker();
-                            } catch {
-                              // older browsers: the native icon still works
-                            }
-                          }}
                           value={transactionForm.date}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, date: event.target.value })
-                          }
+                          onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
                         />
                       </label>
                       <label>
@@ -2894,21 +2933,11 @@ export default function MoneyCounter() {
                         Дата
                         {/* Locked while PICKING a partner (linking does not
                             save field edits); editable on a linked leg. */}
-                        <input
+                        <DateField
                           required
-                          type="date"
                           disabled={!editingTransaction?.transferGroup}
-                          onClick={(event) => {
-                            try {
-                              event.currentTarget.showPicker();
-                            } catch {
-                              // older browsers: the native icon still works
-                            }
-                          }}
                           value={transactionForm.date}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, date: event.target.value })
-                          }
+                          onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
                         />
                       </label>
                       <label>
@@ -3071,21 +3100,10 @@ export default function MoneyCounter() {
                                 </label>
                                 <label>
                                   Дата
-                                  <input
-                                    type="date"
-                                    onClick={(event) => {
-                                      try {
-                                        event.currentTarget.showPicker();
-                                      } catch {
-                                        // older browsers: the native icon still works
-                                      }
-                                    }}
+                                  <DateField
                                     value={partnerCreate.date}
-                                    onChange={(event) =>
-                                      setPartnerCreate({
-                                        ...partnerCreate,
-                                        date: event.target.value,
-                                      })
+                                    onChange={(iso) =>
+                                      setPartnerCreate({ ...partnerCreate, date: iso })
                                     }
                                   />
                                 </label>
@@ -3151,20 +3169,10 @@ export default function MoneyCounter() {
                       </label>
                       <label>
                         Дата
-                        <input
+                        <DateField
                           required
-                          type="date"
-                          onClick={(event) => {
-                            try {
-                              event.currentTarget.showPicker();
-                            } catch {
-                              // older browsers: the native icon still works
-                            }
-                          }}
                           value={transactionForm.date}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, date: event.target.value })
-                          }
+                          onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
                         />
                       </label>
                       <label>
@@ -3759,36 +3767,16 @@ export default function MoneyCounter() {
                   <div className="formGrid two lifetimeGrid">
                     <label>
                       Открыт
-                      <input
-                        type="date"
-                        onClick={(event) => {
-                          try {
-                            event.currentTarget.showPicker();
-                          } catch {
-                            // older browsers: the native icon still works
-                          }
-                        }}
+                      <DateField
                         value={accountForm.openedAt}
-                        onChange={(event) =>
-                          setAccountForm({ ...accountForm, openedAt: event.target.value })
-                        }
+                        onChange={(iso) => setAccountForm({ ...accountForm, openedAt: iso })}
                       />
                     </label>
                     <label>
                       Закрыт
-                      <input
-                        type="date"
-                        onClick={(event) => {
-                          try {
-                            event.currentTarget.showPicker();
-                          } catch {
-                            // older browsers: the native icon still works
-                          }
-                        }}
+                      <DateField
                         value={accountForm.closedAt}
-                        onChange={(event) =>
-                          setAccountForm({ ...accountForm, closedAt: event.target.value })
-                        }
+                        onChange={(iso) => setAccountForm({ ...accountForm, closedAt: iso })}
                       />
                     </label>
                   </div>
