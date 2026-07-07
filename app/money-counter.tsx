@@ -647,8 +647,17 @@ export default function MoneyCounter() {
   // candidates around the edited operation's date, and the chosen partner.
   const [partnerCandidates, setPartnerCandidates] = useState<Transaction[] | null>(null);
   const [partnerId, setPartnerId] = useState("");
-  // Per-row «⋮» actions menu: the key of the open one (tx-<id> / transfer-<group>).
+  // Inline creation of a missing partner right inside the picker.
+  const [partnerCreate, setPartnerCreate] = useState({
+    open: false,
+    accountId: "",
+    amount: "",
+    date: "",
+  });
+  // Per-row «⋮» actions menu: the key of the open one (tx-<id> / transfer-<group>)
+  // and whether it opens upward (when the row is near the viewport bottom).
   const [rowMenu, setRowMenu] = useState<string | null>(null);
+  const [rowMenuUp, setRowMenuUp] = useState(false);
   // «Найти переводы»: auto-detected same-amount pairs awaiting confirmation.
   const [detectPairs, setDetectPairs] = useState<DetectPair[] | null>(null);
   const [detectChecked, setDetectChecked] = useState<Set<number>>(new Set());
@@ -1004,6 +1013,7 @@ export default function MoneyCounter() {
     void (async () => {
       setPartnerCandidates(null);
       setPartnerId("");
+      setPartnerCreate({ open: false, accountId: "", amount: "", date: "" });
       const tx = editingTransaction;
       if (!formOpen || !tx || transactionForm.direction !== "transfer" || tx.transferGroup) {
         return;
@@ -1726,6 +1736,41 @@ export default function MoneyCounter() {
     }
   }
 
+  // Create the missing partner right from the picker and link the pair in one
+  // go: the new operation gets the OPPOSITE sign of the edited one.
+  async function createAndLinkPartner() {
+    const tx = editingTransaction;
+    if (!tx || !partnerCreate.accountId || !partnerCreate.amount) return;
+    setSaving(true);
+    try {
+      const created = await requestJson<{ transaction: Transaction }>("/api/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          accountId: partnerCreate.accountId,
+          date: partnerCreate.date,
+          amount: partnerCreate.amount,
+          direction: tx.amountCents < 0 ? "income" : "expense",
+          description: tx.description || "Перевод",
+        }),
+      });
+      const partner = created.transaction;
+      const outId = tx.amountCents < 0 ? tx.id : partner.id;
+      const inId = tx.amountCents < 0 ? partner.id : tx.id;
+      await requestJson("/api/transfers", {
+        method: "POST",
+        body: JSON.stringify({ outId, inId }),
+      });
+      setNotice("Операция создана и связана в перемещение");
+      closeForm();
+      await refreshAfterMutation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось создать напарника");
+      await refreshAfterMutation();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // «Найти переводы»: fetch conservative same-amount pair candidates and let
   // the user confirm which to link.
   async function openDetectTransfers() {
@@ -2193,6 +2238,7 @@ export default function MoneyCounter() {
                     title's old spot (left), and the primary action sits where
                     the picker used to be (top-right). */}
                 <h2 className="opsTitle">Операции</h2>
+                <div className="opsToolbar">
                 <div className="sectionHead">
                   <MonthPicker
                     ariaLabel="Период"
@@ -2278,6 +2324,7 @@ export default function MoneyCounter() {
                     Найти переводы
                   </button>
                 </div>
+                </div>
 
                 <div className="tableWrap">
                   <table className="opsTable">
@@ -2354,18 +2401,20 @@ export default function MoneyCounter() {
                                         aria-label="Действия"
                                         aria-haspopup="menu"
                                         aria-expanded={rowMenu === `transfer-${row.out.transferGroup}`}
-                                        onClick={() =>
+                                        onClick={(event) => {
+                                          const rect = event.currentTarget.getBoundingClientRect();
+                                          setRowMenuUp(window.innerHeight - rect.bottom < 120);
                                           setRowMenu((current) =>
                                             current === `transfer-${row.out.transferGroup}`
                                               ? null
                                               : `transfer-${row.out.transferGroup}`
-                                          )
-                                        }
+                                          );
+                                        }}
                                       >
                                         ⋮
                                       </button>
                                       {rowMenu === `transfer-${row.out.transferGroup}` ? (
-                                        <span className="rowMenu" role="menu">
+                                        <span className={`rowMenu ${rowMenuUp ? "up" : ""}`} role="menu">
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -2426,16 +2475,18 @@ export default function MoneyCounter() {
                                         aria-label="Действия"
                                         aria-haspopup="menu"
                                         aria-expanded={rowMenu === `tx-${row.tx.id}`}
-                                        onClick={() =>
+                                        onClick={(event) => {
+                                          const rect = event.currentTarget.getBoundingClientRect();
+                                          setRowMenuUp(window.innerHeight - rect.bottom < 120);
                                           setRowMenu((current) =>
                                             current === `tx-${row.tx.id}` ? null : `tx-${row.tx.id}`
-                                          )
-                                        }
+                                          );
+                                        }}
                                       >
                                         ⋮
                                       </button>
                                       {rowMenu === `tx-${row.tx.id}` ? (
-                                        <span className="rowMenu" role="menu">
+                                        <span className={`rowMenu ${rowMenuUp ? "up" : ""}`} role="menu">
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -2694,6 +2745,13 @@ export default function MoneyCounter() {
                         <input
                           required
                           type="date"
+                          onClick={(event) => {
+                            try {
+                              event.currentTarget.showPicker();
+                            } catch {
+                              // older browsers: the native icon still works
+                            }
+                          }}
                           value={transactionForm.date}
                           onChange={(event) =>
                             setTransactionForm({ ...transactionForm, date: event.target.value })
@@ -2815,6 +2873,13 @@ export default function MoneyCounter() {
                           required
                           type="date"
                           disabled={!editingTransaction?.transferGroup}
+                          onClick={(event) => {
+                            try {
+                              event.currentTarget.showPicker();
+                            } catch {
+                              // older browsers: the native icon still works
+                            }
+                          }}
                           value={transactionForm.date}
                           onChange={(event) =>
                             setTransactionForm({ ...transactionForm, date: event.target.value })
@@ -2924,6 +2989,115 @@ export default function MoneyCounter() {
                             ))}
                           </ul>
                         )}
+
+                        {/* Missing counterpart? Create it right here and link
+                            in one action instead of closing the modal. */}
+                        <div className="partnerCreate">
+                          {!partnerCreate.open ? (
+                            <button
+                              type="button"
+                              className="textButton"
+                              onClick={() =>
+                                setPartnerCreate({
+                                  open: true,
+                                  accountId: "",
+                                  amount: centsToInputValue(
+                                    Math.abs(editingTransaction?.amountCents ?? 0)
+                                  ),
+                                  date: editingTransaction?.date ?? today(),
+                                })
+                              }
+                            >
+                              + Создать операцию-напарника
+                            </button>
+                          ) : (
+                            <>
+                              <p className="importHint">
+                                Будет создано{" "}
+                                {editingTransaction && editingTransaction.amountCents < 0
+                                  ? "поступление"
+                                  : "расход"}{" "}
+                                и сразу связано с этой операцией.
+                              </p>
+                              <div className="partnerCreateGrid">
+                                <label>
+                                  Счёт
+                                  <select
+                                    value={partnerCreate.accountId}
+                                    onChange={(event) =>
+                                      setPartnerCreate({
+                                        ...partnerCreate,
+                                        accountId: event.target.value,
+                                      })
+                                    }
+                                  >
+                                    <option value="">Выберите счет</option>
+                                    {accounts
+                                      .filter(
+                                        (account) =>
+                                          String(account.id) !== transactionForm.accountId
+                                      )
+                                      .map((account) => (
+                                        <option key={account.id} value={account.id}>
+                                          {account.name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </label>
+                                <label>
+                                  Дата
+                                  <input
+                                    type="date"
+                                    onClick={(event) => {
+                                      try {
+                                        event.currentTarget.showPicker();
+                                      } catch {
+                                        // older browsers: the native icon still works
+                                      }
+                                    }}
+                                    value={partnerCreate.date}
+                                    onChange={(event) =>
+                                      setPartnerCreate({
+                                        ...partnerCreate,
+                                        date: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </label>
+                                <label>
+                                  Сумма
+                                  {(() => {
+                                    const currency = accounts.find(
+                                      (account) =>
+                                        String(account.id) === partnerCreate.accountId
+                                    )?.currency;
+                                    return currency ? ` (${currency})` : "";
+                                  })()}
+                                  <input
+                                    inputMode="decimal"
+                                    value={partnerCreate.amount}
+                                    onChange={(event) =>
+                                      setPartnerCreate({
+                                        ...partnerCreate,
+                                        amount: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <button
+                                type="button"
+                                className="secondaryButton"
+                                disabled={
+                                  saving || !partnerCreate.accountId || !partnerCreate.amount
+                                }
+                                onClick={() => void createAndLinkPartner()}
+                              >
+                                Создать и связать
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                       )}
                     </>
@@ -2955,6 +3129,13 @@ export default function MoneyCounter() {
                         <input
                           required
                           type="date"
+                          onClick={(event) => {
+                            try {
+                              event.currentTarget.showPicker();
+                            } catch {
+                              // older browsers: the native icon still works
+                            }
+                          }}
                           value={transactionForm.date}
                           onChange={(event) =>
                             setTransactionForm({ ...transactionForm, date: event.target.value })

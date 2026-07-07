@@ -718,6 +718,42 @@ td {
   color: var(--expense);
 }
 
+/* Near the viewport bottom the menu opens upward instead of clipping. */
+.rowMenu.up {
+  bottom: calc(100% + 4px);
+  top: auto;
+}
+
+/* Sticky operations toolbar (period picker + Добавить + filters): pins just
+   below the stuck summary cards; the background hides rows scrolling under. */
+.opsToolbar {
+  background: var(--surface);
+  margin: 0 -16px;
+  padding: 0 16px 2px;
+  position: sticky;
+  top: 110px;
+  z-index: 20;
+}
+
+/* Inline partner creation inside the link picker. */
+.partnerCreate {
+  border-top: 1px dashed var(--line);
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 10px;
+}
+
+.partnerCreate .textButton {
+  justify-self: start;
+}
+
+.partnerCreateGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 /* Day-group header row: the date as a heading over the operations it groups,
    instead of a per-row date column. */
 .opsTable .dayGroup td {
