@@ -582,7 +582,11 @@ export default function MoneyCounter() {
   const [activeTab, setActiveTab] = useState<Tab>("main");
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // The operations LIST (list filters applied)...
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  // ...and the same period WITHOUT list filters: cards, «Траты», and the
+  // category bars aggregate over the whole month regardless of filtering.
+  const [periodTransactions, setPeriodTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -744,7 +748,7 @@ export default function MoneyCounter() {
       names.set(category.name.toLowerCase(), category.name);
     }
     const extras = new Map<string, string>();
-    for (const tx of transactions) {
+    for (const tx of periodTransactions) {
       const name = tx.category.trim();
       if (name && !names.has(name.toLowerCase())) extras.set(name.toLowerCase(), name);
     }
@@ -757,7 +761,7 @@ export default function MoneyCounter() {
       ...names.values(),
       ...[...extras.values()].sort((a, b) => a.localeCompare(b, "ru")),
     ];
-  }, [categories, transactions, categoryFilter]);
+  }, [categories, periodTransactions, categoryFilter]);
 
   // --- data loading ---------------------------------------------------------
   const loadAccounts = useCallback(async () => {
@@ -799,21 +803,30 @@ export default function MoneyCounter() {
 
   const loadTransactions = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
       const { from, to } = monthBounds(mainPeriod);
-      params.set("from", from);
-      params.set("to", to);
-      if (selectedAccountId !== "all") params.set("accountId", selectedAccountId);
-      if (query.trim()) params.set("q", query.trim());
-      if (typeFilter !== "all") params.set("type", typeFilter);
-      if (categoryFilter) params.set("category", categoryFilter);
-      if (flaggedOnly) params.set("flagged", "1");
-      params.set("limit", "500");
+      const base = new URLSearchParams({ from, to, limit: "500" });
+      const filtered = new URLSearchParams(base);
+      if (selectedAccountId !== "all") filtered.set("accountId", selectedAccountId);
+      if (query.trim()) filtered.set("q", query.trim());
+      if (typeFilter !== "all") filtered.set("type", typeFilter);
+      if (categoryFilter) filtered.set("category", categoryFilter);
+      if (flaggedOnly) filtered.set("flagged", "1");
+      const hasListFilters = filtered.toString() !== base.toString();
 
       const data = await requestJson<{ transactions: Transaction[] }>(
-        `/api/transactions?${params.toString()}`
+        `/api/transactions?${filtered.toString()}`
       );
       setTransactions(data.transactions);
+      // One request when no filters are active; a second, unfiltered one
+      // otherwise so the analytics keep covering the whole month.
+      if (hasListFilters) {
+        const full = await requestJson<{ transactions: Transaction[] }>(
+          `/api/transactions?${base.toString()}`
+        );
+        setPeriodTransactions(full.transactions);
+      } else {
+        setPeriodTransactions(data.transactions);
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось загрузить операции");
     }
@@ -919,22 +932,22 @@ export default function MoneyCounter() {
   // Transfer legs (tx.transferGroup) are movements between own accounts, not
   // income or spending — every aggregate below skips them.
   const periodIncome = useMemo(() => {
-    return transactions.reduce<Record<string, number>>((map, tx) => {
+    return periodTransactions.reduce<Record<string, number>>((map, tx) => {
       if (tx.amountCents > 0 && !tx.transferGroup) {
         map[tx.accountCurrency] = (map[tx.accountCurrency] ?? 0) + tx.amountCents;
       }
       return map;
     }, {});
-  }, [transactions]);
+  }, [periodTransactions]);
 
   const periodExpense = useMemo(() => {
-    return transactions.reduce<Record<string, number>>((map, tx) => {
+    return periodTransactions.reduce<Record<string, number>>((map, tx) => {
       if (tx.amountCents < 0 && !tx.transferGroup) {
         map[tx.accountCurrency] = (map[tx.accountCurrency] ?? 0) + Math.abs(tx.amountCents);
       }
       return map;
     }, {});
-  }, [transactions]);
+  }, [periodTransactions]);
 
   // The period's expenses per category for the bars under the «Счета» panel,
   // converted to the display currency at the single view rate (same as the
@@ -942,7 +955,7 @@ export default function MoneyCounter() {
   // largest-first. Currencies with no rate are collected for a flagged note.
   const categoryBars = useMemo(() => {
     const perCategory = new Map<string, Record<string, number>>();
-    for (const tx of transactions) {
+    for (const tx of periodTransactions) {
       if (tx.amountCents >= 0 || tx.transferGroup) continue;
       const name = tx.category || "Без категории";
       const totals = perCategory.get(name) ?? {};
@@ -974,7 +987,7 @@ export default function MoneyCounter() {
       uncategorized: items.find((item) => item.label === "Без категории") ?? null,
       missing: [...missing],
     };
-  }, [transactions, periodRates, displayCurrency, colorByCategory]);
+  }, [periodTransactions, periodRates, displayCurrency, colorByCategory]);
 
   // The transaction currently being edited in the modal (null while adding).
   const editingTransaction = useMemo(
@@ -1295,7 +1308,7 @@ export default function MoneyCounter() {
   // matches the «Расходы периода» card.
   const accountSpend = useMemo(() => {
     const map = new Map<number, Record<string, number>>();
-    for (const tx of transactions) {
+    for (const tx of periodTransactions) {
       if (tx.amountCents >= 0 || tx.transferGroup) continue;
       const totals = map.get(tx.accountId) ?? {};
       totals[tx.accountCurrency] =
@@ -1303,7 +1316,7 @@ export default function MoneyCounter() {
       map.set(tx.accountId, totals);
     }
     return map;
-  }, [transactions]);
+  }, [periodTransactions]);
 
   // A «Траты» cell of the panel: the spend converted at the view rate; muted
   // dash when the account had no spending in the period.
