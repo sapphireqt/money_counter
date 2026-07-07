@@ -108,7 +108,9 @@ function detectLayout(records) {
     if (Number.isFinite(num(rec[6]))) g += 1;
     if (Number.isFinite(num(rec[7]))) h += 1;
   }
-  return h >= g ? { amount: 7, loss: 13, name: "H/N (апрель+)" } : { amount: 6, loss: 12, name: "G/M (до апреля)" };
+  return h >= g
+    ? { amount: 7, loss: 13, eur: 11, name: "H/N (апрель+)" }
+    : { amount: 6, loss: 12, eur: 10, name: "G/M (до апреля)" };
 }
 
 // --- transform one CSV file into import rows ---------------------------------
@@ -156,6 +158,33 @@ function buildRows(records, report, layout) {
     if (destMatch) report.destinations.add(`${destMatch[1].trim()} (не счёт → расход)`);
 
     out.push({ accountName: acct.name, currency: acct.currency, date, amount, direction: isIncome ? "income" : "expense", description, category });
+
+    // «Снятие наличных»: the sheet credited CASH with the withdrawn amount via
+    // a formula the CSV export loses — emit the CASH (EUR) income leg too. For
+    // non-EUR accounts the EUR-value column carries the converted amount.
+    // EXACT description only: fuzzy mentions («Всякое (снятие наличных)») are
+    // judgment calls — the user reviewed and rejected one — so they are only
+    // reported, never auto-credited. Link the pairs in the app afterwards:
+    // «Найти переводы» matches the same-currency ones automatically.
+    const mentionsCash = /снятие налич/i.test(description);
+    const exactCash = /^снятие наличных$/i.test(description.trim());
+    if (isExpense && mentionsCash && !exactCash) {
+      report.cashMentions.push(`${date} ${acct.name} «${description}»`);
+    }
+    if (isExpense && exactCash && acct.name !== "CASH") {
+      const eurValue = num(rec[layout.eur]);
+      const received = Number.isFinite(eurValue) && eurValue > 0
+        ? Math.round(eurValue * 100) / 100
+        : acct.currency === "EUR"
+          ? amount
+          : NaN;
+      if (Number.isFinite(received)) {
+        out.push({ accountName: "CASH", currency: "EUR", date, amount: received, direction: "income", description, category: "" });
+        report.cashWithdrawals += 1;
+      } else {
+        report.cashNoEur += 1;
+      }
+    }
   }
   return out;
 }
@@ -178,6 +207,7 @@ if (files.length === 0) {
 const report = {
   unmapped: new Map(), destinations: new Set(), transfers: 0, skippedVita: 0,
   badAmount: 0, transferWrongSign: 0, transferNonPositive: 0,
+  cashWithdrawals: 0, cashNoEur: 0, cashMentions: [],
 };
 let rows = [];
 for (const file of files) {
@@ -210,6 +240,12 @@ if (report.skippedVita) console.log(`Пропущено VITA: ${report.skippedVi
 if (report.badAmount) console.log(`Пропущено (нет/0 суммы): ${report.badAmount}`);
 if (report.transferWrongSign) console.log(`⚠ Переводы с неожиданным знаком (не ➖): ${report.transferWrongSign}`);
 if (report.transferNonPositive) console.log(`⚠ Перевод с приходом ≤ 0 (пропущен кредит): ${report.transferNonPositive}`);
+if (report.cashWithdrawals) console.log(`Снятий наличных → приход на CASH: ${report.cashWithdrawals} (связать в приложении: «Найти переводы»)`);
+if (report.cashNoEur) console.log(`⚠ Снятие наличных БЕЗ EUR-эквивалента (CASH-приход пропущен): ${report.cashNoEur}`);
+if (report.cashMentions.length) {
+  console.log(`⚠ Упоминают снятие, но описание не точное — CASH-приход НЕ создан (реши вручную):`);
+  for (const line of report.cashMentions) console.log(`  ${line}`);
+}
 if (report.unmapped.size) {
   console.log(`\n⚠ НЕИЗВЕСТНЫЕ счета в колонке B (НЕ импортированы) — добавь в ACCOUNTS:`);
   for (const [k, n] of [...report.unmapped.entries()].sort()) console.log(`  «${k}» ×${n}`);

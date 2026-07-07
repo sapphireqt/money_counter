@@ -99,7 +99,7 @@ No test runner. Verify changes by layer:
   Then `node --experimental-strip-types --import ./register.mjs your-test.ts`, importing libs by absolute path.
 - **API + D1 flows**: `npm run dev`, then `curl`/`fetch` the endpoints (miniflare gives a real local D1). Create an account first, then import/transactions. The local SQLite lives at `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite` (the one with an `accounts` table) — inspect/clean it with `sqlite3` directly. Remember to clean up test rows.
 - A known-good fixture: a Revolut statement is comma-delimited despite a `.tsv` extension; its movement total reconciles to `finalBalance − balanceBeforeFirstRow`.
-- **One-off migration**: `scripts/import-sheets.mjs` imports monthly Google-Sheets tabs (CSV export) via `POST /api/import` — dry-run by default, `--post <baseUrl>` writes; idempotent via the import dedup. Run against prod through `kubectl port-forward` to the pod.
+- **One-off migration**: `scripts/import-sheets.mjs` imports monthly Google-Sheets tabs (CSV export) via `POST /api/import` — dry-run by default, `--post <baseUrl>` writes; idempotent via the import dedup. Run against prod through `kubectl port-forward` to the pod. It detects the per-file column layout (the sheet gained a column in April 2026: amount G→H, transfer loss M→N), and rows whose description is EXACTLY «Снятие наличных» also emit a CASH (EUR) income leg from the sheet's EUR-value column (fuzzy mentions are only warned about — link the pairs in the app afterwards).
 
 ## Conventions
 
