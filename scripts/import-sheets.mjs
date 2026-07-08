@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 const ACCOUNTS = {
   "garna": { name: "Garna", currency: "USD" },
   "ledger": { name: "Ledger", currency: "USD" },
+  "deel": { name: "DEEL", currency: "USD" }, // Deel payroll account (2025-06..10): salary in, then moved to Revolut VD-USD
   "kasikorn": { name: "Kasikorn", currency: "THB" },
   "krungsri": { name: "Krungsri", currency: "THB" },
   "bbva": { name: "BBVA", currency: "EUR" },
@@ -39,6 +40,7 @@ const ACCOUNTS = {
   "т инвестиции": { name: "Т-Инвестиции", currency: "RUB" },
   "t вклад18": { name: "Т-Вклад18", currency: "RUB" },
   "т вклад18": { name: "Т-Вклад18", currency: "RUB" },
+  "вклад": { name: "Т-Вклад18", currency: "RUB" }, // sheet writes "На вклад" for the Т-Вклад18 deposit (2025-09)
 };
 // VITA is a virtual/imaginary account — never import it.
 const SKIP = new Set(["vita"]);
