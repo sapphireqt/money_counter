@@ -714,6 +714,9 @@ export default function MoneyCounter() {
   // and whether it opens upward (when the row is near the viewport bottom).
   const [rowMenu, setRowMenu] = useState<string | null>(null);
   const [rowMenuUp, setRowMenuUp] = useState(false);
+  // Viewport-fixed coordinates of the open menu (right/top/bottom in px), so it
+  // escapes the `.tableWrap` overflow clip instead of hiding under a short list.
+  const [rowMenuPos, setRowMenuPos] = useState<{ right: number; top: number; bottom: number } | null>(null);
   // «Найти переводы»: auto-detected same-amount pairs awaiting confirmation.
   const [detectPairs, setDetectPairs] = useState<DetectPair[] | null>(null);
   const [detectChecked, setDetectChecked] = useState<Set<number>>(new Set());
@@ -964,11 +967,17 @@ export default function MoneyCounter() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setRowMenu(null);
     };
+    // The menu is viewport-fixed, so any scroll (page or a container like
+    // `.tableWrap`) detaches it from its row — close it instead. Capture phase
+    // catches scrolls that don't bubble.
+    const onScroll = () => setRowMenu(null);
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [rowMenu]);
 
@@ -2386,7 +2395,7 @@ export default function MoneyCounter() {
                     onClick={() => setFlaggedOnly((current) => !current)}
                     title="Показать только операции с пометкой «Требует внимания»"
                   >
-                    ⚑
+                    ⚠️
                   </button>
                   <button
                     className="secondaryButton"
@@ -2436,7 +2445,7 @@ export default function MoneyCounter() {
                                         className="markFlag"
                                         data-tip={row.out.notes || row.incoming.notes || "Требует внимания"}
                                       >
-                                        ⚑
+                                        ⚠️
                                       </span>
                                     ) : null}
                                   </td>
@@ -2477,7 +2486,12 @@ export default function MoneyCounter() {
                                         aria-expanded={rowMenu === `transfer-${row.out.transferGroup}`}
                                         onClick={(event) => {
                                           const rect = event.currentTarget.getBoundingClientRect();
-                                          setRowMenuUp(window.innerHeight - rect.bottom < 120);
+                                          setRowMenuUp(window.innerHeight - rect.bottom < 140);
+                                          setRowMenuPos({
+                                            right: Math.max(8, window.innerWidth - rect.right),
+                                            top: rect.bottom + 4,
+                                            bottom: window.innerHeight - rect.top + 4,
+                                          });
                                           setRowMenu((current) =>
                                             current === `transfer-${row.out.transferGroup}`
                                               ? null
@@ -2488,7 +2502,15 @@ export default function MoneyCounter() {
                                         ⋮
                                       </button>
                                       {rowMenu === `transfer-${row.out.transferGroup}` ? (
-                                        <span className={`rowMenu ${rowMenuUp ? "up" : ""}`} role="menu">
+                                        <span
+                                          className={`rowMenu ${rowMenuUp ? "up" : ""}`}
+                                          role="menu"
+                                          style={
+                                            rowMenuUp
+                                              ? { right: rowMenuPos?.right, bottom: rowMenuPos?.bottom }
+                                              : { right: rowMenuPos?.right, top: rowMenuPos?.top }
+                                          }
+                                        >
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -2519,7 +2541,7 @@ export default function MoneyCounter() {
                                       <span className="markTransfer" data-tip="Перемещение между счетами (второе плечо вне фильтра)">⇄</span>
                                     ) : null}
                                     {row.tx.flagged ? (
-                                      <span className="markFlag" data-tip={row.tx.notes || "Требует внимания"}>⚑</span>
+                                      <span className="markFlag" data-tip={row.tx.notes || "Требует внимания"}>⚠️</span>
                                     ) : null}
                                   </td>
                                   <td>
@@ -2551,7 +2573,12 @@ export default function MoneyCounter() {
                                         aria-expanded={rowMenu === `tx-${row.tx.id}`}
                                         onClick={(event) => {
                                           const rect = event.currentTarget.getBoundingClientRect();
-                                          setRowMenuUp(window.innerHeight - rect.bottom < 120);
+                                          setRowMenuUp(window.innerHeight - rect.bottom < 140);
+                                          setRowMenuPos({
+                                            right: Math.max(8, window.innerWidth - rect.right),
+                                            top: rect.bottom + 4,
+                                            bottom: window.innerHeight - rect.top + 4,
+                                          });
                                           setRowMenu((current) =>
                                             current === `tx-${row.tx.id}` ? null : `tx-${row.tx.id}`
                                           );
@@ -2560,7 +2587,15 @@ export default function MoneyCounter() {
                                         ⋮
                                       </button>
                                       {rowMenu === `tx-${row.tx.id}` ? (
-                                        <span className={`rowMenu ${rowMenuUp ? "up" : ""}`} role="menu">
+                                        <span
+                                          className={`rowMenu ${rowMenuUp ? "up" : ""}`}
+                                          role="menu"
+                                          style={
+                                            rowMenuUp
+                                              ? { right: rowMenuPos?.right, bottom: rowMenuPos?.bottom }
+                                              : { right: rowMenuPos?.right, top: rowMenuPos?.top }
+                                          }
+                                        >
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -2993,7 +3028,7 @@ export default function MoneyCounter() {
                                 })
                               }
                             />
-                            ⚑ Требует внимания
+                            ⚠️ Требует внимания
                           </label>
                         </>
                       ) : (
@@ -3235,7 +3270,7 @@ export default function MoneyCounter() {
                             setTransactionForm({ ...transactionForm, flagged: event.target.checked })
                           }
                         />
-                        ⚑ Требует внимания
+                        ⚠️ Требует внимания
                       </label>
                     </>
                   )}

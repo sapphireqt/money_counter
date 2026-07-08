@@ -739,6 +739,8 @@ td {
   position: relative;
 }
 
+/* Viewport-fixed (not absolute): its right/top/bottom are set inline from the
+   trigger button's rect, so a short `.tableWrap` (few rows) can't clip it. */
 .rowMenu {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -747,9 +749,7 @@ td {
   display: grid;
   min-width: 136px;
   padding: 4px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
+  position: fixed;
   z-index: 60;
 }
 
@@ -768,12 +768,6 @@ td {
 
 .rowMenu button.danger {
   color: var(--expense);
-}
-
-/* Near the viewport bottom the menu opens upward instead of clipping. */
-.rowMenu.up {
-  bottom: calc(100% + 4px);
-  top: auto;
 }
 
 /* Sticky operations toolbar (period picker + Добавить + filters): pins just
@@ -839,7 +833,7 @@ td {
 }
 
 /* Row markers: a one-character silent column before each row — "⇄" for
-   transfer legs, "⚑" for rows marked «Требует внимания» (the note text is the
+   transfer legs, "⚠️" for rows marked «Требует внимания» (the note text is the
    hover tooltip). */
 .markCol {
   padding-left: 2px;
@@ -892,7 +886,7 @@ td {
   color: var(--muted-strong);
 }
 
-/* «⚑ Требует внимания» checkbox in the transaction form. */
+/* «⚠️ Требует внимания» checkbox in the transaction form. */
 .flagCheck {
   align-items: center;
   color: var(--muted-strong);
