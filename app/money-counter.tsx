@@ -28,7 +28,6 @@ import {
   type ParsedRow,
 } from "../lib/import";
 import { analyzePdf, type PdfPage } from "../lib/pdf";
-import { forecastMonth, type ForecastResult, type ForecastTx } from "../lib/forecast";
 
 type Account = {
   id: number;
@@ -684,14 +683,6 @@ export default function MoneyCounter() {
   // Per-currency account balances as of the start of the selected period
   // (null = loading), for the "Баланс на начало периода" card.
   const [startTotals, setStartTotals] = useState<Record<string, number> | null>(null);
-
-  // Прогнозирование (budget mode) — PROTOTYPE state, all persisted in
-  // localStorage (no DB/schema changes). See lib/forecast.ts for the math.
-  const [budgetMode, setBudgetMode] = useState(false); // ops-overlay toggle (card + day tints)
-  const [forecastIncome, setForecastIncome] = useState(8500); // expected monthly income, display-currency major units — a FIXED manual field
-  const [forecastGoal, setForecastGoal] = useState(0); // savings goal X, display-currency major units
-  const [excludedCommitted, setExcludedCommitted] = useState<string[]>([]); // recurring keys the user removed from «committed»
-  const [historyTxs, setHistoryTxs] = useState<Transaction[] | null>(null); // prior 6 months, for recurrence detection
   // Historical view of a past period: account balances as of the period end
   // (null = loading or the period is current).
   const [endAccounts, setEndAccounts] = useState<Account[] | null>(null);
@@ -1300,134 +1291,6 @@ export default function MoneyCounter() {
     () => convertTotals(periodExpense, periodRates, displayCurrency),
     [periodExpense, periodRates, displayCurrency]
   );
-
-  // ── Прогнозирование (budget mode) ─────────────────────────────────────────
-  // Load persisted settings once. Wrapped in an IIFE so setState isn't called
-  // synchronously in the effect body (react-compiler rule).
-  useEffect(() => {
-    void (async () => {
-      const g = window.localStorage.getItem("mc.forecastGoal");
-      const inc = window.localStorage.getItem("mc.forecastIncome");
-      const ex = window.localStorage.getItem("mc.forecastExcluded");
-      const bm = window.localStorage.getItem("mc.budgetMode");
-      if (g != null) setForecastGoal(Number(g) || 0);
-      if (inc != null) setForecastIncome(Number(inc) || 0);
-      if (ex != null) {
-        try {
-          const parsed = JSON.parse(ex);
-          if (Array.isArray(parsed)) setExcludedCommitted(parsed);
-        } catch {
-          /* ignore corrupt value */
-        }
-      }
-      if (bm != null) setBudgetMode(bm === "1");
-    })();
-  }, []);
-  useEffect(() => {
-    window.localStorage.setItem("mc.forecastGoal", String(forecastGoal));
-  }, [forecastGoal]);
-  useEffect(() => {
-    window.localStorage.setItem("mc.forecastIncome", String(forecastIncome));
-  }, [forecastIncome]);
-  useEffect(() => {
-    window.localStorage.setItem("mc.forecastExcluded", JSON.stringify(excludedCommitted));
-  }, [excludedCommitted]);
-  useEffect(() => {
-    window.localStorage.setItem("mc.budgetMode", budgetMode ? "1" : "0");
-  }, [budgetMode]);
-
-  // The 6 complete months before the current one — the recurrence-detection
-  // window. Forecast is only meaningful for the current month view.
-  const forecastWindow = useMemo(() => {
-    const months: string[] = [];
-    for (let i = 6; i >= 1; i -= 1) months.push(addMonths(currentMonth, -i));
-    return months;
-  }, [currentMonth]);
-  const forecastAvailable = mainPeriod === currentMonth && Boolean(displayCurrency);
-  const forecastWanted = forecastAvailable && (budgetMode || activeTab === "forecast");
-
-  // Fetch the detection window (per-month, to dodge the 500-row LIMIT) only
-  // while the forecast is on screen.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (!forecastWanted) {
-        setHistoryTxs(null);
-        return;
-      }
-      try {
-        const monthly = await Promise.all(
-          forecastWindow.map((m) =>
-            requestJson<{ transactions: Transaction[] }>(
-              `/api/transactions?from=${m}-01&to=${monthEnd(m)}&limit=500`
-            )
-          )
-        );
-        if (!cancelled) setHistoryTxs(monthly.flatMap((r) => r.transactions));
-      } catch {
-        if (!cancelled) setHistoryTxs([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // `accounts` reloads after any mutation — refetch the window so an edit to a
-    // prior-month bill re-runs recurrence detection.
-  }, [forecastWanted, forecastWindow, accounts]);
-
-  // The forecast itself. All amounts converted to the display currency at the
-  // single period rate (same approximation the rest of the view uses).
-  const forecastResult = useMemo<ForecastResult | null>(() => {
-    if (!forecastWanted || !periodRates || historyTxs === null) return null;
-    const rates = periodRates;
-    const toFx = (list: Transaction[]): ForecastTx[] => {
-      const out: ForecastTx[] = [];
-      for (const t of list) {
-        let cents: number | null;
-        if (t.accountCurrency === displayCurrency) cents = t.amountCents;
-        else {
-          const rTo = rates[displayCurrency];
-          const rFrom = rates[t.accountCurrency];
-          cents = rTo != null && rFrom != null ? Math.round((t.amountCents * rTo) / rFrom) : null;
-        }
-        if (cents === null) continue;
-        out.push({
-          date: t.date,
-          cents,
-          category: t.category,
-          description: t.description,
-          payee: t.payee,
-          isTransfer: Boolean(t.transferGroup),
-        });
-      }
-      return out;
-    };
-    return forecastMonth({
-      windowTxs: toFx(historyTxs),
-      windowMonths: forecastWindow,
-      currentTxs: toFx(periodTransactions),
-      currentMonth,
-      today: today(),
-      goalCents: Math.round(forecastGoal * 100),
-      currentBalanceCents: panelConverted.cents,
-      manualExpectedIncomeCents: Math.round(forecastIncome * 100),
-      excludeKeys: excludedCommitted,
-    });
-  }, [
-    forecastWanted,
-    periodRates,
-    historyTxs,
-    forecastWindow,
-    periodTransactions,
-    currentMonth,
-    forecastGoal,
-    forecastIncome,
-    excludedCommitted,
-    panelConverted,
-    displayCurrency,
-  ]);
-  // The overlay (card + day tints) shows only with the toggle on.
-  const budgetOverlay = budgetMode && forecastResult !== null ? forecastResult : null;
 
   // A summary value in displayCurrency: "…" until rates load, the converted
   // amount otherwise, flagged (red, with a tooltip) if some currency had no rate.
@@ -2562,20 +2425,6 @@ export default function MoneyCounter() {
                   >
                     Найти переводы
                   </button>
-                  <button
-                    className={`secondaryButton budgetToggle ${budgetMode ? "on" : ""}`}
-                    type="button"
-                    aria-pressed={budgetMode}
-                    disabled={!forecastAvailable}
-                    onClick={() => setBudgetMode((current) => !current)}
-                    title={
-                      forecastAvailable
-                        ? "Режим бюджета: дневной таргет и раскраска дней"
-                        : "Бюджет доступен только для текущего месяца с выбранной валютой отображения"
-                    }
-                  >
-                    ◎ Бюджет
-                  </button>
                 </div>
                 </div>
 
@@ -2600,29 +2449,10 @@ export default function MoneyCounter() {
                           </td>
                         </tr>
                       ) : (
-                        dayGroups.map((group) => {
-                          // Budget-mode day tint: discretionary spend of the day
-                          // (whole-month figure, filter-independent) vs the flat
-                          // daily allowance. Only past+today; future days stay plain.
-                          const dayDisc = budgetOverlay
-                            ? budgetOverlay.perDayDiscretionaryCents[group.date] ?? 0
-                            : 0;
-                          const tinted = Boolean(budgetOverlay) && group.date <= today();
-                          const over = tinted && dayDisc > Math.max(0, budgetOverlay!.dailyAllowanceCents);
-                          return (
+                        dayGroups.map((group) => (
                           <Fragment key={group.date}>
-                            <tr className={`dayGroup ${tinted ? (over ? "overBudget" : "underBudget") : ""}`}>
-                              <td colSpan={7}>
-                                <span>{formatDayHeader(group.date)}</span>
-                                {tinted ? (
-                                  <span className={`dayBudget ${over ? "over" : "under"}`}>
-                                    {over ? "⚠" : "✓"}{" "}
-                                    <Money cents={dayDisc} currency={displayCurrency} />
-                                    {" / "}
-                                    <Money cents={budgetOverlay!.dailyAllowanceCents} currency={displayCurrency} />
-                                  </span>
-                                ) : null}
-                              </td>
+                            <tr className="dayGroup">
+                              <td colSpan={7}>{formatDayHeader(group.date)}</td>
                             </tr>
                             {group.items.map((row) =>
                               row.kind === "transfer" ? (
@@ -2812,8 +2642,7 @@ export default function MoneyCounter() {
                               )
                             )}
                           </Fragment>
-                          );
-                        })
+                        ))
                       )}
                     </tbody>
                   </table>
@@ -2822,71 +2651,6 @@ export default function MoneyCounter() {
             </section>
 
             <aside className="rightRail">
-            {budgetOverlay ? (
-              <section className="surface forecastPanel" aria-label="Прогноз">
-                <h2>Прогноз</h2>
-                {!budgetOverlay.feasible ? (
-                  <p className="forecastWarn">
-                    Цель недостижима: не хватает{" "}
-                    <Money cents={budgetOverlay.shortfallCents} currency={displayCurrency} />
-                  </p>
-                ) : null}
-                <div className="forecastTarget">
-                  <span className="forecastTargetLabel">Таргет на день</span>
-                  <span className="forecastTargetValue">
-                    <Money cents={budgetOverlay.rollingTargetCents} currency={displayCurrency} />
-                  </span>
-                </div>
-                <p className={`forecastToday ${budgetOverlay.remainingTodayCents < 0 ? "over" : "under"}`}>
-                  Сегодня ещё можно{" "}
-                  <b>
-                    <Money cents={budgetOverlay.remainingTodayCents} currency={displayCurrency} />
-                  </b>
-                  <span className="forecastMuted">
-                    {" "}
-                    · потрачено <Money cents={budgetOverlay.todayDiscretionaryCents} currency={displayCurrency} />
-                  </span>
-                </p>
-                <table className="forecastMini">
-                  <tbody>
-                    <tr>
-                      <td>Доход (месяц)</td>
-                      <td><Money cents={budgetOverlay.expectedIncomeCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr>
-                      <td>− Обязательные</td>
-                      <td><Money cents={budgetOverlay.committedTotalCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr className="forecastGoalRow">
-                      <td>− Отложить</td>
-                      <td>
-                        <span className="goalInput">
-                          <input
-                            type="number"
-                            min={0}
-                            step={100}
-                            value={forecastGoal}
-                            onChange={(event) =>
-                              setForecastGoal(Math.max(0, Number(event.target.value) || 0))
-                            }
-                          />
-                          {displayCurrency}
-                        </span>
-                      </td>
-                    </tr>
-                    <tr className="forecastBudgetRow">
-                      <td>= Свободно</td>
-                      <td><Money cents={budgetOverlay.discretionaryBudgetCents} currency={displayCurrency} /></td>
-                    </tr>
-                  </tbody>
-                </table>
-                <p className="panelNote">
-                  Ровный лимит <Money cents={budgetOverlay.dailyAllowanceCents} currency={displayCurrency} />/день красит дни.
-                  Прогноз на {dmy(monthEnd(mainPeriod))}:{" "}
-                  <Money cents={budgetOverlay.projectedEndCents} currency={displayCurrency} />
-                </p>
-              </section>
-            ) : null}
             <section className="surface accountsPanel" aria-label="Баланс по счетам">
               <h2>Счета</h2>
               {pastPeriod ? (
@@ -4336,146 +4100,7 @@ export default function MoneyCounter() {
             <div className="sectionHead">
               <h2>Прогнозирование</h2>
             </div>
-
-            <div className="forecastConfig">
-              <label className="filterField">
-                Ожидаемый доход в месяц
-                <span className="goalInput">
-                  <input
-                    type="number"
-                    min={0}
-                    step={100}
-                    value={forecastIncome}
-                    onChange={(event) => setForecastIncome(Math.max(0, Number(event.target.value) || 0))}
-                  />
-                  {displayCurrency || "—"}
-                </span>
-              </label>
-              <label className="filterField">
-                Отложить к концу месяца (X)
-                <span className="goalInput">
-                  <input
-                    type="number"
-                    min={0}
-                    step={100}
-                    value={forecastGoal}
-                    onChange={(event) => setForecastGoal(Math.max(0, Number(event.target.value) || 0))}
-                  />
-                  {displayCurrency || "—"}
-                </span>
-              </label>
-            </div>
-
-            {!forecastAvailable ? (
-              <div className="mutedBlock">
-                Прогноз считается для текущего месяца ({currentMonth}) в выбранной валюте.
-                Открой текущий месяц на вкладке «Операции»
-                {displayCurrency ? "" : " и выбери валюту в переключателе «В валюте»"}.
-              </div>
-            ) : forecastResult === null ? (
-              <div className="mutedBlock">Загрузка истории…</div>
-            ) : (
-              <>
-                <table className="forecastBreak">
-                  <tbody>
-                    <tr>
-                      <td>Ожидаемый доход</td>
-                      <td><Money cents={forecastResult.expectedIncomeCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr>
-                      <td>
-                        − Обязательные{" "}
-                        <span className="forecastMuted">
-                          (оплачено <Money cents={forecastResult.committedPaidCents} currency={displayCurrency} /> +
-                          предстоит <Money cents={forecastResult.committedUpcomingCents} currency={displayCurrency} />)
-                        </span>
-                      </td>
-                      <td>−<Money cents={forecastResult.committedTotalCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr>
-                      <td>− Отложить (X)</td>
-                      <td>−<Money cents={forecastResult.goalCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr className="forecastBudgetRow">
-                      <td>= Свободно на месяц</td>
-                      <td><Money cents={forecastResult.discretionaryBudgetCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr>
-                      <td>Ровный лимит в день (раскраска)</td>
-                      <td><Money cents={forecastResult.dailyAllowanceCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr>
-                      <td>Таргет на сегодня (скользящий)</td>
-                      <td><Money cents={forecastResult.rollingTargetCents} currency={displayCurrency} /></td>
-                    </tr>
-                    <tr>
-                      <td>Прогноз денег на конец месяца</td>
-                      <td><Money cents={forecastResult.projectedEndCents} currency={displayCurrency} /></td>
-                    </tr>
-                  </tbody>
-                </table>
-                {!forecastResult.feasible ? (
-                  <p className="forecastWarn">
-                    Цель недостижима: не хватает{" "}
-                    <Money cents={forecastResult.shortfallCents} currency={displayCurrency} />
-                  </p>
-                ) : null}
-
-                <h3 className="recurHead">Обязательные и подписки ({forecastResult.recurring.length})</h3>
-                <p className="panelNote">
-                  Определены по повторяемости в категориях «B (must-pay)» и «LS (apps)». Лишнее можно исключить —
-                  тогда оно вернётся в дневные траты.
-                </p>
-                <ul className="recurList">
-                  {forecastResult.recurring.map((item) => (
-                    <li key={item.key}>
-                      <span className="recurName">{item.label}</span>
-                      <span className="recurMeta">{item.monthsPresent}/6 мес</span>
-                      <span className="recurAmt">
-                        <Money cents={item.expectedMonthlyCents} currency={displayCurrency} />/мес
-                      </span>
-                      <button
-                        type="button"
-                        className="textButton"
-                        title="Исключить из обязательных"
-                        onClick={() => setExcludedCommitted((current) => [...current, item.key])}
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {forecastResult.excludedRecurring.length > 0 ? (
-                  <>
-                    <h3 className="recurHead muted">Исключено ({forecastResult.excludedRecurring.length})</h3>
-                    <ul className="recurList excluded">
-                      {forecastResult.excludedRecurring.map((item) => (
-                        <li key={item.key}>
-                          <span className="recurName">{item.label}</span>
-                          <span className="recurAmt">
-                            <Money cents={item.expectedMonthlyCents} currency={displayCurrency} />/мес
-                          </span>
-                          <button
-                            type="button"
-                            className="textButton"
-                            onClick={() =>
-                              setExcludedCommitted((current) => current.filter((k) => k !== item.key))
-                            }
-                          >
-                            вернуть
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-
-                <p className="panelNote forecastAssume">
-                  Прототип: конвертация в {displayCurrency} по курсу на {dmy(periodRateDate)}; доход — фиксированное поле;
-                  крупные разовые траты считаются как есть; прогноз конца месяца — по среднему дневному темпу трат.
-                </p>
-              </>
-            )}
+            <div className="mutedBlock">Раздел в разработке.</div>
           </section>
         </div>
       ) : null}
