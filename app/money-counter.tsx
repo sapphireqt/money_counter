@@ -189,6 +189,21 @@ function monthBounds(ym: string) {
   return { from: `${ym}-01`, to: monthEnd(ym) };
 }
 
+// An account belongs to a period iff its lifetime overlaps it: opened on/before
+// the view end and not closed before the view start. The close date is
+// authoritative regardless of balance. Shared by the «Счета» panel and the
+// start-of-period total so both sum the SAME set — «начало + приход − расход =
+// конец» reconciles even when a closed account still carries a residual balance.
+function accountInPeriod(
+  account: { openedAt: string | null; closedAt: string | null },
+  viewStart: string,
+  viewEnd: string
+) {
+  const openedInTime = !account.openedAt || account.openedAt <= viewEnd;
+  const notYetClosed = !account.closedAt || account.closedAt >= viewStart;
+  return openedInTime && notYetClosed;
+}
+
 function formatMonthLabel(ym: string) {
   const { year, month } = ymParts(ym);
   const label = new Intl.DateTimeFormat("ru-RU", {
@@ -1186,8 +1201,12 @@ export default function MoneyCounter() {
 
   // Account balances as of the start of the selected period (opening + every
   // transaction before the 1st). Refetched on period change or after a mutation
-  // (accounts reloads), then summed per currency.
+  // (accounts reloads), then summed per currency — over the SAME lifetime-
+  // filtered set as the «Счета» panel, so the start-of-period card reconciles
+  // with the end (a closed account is excluded from both, not just the end).
   useEffect(() => {
+    const viewStart = pastPeriod ? `${mainPeriod}-01` : today();
+    const viewEnd = pastPeriod ? monthEnd(mainPeriod) : today();
     void (async () => {
       try {
         const data = await requestJson<{ accounts: Account[] }>(
@@ -1195,6 +1214,7 @@ export default function MoneyCounter() {
         );
         setStartTotals(
           data.accounts.reduce<Record<string, number>>((map, account) => {
+            if (!accountInPeriod(account, viewStart, viewEnd)) return map;
             map[account.currency] = (map[account.currency] ?? 0) + account.balanceCents;
             return map;
           }, {})
@@ -1203,7 +1223,7 @@ export default function MoneyCounter() {
         setStartTotals({});
       }
     })();
-  }, [mainPeriod, accounts]);
+  }, [mainPeriod, accounts, pastPeriod]);
 
   // Historical view data for a past period: balances as of the period end
   // (asOf is exclusive, so the next month's 1st includes every transaction of
@@ -1234,19 +1254,18 @@ export default function MoneyCounter() {
 
   // The «Счета» panel shows live balances — or, for a past period, the
   // historical end-of-period state. Conversion shares the single view rate.
-  // Accounts whose lifetime lies outside the viewed period are hidden — but
-  // ONLY while their balance is zero: a non-zero balance always shows, so
-  // money never silently drops out of «Итого».
+  // An account is shown only in periods that overlap its lifetime: hidden
+  // before it opened and after it closed. The close date is authoritative even
+  // with a non-zero balance — a closed account no longer holds live money, so
+  // it leaves «Итого» (its residual balance, if any, means the opening balance
+  // or a closing transaction is still unset — a data gap, not a reason to show
+  // it forever). The opening side needs no balance guard: the asOf balance is
+  // already 0 before opened_at, so a not-yet-opened account is naturally empty.
   const panelAccounts = useMemo(() => {
     const source = pastPeriod ? endAccounts ?? [] : accounts;
     const viewStart = pastPeriod ? `${mainPeriod}-01` : today();
     const viewEnd = pastPeriod ? monthEnd(mainPeriod) : today();
-    return source.filter((account) => {
-      if (account.balanceCents !== 0) return true;
-      const openedInTime = !account.openedAt || account.openedAt <= viewEnd;
-      const notYetClosed = !account.closedAt || account.closedAt >= viewStart;
-      return openedInTime && notYetClosed;
-    });
+    return source.filter((account) => accountInPeriod(account, viewStart, viewEnd));
   }, [pastPeriod, endAccounts, accounts, mainPeriod]);
   const panelRates = periodRates;
   const panelRateDate = periodRateDate;
