@@ -39,8 +39,6 @@ export type ForecastResult = {
   committedPaidCents: number;
   committedUpcomingCents: number;
   committedTotalCents: number;
-  mustPayPaidCents: number; // «B (must-pay)» actually paid so far this month
-  mustPayCommittedCents: number; // committed must-pay for the month (paid or expected)
   goalCents: number;
   discretionaryBudgetCents: number; // B = expectedIncome − committedTotal − goal
   feasible: boolean;
@@ -86,29 +84,23 @@ export function normalizeKey(description: string, payee?: string): string {
     .trim();
 }
 
-// Category model (validated against real data):
-//  • MUSTPAY — «B (must-pay)» is committed IN FULL, by the user's own label
-//    ("must pay"). NO per-item recurrence: rent/utilities/phone are booked with
-//    inconsistent descriptions (incl. the generic default "Расход") and amounts
-//    that drift month to month, so description-recurrence cannot catch them —
-//    the whole category is the committed signal, sized from its monthly total.
-//  • SUBSCRIPTION — «LS (apps)» holds subscriptions but also one-off app buys,
-//    so there we DO detect by recurrence and keep only the repeating ones.
-// Anything else (groceries, fuel, diapers, haircut, investment interest…) is
-// discretionary even when it recurs ~monthly.
-export const MUSTPAY_CATEGORIES = ["B (must-pay)"];
-export const SUBSCRIPTION_CATEGORIES = ["LS (apps)"];
+// Detect recurring committed items over the window months.
+// Only these categories can hold committed items. Bills live in «B (must-pay)»
+// and subscriptions in «LS (apps)»; everything else (groceries, fuel, diapers,
+// haircut, investment interest…) is discretionary by nature even when it recurs
+// ~monthly. Validated against real data — the allowlist drops all false
+// positives that a category-agnostic recurrence scan produced.
+export const COMMITTED_CATEGORIES = ["B (must-pay)", "LS (apps)"];
 
-// Recurrence detection — used for SUBSCRIPTION categories only.
 export function detectRecurring(
   windowTxs: ForecastTx[],
   windowMonths: string[],
-  opts: { minMonths?: number; maxPerMonth?: number; categories?: string[] } = {}
+  opts: { minMonths?: number; maxPerMonth?: number; committedCategories?: string[] } = {}
 ): RecurringItem[] {
-  const minMonths = opts.minMonths ?? 2; // seen in ≥2 window months already recurs
+  const minMonths = opts.minMonths ?? 3;
   const maxPerMonth = opts.maxPerMonth ?? 1.5;
   const allow = new Set(
-    (opts.categories ?? SUBSCRIPTION_CATEGORIES).map((c) => c.toLowerCase().trim())
+    (opts.committedCategories ?? COMMITTED_CATEGORIES).map((c) => c.toLowerCase().trim())
   );
   const monthSet = new Set(windowMonths);
 
@@ -168,37 +160,30 @@ export function forecastMonth(input: {
   const { windowTxs, windowMonths, currentTxs, currentMonth, today, goalCents, currentBalanceCents } = input;
   const manualExpectedIncomeCents = input.manualExpectedIncomeCents ?? null;
   const excludeSet = new Set(input.excludeKeys ?? []);
-  const mustPayCatSet = new Set(MUSTPAY_CATEGORIES.map((c) => c.toLowerCase().trim()));
-  const subsCatSet = new Set(SUBSCRIPTION_CATEGORIES.map((c) => c.toLowerCase().trim()));
+  // Same category allowlist the detector uses — the current-month matcher must
+  // apply it too, or a discretionary-category purchase whose payee/description
+  // collides with a committed key (e.g. an Amazon order vs Amazon Prime) would
+  // be misbooked as the month's bill payment.
+  const committedCatSet = new Set(COMMITTED_CATEGORIES.map((c) => c.toLowerCase().trim()));
 
-  // Subscriptions: recurrence-detected within the subscription categories.
   const allDetected = detectRecurring(windowTxs, windowMonths);
   const recurring = allDetected.filter((r) => !excludeSet.has(r.key));
   const excludedRecurring = allDetected.filter((r) => excludeSet.has(r.key));
-  const subKeys = new Set(recurring.map((r) => r.key));
+  const recurringKeys = new Set(recurring.map((r) => r.key));
   const expectedByKey = new Map(recurring.map((r) => [r.key, r.expectedMonthlyCents]));
 
-  // Window per-month totals: income, and the whole must-pay category.
+  // Income median over the window (per-month income totals).
   const incomeByMonth = new Map<string, number>();
-  const mustPayByMonth = new Map<string, number>();
   for (const tx of windowTxs) {
-    if (tx.isTransfer) continue;
+    if (tx.isTransfer || tx.cents <= 0) continue;
     const ym = ymOf(tx.date);
-    if (tx.cents > 0) {
-      incomeByMonth.set(ym, (incomeByMonth.get(ym) ?? 0) + tx.cents);
-    } else if (mustPayCatSet.has((tx.category ?? "").toLowerCase().trim())) {
-      mustPayByMonth.set(ym, (mustPayByMonth.get(ym) ?? 0) + Math.abs(tx.cents));
-    }
+    incomeByMonth.set(ym, (incomeByMonth.get(ym) ?? 0) + tx.cents);
   }
   const incomeMedianCents = median(windowMonths.map((m) => incomeByMonth.get(m) ?? 0));
-  // Expected monthly must-pay = median of the window's monthly must-pay totals
-  // (robust to rent's shifting description/amount and to occasional one-offs).
-  const mustPayExpectedCents = median(windowMonths.map((m) => mustPayByMonth.get(m) ?? 0));
 
   // Current month.
   let incomeSoFarCents = 0;
-  let mustPayPaidCents = 0;
-  let subsPaidCents = 0;
+  let committedPaidCents = 0;
   let discretionarySpentCents = 0;
   let discretionaryBeforeTodayCents = 0;
   let todayDiscretionaryCents = 0;
@@ -212,14 +197,9 @@ export function forecastMonth(input: {
       continue;
     }
     const mag = Math.abs(tx.cents);
-    const cat = (tx.category ?? "").toLowerCase().trim();
-    if (mustPayCatSet.has(cat)) {
-      mustPayPaidCents += mag; // the whole must-pay category is committed
-      continue;
-    }
     const key = normalizeKey(tx.description, tx.payee);
-    if (subsCatSet.has(cat) && subKeys.has(key)) {
-      subsPaidCents += mag;
+    if (recurringKeys.has(key) && committedCatSet.has((tx.category ?? "").toLowerCase().trim())) {
+      committedPaidCents += mag;
       seenKeys.add(key);
       continue;
     }
@@ -230,16 +210,12 @@ export function forecastMonth(input: {
     else if (tx.date === today) todayDiscretionaryCents += mag;
   }
 
-  // Committed = full must-pay (already paid, or its expected monthly size if
-  // larger — covers bills not yet paid this month) + recurring subscriptions.
-  const mustPayCommittedCents = Math.max(mustPayPaidCents, mustPayExpectedCents);
-  let subsUpcomingCents = 0;
+  // Committed still upcoming this month = recurring groups not yet seen.
+  let committedUpcomingCents = 0;
   for (const r of recurring) {
-    if (!seenKeys.has(r.key)) subsUpcomingCents += expectedByKey.get(r.key) ?? 0;
+    if (!seenKeys.has(r.key)) committedUpcomingCents += expectedByKey.get(r.key) ?? 0;
   }
-  const committedPaidCents = mustPayPaidCents + subsPaidCents;
-  const committedTotalCents = mustPayCommittedCents + subsPaidCents + subsUpcomingCents;
-  const committedUpcomingCents = committedTotalCents - committedPaidCents;
+  const committedTotalCents = committedPaidCents + committedUpcomingCents;
 
   // Manual income (if set) is authoritative — the auto-median lumps salary with
   // one-off refunds, crypto moves and bank corrections and reads too high.
@@ -287,8 +263,6 @@ export function forecastMonth(input: {
     committedPaidCents,
     committedUpcomingCents,
     committedTotalCents,
-    mustPayPaidCents,
-    mustPayCommittedCents,
     goalCents,
     discretionaryBudgetCents,
     feasible,

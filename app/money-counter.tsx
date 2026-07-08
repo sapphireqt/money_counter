@@ -4421,27 +4421,10 @@ export default function MoneyCounter() {
                   </p>
                 ) : null}
 
-                <h3 className="recurHead">Обязательные (must-pay)</h3>
+                <h3 className="recurHead">Обязательные и подписки ({forecastResult.recurring.length})</h3>
                 <p className="panelNote">
-                  Вся категория «B (must-pay)» считается обязательной целиком (аренда, ЖКХ, связь — независимо от
-                  описания). Ожидаемый размер — медиана по последним месяцам.
-                </p>
-                <ul className="recurList">
-                  <li>
-                    <span className="recurName">B (must-pay) — вся категория</span>
-                    <span className="recurMeta">
-                      оплачено <Money cents={forecastResult.mustPayPaidCents} currency={displayCurrency} />
-                    </span>
-                    <span className="recurAmt">
-                      <Money cents={forecastResult.mustPayCommittedCents} currency={displayCurrency} />/мес
-                    </span>
-                  </li>
-                </ul>
-
-                <h3 className="recurHead">Подписки ({forecastResult.recurring.length})</h3>
-                <p className="panelNote">
-                  Определены по повторяемости в «LS (apps)» (≥2 месяцев). Лишнее можно исключить — тогда оно
-                  вернётся в дневные траты.
+                  Определены по повторяемости в категориях «B (must-pay)» и «LS (apps)». Лишнее можно исключить —
+                  тогда оно вернётся в дневные траты.
                 </p>
                 <ul className="recurList">
                   {forecastResult.recurring.map((item) => (
