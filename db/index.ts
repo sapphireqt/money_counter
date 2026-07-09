@@ -126,6 +126,50 @@ export async function ensureSchema() {
     d1.prepare(
       "INSERT OR IGNORE INTO currencies (code) SELECT DISTINCT currency FROM accounts WHERE currency <> ''"
     ),
+    // Прогнозирование: regular payments (bills/subscriptions) the user manages
+    // with a periodicity, loans (money owed either way + reimbursements), and a
+    // per-month savings goal. All optional; the forecast reads them per month.
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS regular_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        direction TEXT NOT NULL DEFAULT 'expense',
+        periodicity TEXT NOT NULL DEFAULT 'monthly',
+        day_of_month INTEGER NOT NULL DEFAULT 1,
+        month INTEGER,
+        interval_months INTEGER,
+        anchor_month TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        source TEXT NOT NULL DEFAULT 'manual',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS loans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        direction TEXT NOT NULL DEFAULT 'owe',
+        due_date TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        settled_date TEXT,
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    d1.prepare(`
+      CREATE TABLE IF NOT EXISTS monthly_goals (
+        month TEXT PRIMARY KEY,
+        amount_cents INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
   ]);
 
   // transfer_group and flagged arrived after the transactions table shipped,

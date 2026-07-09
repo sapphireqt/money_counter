@@ -1684,3 +1684,196 @@ dd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Прогнозирование (budget forecast) ─────────────────────────────────────── */
+.summaryBar {
+  gap: 20px;
+}
+
+/* «Прогнозы» toggle in the summary bar. */
+.forecastToggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted-strong);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+}
+.forecastToggle:disabled {
+  opacity: 0.5;
+}
+.toggleTrack {
+  background: var(--line);
+  border-radius: 999px;
+  display: inline-block;
+  height: 20px;
+  position: relative;
+  transition: background 0.15s ease;
+  width: 36px;
+}
+.toggleThumb {
+  background: #ffffff;
+  border-radius: 999px;
+  height: 16px;
+  left: 2px;
+  position: absolute;
+  top: 2px;
+  transition: left 0.15s ease;
+  width: 16px;
+}
+.forecastToggle.on .toggleTrack {
+  background: var(--primary);
+}
+.forecastToggle.on .toggleThumb {
+  left: 18px;
+}
+
+/* Forecast summary card + the 5th grid column when the overlay is on. */
+.summaryGrid.withForecast {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .summaryGrid.withForecast {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.forecastMetric {
+  background: #f0f9f2;
+  border-color: #bfe3ca;
+  gap: 6px;
+}
+.forecastRow {
+  align-items: baseline;
+  color: var(--muted);
+  display: flex;
+  font-size: 12.5px;
+  justify-content: space-between;
+}
+.forecastRow b {
+  color: var(--foreground);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.forecastRow b.negative {
+  color: var(--expense);
+}
+
+/* Day-group header: date on the left, day expense total (+ today's target) right. */
+.opsTable .dayGroup td {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.opsTable .dayGroup td > span:first-child {
+  white-space: nowrap;
+}
+.dayTotals {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dayTarget {
+  color: var(--income);
+}
+
+/* Прогнозирование section. */
+.forecastGoalBox {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.goalInput {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+.goalInput input {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  width: 120px;
+}
+.forecastBreak {
+  border-collapse: collapse;
+  margin-bottom: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.forecastBreak td {
+  border: none;
+  font-size: 14.5px;
+  padding: 6px 0;
+}
+.forecastBreak td:last-child {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.forecastBreak .negative {
+  color: var(--expense);
+}
+.forecastBudgetRow td {
+  border-top: 1px solid var(--line) !important;
+  font-weight: 700;
+  padding-top: 8px !important;
+}
+.recurHead {
+  font-size: 15px;
+  margin: 20px 0 4px;
+}
+.recurList {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.recurList li {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+}
+.recurName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recurMeta {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.recurAmt {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.forecastMuted {
+  color: var(--muted);
+  font-weight: 400;
+}
+.forecastAddForm {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.forecastAddForm input,
+.forecastAddForm select {
+  min-height: 36px;
+}
+.forecastAddForm input {
+  width: 150px;
+}
+.forecastAssume {
+  margin-top: 16px;
+}

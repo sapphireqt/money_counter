@@ -114,3 +114,47 @@ export const currencies = sqliteTable("currencies", {
   symbol: text("symbol").notNull().default(""),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+// ── Прогнозирование (budget forecast) ──────────────────────────────────────
+// Recurring payments the user manages with a periodicity (bills/subscriptions).
+// The forecast subtracts the ones still due this month.
+export const regularPayments = sqliteTable("regular_payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull(),
+  category: text("category").notNull().default(""),
+  direction: text("direction").notNull().default("expense"), // expense | income
+  periodicity: text("periodicity").notNull().default("monthly"), // monthly | yearly | every_n_months
+  dayOfMonth: integer("day_of_month").notNull().default(1),
+  month: integer("month"), // 1-12, for yearly
+  intervalMonths: integer("interval_months"), // for every_n_months
+  anchorMonth: text("anchor_month"), // YYYY-MM, for every_n_months
+  active: integer("active").notNull().default(1),
+  source: text("source").notNull().default("manual"), // manual | suggested
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+// Money owed either direction, plus reimbursements (e.g. insurance). Signed
+// into the forecast by direction on its due date.
+export const loans = sqliteTable("loans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull(),
+  direction: text("direction").notNull().default("owe"), // owe | owed | reimbursement
+  dueDate: text("due_date").notNull(),
+  status: text("status").notNull().default("pending"), // pending | settled
+  settledDate: text("settled_date"),
+  notes: text("notes").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+// One editable savings goal per month (YYYY-MM).
+export const monthlyGoals = sqliteTable("monthly_goals", {
+  month: text("month").primaryKey(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

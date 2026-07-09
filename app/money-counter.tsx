@@ -16,6 +16,7 @@ import {
   formatDayHeader,
   formatMoney,
   formatMoneyParts,
+  parseMoneyInputToCents,
 } from "../lib/finance";
 import {
   analyzeImport,
@@ -28,6 +29,31 @@ import {
   type ParsedRow,
 } from "../lib/import";
 import { analyzePdf, type PdfPage } from "../lib/pdf";
+import {
+  forecastMonth,
+  type ForecastResult,
+  type Loan,
+  type RegularPayment,
+} from "../lib/forecast";
+
+type Goal = { month: string; amountCents: number; currency: string };
+
+function regularPeriodLabel(rp: RegularPayment): string {
+  const day = rp.dayOfMonth;
+  if (rp.periodicity === "yearly") {
+    return `раз в год · ${String(day).padStart(2, "0")}.${String(rp.month ?? 1).padStart(2, "0")}`;
+  }
+  if (rp.periodicity === "every_n_months") {
+    return `раз в ${rp.intervalMonths ?? 3} мес. · ${day}-е`;
+  }
+  return `каждый месяц · ${day}-е`;
+}
+
+const LOAN_DIR_LABEL: Record<string, string> = {
+  owe: "мы отдаём",
+  owed: "нам вернут",
+  reimbursement: "возмещение",
+};
 
 type Account = {
   id: number;
@@ -660,6 +686,27 @@ export default function MoneyCounter() {
   const [periodTransactions, setPeriodTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
+  // Прогнозирование (budget forecast): persisted inputs from the API + the
+  // Операции-overlay toggle (localStorage).
+  const [regularPayments, setRegularPayments] = useState<RegularPayment[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [forecastOn, setForecastOn] = useState(false);
+  // Draft inputs for the «Прогнозирование» section (goal + add-forms).
+  const [goalDraft, setGoalDraft] = useState("");
+  const emptyRegularDraft = {
+    name: "",
+    amount: "",
+    category: "",
+    periodicity: "monthly",
+    dayOfMonth: "1",
+    month: "1",
+    intervalMonths: "3",
+    anchorMonth: "",
+  };
+  const [regularDraft, setRegularDraft] = useState(emptyRegularDraft);
+  const emptyLoanDraft = { name: "", amount: "", direction: "owe", dueDate: "", notes: "" };
+  const [loanDraft, setLoanDraft] = useState(emptyLoanDraft);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
   // The server's notion of the current (UTC) month — the boundary past which
@@ -878,6 +925,17 @@ export default function MoneyCounter() {
     setCurrencies(data.currencies);
   }, []);
 
+  const loadForecastData = useCallback(async () => {
+    const [rp, ln, gl] = await Promise.all([
+      requestJson<{ regularPayments: RegularPayment[] }>("/api/regular-payments"),
+      requestJson<{ loans: Loan[] }>("/api/loans"),
+      requestJson<{ goals: Goal[] }>("/api/goals"),
+    ]);
+    setRegularPayments(rp.regularPayments);
+    setLoans(ln.loans);
+    setGoals(gl.goals);
+  }, []);
+
   const loadPeriods = useCallback(async () => {
     const data = await requestJson<{ periods: string[]; currentMonth?: string }>(
       "/api/periods"
@@ -944,8 +1002,9 @@ export default function MoneyCounter() {
       loadRules(),
       loadCurrencies(),
       loadPeriods(),
+      loadForecastData(),
     ]);
-  }, [loadAccounts, loadCategories, loadRules, loadCurrencies, loadPeriods]);
+  }, [loadAccounts, loadCategories, loadRules, loadCurrencies, loadPeriods, loadForecastData]);
 
   useEffect(() => {
     void (async () => {
@@ -1291,6 +1350,195 @@ export default function MoneyCounter() {
     () => convertTotals(periodExpense, periodRates, displayCurrency),
     [periodExpense, periodRates, displayCurrency]
   );
+
+  // ── Прогнозирование ────────────────────────────────────────────────────────
+  useEffect(() => {
+    void (async () => {
+      const v = window.localStorage.getItem("mc.forecastOn");
+      if (v != null) setForecastOn(v === "1");
+    })();
+  }, []);
+  useEffect(() => {
+    window.localStorage.setItem("mc.forecastOn", forecastOn ? "1" : "0");
+  }, [forecastOn]);
+
+  // Forecast is computed for the current month only (past = historical view).
+  const forecastAvailable = mainPeriod === currentMonth && Boolean(displayCurrency);
+  const currentGoal = goals.find((g) => g.month === mainPeriod) ?? null;
+
+  // Per-day expense totals (whole month, filter-independent) for the day headers.
+  const perDayExpenseCents = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!displayCurrency) return map;
+    for (const tx of periodTransactions) {
+      if (tx.amountCents >= 0 || tx.transferGroup) continue;
+      let cents: number | null;
+      if (tx.accountCurrency === displayCurrency) cents = Math.abs(tx.amountCents);
+      else {
+        const rTo = periodRates?.[displayCurrency];
+        const rFrom = periodRates?.[tx.accountCurrency];
+        cents = rTo != null && rFrom != null ? Math.round((Math.abs(tx.amountCents) * rTo) / rFrom) : null;
+      }
+      if (cents == null) continue;
+      map[tx.date] = (map[tx.date] ?? 0) + cents;
+    }
+    return map;
+  }, [periodTransactions, periodRates, displayCurrency]);
+
+  const forecastResult = useMemo<ForecastResult | null>(() => {
+    if (!forecastAvailable || !periodRates) return null;
+    const rates = periodRates;
+    const toDisplay = (cents: number, currency: string): number | null => {
+      if (currency === displayCurrency) return cents;
+      const rTo = rates[displayCurrency];
+      const rFrom = rates[currency];
+      return rTo != null && rFrom != null ? Math.round((cents * rTo) / rFrom) : null;
+    };
+    const goalCents = currentGoal ? toDisplay(currentGoal.amountCents, currentGoal.currency) ?? 0 : 0;
+    return forecastMonth({
+      month: mainPeriod,
+      today: today(),
+      incomeCents: incomeConverted.cents,
+      expenseCents: expenseConverted.cents,
+      goalCents,
+      regularPayments,
+      loans,
+      toDisplay,
+    });
+  }, [
+    forecastAvailable,
+    periodRates,
+    displayCurrency,
+    mainPeriod,
+    incomeConverted,
+    expenseConverted,
+    currentGoal,
+    regularPayments,
+    loans,
+  ]);
+  const forecastOverlay = forecastOn && forecastResult !== null ? forecastResult : null;
+
+  // Keep the goal input synced to the stored goal for the viewed month —
+  // CONVERTED into the current display currency so the field matches the
+  // «Таргет» card and a re-save persists a consistent amount+currency. Re-runs
+  // on a display-currency / rate change too. IIFE so setState isn't called
+  // synchronously in the effect body.
+  useEffect(() => {
+    void (async () => {
+      if (!currentGoal) {
+        setGoalDraft("");
+        return;
+      }
+      let cents = currentGoal.amountCents;
+      if (currentGoal.currency !== displayCurrency) {
+        const rTo = periodRates?.[displayCurrency];
+        const rFrom = periodRates?.[currentGoal.currency];
+        if (rTo != null && rFrom != null) cents = Math.round((cents * rTo) / rFrom);
+      }
+      setGoalDraft(centsToInputValue(cents));
+    })();
+  }, [currentGoal, displayCurrency, periodRates]);
+
+  const saveGoal = async () => {
+    if (!displayCurrency) return;
+    const amountCents = goalDraft.trim() ? parseMoneyInputToCents(goalDraft) : 0;
+    if (amountCents === null || amountCents < 0) {
+      setNotice("Некорректная сумма цели");
+      return;
+    }
+    try {
+      await requestJson("/api/goals", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: mainPeriod, amountCents, currency: displayCurrency }),
+      });
+      await loadForecastData();
+      setNotice("Цель сохранена");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Цель не сохранена");
+    }
+  };
+
+  const addRegular = async () => {
+    if (!displayCurrency) return;
+    const amountCents = parseMoneyInputToCents(regularDraft.amount);
+    if (!regularDraft.name.trim() || amountCents === null || amountCents <= 0) {
+      setNotice("Укажите название и сумму регулярного платежа");
+      return;
+    }
+    try {
+      await requestJson("/api/regular-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: regularDraft.name.trim(),
+          amountCents,
+          currency: displayCurrency,
+          category: regularDraft.category.trim(),
+          periodicity: regularDraft.periodicity,
+          dayOfMonth: Number(regularDraft.dayOfMonth) || 1,
+          month: Number(regularDraft.month) || 1,
+          intervalMonths: Number(regularDraft.intervalMonths) || 3,
+          anchorMonth: regularDraft.anchorMonth || mainPeriod,
+        }),
+      });
+      await loadForecastData();
+      setRegularDraft(emptyRegularDraft);
+      setNotice("Регулярный платёж добавлен");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Платёж не сохранён");
+    }
+  };
+
+  const removeRegular = async (id: number) => {
+    if (!window.confirm("Удалить регулярный платёж?")) return;
+    try {
+      await requestJson(`/api/regular-payments?id=${id}`, { method: "DELETE" });
+      await loadForecastData();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось удалить");
+    }
+  };
+
+  const addLoan = async () => {
+    if (!displayCurrency) return;
+    const amountCents = parseMoneyInputToCents(loanDraft.amount);
+    if (!loanDraft.name.trim() || amountCents === null || amountCents <= 0 || !loanDraft.dueDate) {
+      setNotice("Укажите название, сумму и дату займа");
+      return;
+    }
+    try {
+      await requestJson("/api/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: loanDraft.name.trim(),
+          amountCents,
+          currency: displayCurrency,
+          direction: loanDraft.direction,
+          dueDate: loanDraft.dueDate,
+          notes: loanDraft.notes.trim(),
+        }),
+      });
+      await loadForecastData();
+      setLoanDraft(emptyLoanDraft);
+      setNotice("Заём добавлен");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Заём не сохранён");
+    }
+  };
+
+  const removeLoan = async (id: number) => {
+    if (!window.confirm("Удалить заём?")) return;
+    try {
+      await requestJson(`/api/loans?id=${id}`, { method: "DELETE" });
+      await loadForecastData();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось удалить");
+    }
+  };
+
+  // ── /Прогнозирование ───────────────────────────────────────────────────────
 
   // A summary value in displayCurrency: "…" until rates load, the converted
   // amount otherwise, flagged (red, with a tooltip) if some currency had no rate.
@@ -2300,10 +2548,28 @@ export default function MoneyCounter() {
                   ))}
                 </select>
               </label>
+              <button
+                type="button"
+                className={`forecastToggle ${forecastOn ? "on" : ""}`}
+                role="switch"
+                aria-checked={forecastOn}
+                disabled={!forecastAvailable}
+                onClick={() => setForecastOn((v) => !v)}
+                title={
+                  forecastAvailable
+                    ? "Прогнозы: доступный остаток, daily goal и аннотация сегодняшнего дня"
+                    : "Прогнозы доступны для текущего месяца с выбранной валютой"
+                }
+              >
+                Прогнозы
+                <span className="toggleTrack" aria-hidden="true">
+                  <span className="toggleThumb" />
+                </span>
+              </button>
             </div>
           ) : null}
 
-          <section className="summaryGrid" aria-label="Сводка">
+          <section className={`summaryGrid ${forecastOverlay ? "withForecast" : ""}`} aria-label="Сводка">
             <article className="metric">
               <span>Баланс на начало периода</span>
               <strong>
@@ -2331,6 +2597,26 @@ export default function MoneyCounter() {
                   : renderConverted(panelConverted, panelRates, panelRateDate)}
               </strong>
             </article>
+            {forecastOverlay ? (
+              <article className="metric forecastMetric">
+                <span className="forecastRow">
+                  <span>Таргет</span>
+                  <b><Money cents={forecastOverlay.goalCents} currency={displayCurrency} /></b>
+                </span>
+                <span className="forecastRow">
+                  <span>Доступный остаток</span>
+                  <b className={forecastOverlay.availableCents < 0 ? "negative" : ""}>
+                    <Money cents={forecastOverlay.availableCents} currency={displayCurrency} />
+                  </b>
+                </span>
+                <span className="forecastRow">
+                  <span>Daily goal</span>
+                  <b className={forecastOverlay.dailyGoalCents < 0 ? "negative" : ""}>
+                    <Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} />
+                  </b>
+                </span>
+              </article>
+            ) : null}
           </section>
 
           <div className="workspace twoCol">
@@ -2452,7 +2738,20 @@ export default function MoneyCounter() {
                         dayGroups.map((group) => (
                           <Fragment key={group.date}>
                             <tr className="dayGroup">
-                              <td colSpan={7}>{formatDayHeader(group.date)}</td>
+                              <td colSpan={7}>
+                                <span>{formatDayHeader(group.date)}</span>
+                                {displayCurrency ? (
+                                  <span className="dayTotals">
+                                    <Money cents={perDayExpenseCents[group.date] ?? 0} currency={displayCurrency} />
+                                    {forecastOverlay && group.date === today() ? (
+                                      <span className="dayTarget">
+                                        {" / ⊕ "}
+                                        <Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} />
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                ) : null}
+                              </td>
                             </tr>
                             {group.items.map((row) =>
                               row.kind === "transfer" ? (
@@ -4099,8 +4398,207 @@ export default function MoneyCounter() {
           <section className="surface">
             <div className="sectionHead">
               <h2>Прогнозирование</h2>
+              <span>{currentMonth}</span>
             </div>
-            <div className="mutedBlock">Раздел в разработке.</div>
+
+            {!forecastAvailable ? (
+              <div className="mutedBlock">
+                Прогноз считается для текущего месяца ({currentMonth}) в выбранной валюте. Открой
+                текущий месяц на вкладке «Операции».
+              </div>
+            ) : (
+              <>
+                <div className="forecastGoalBox">
+                  <label className="filterField">
+                    Желаемая сумма отложить в этом месяце
+                    <span className="goalInput">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={goalDraft}
+                        placeholder="0"
+                        onChange={(event) => setGoalDraft(event.target.value)}
+                      />
+                      {displayCurrency}
+                    </span>
+                  </label>
+                  <button type="button" className="secondaryButton" onClick={() => void saveGoal()}>
+                    Сохранить цель
+                  </button>
+                </div>
+
+                {forecastResult ? (
+                  <table className="forecastBreak">
+                    <tbody>
+                      <tr>
+                        <td>Приходы месяца (факт)</td>
+                        <td>+<Money cents={forecastResult.incomeCents} currency={displayCurrency} /></td>
+                      </tr>
+                      <tr>
+                        <td>Расходы месяца (факт)</td>
+                        <td>−<Money cents={forecastResult.expenseCents} currency={displayCurrency} /></td>
+                      </tr>
+                      {forecastResult.loansNetCents !== 0 ? (
+                        <tr>
+                          <td>Займы этого месяца</td>
+                          <td><Money cents={forecastResult.loansNetCents} currency={displayCurrency} /></td>
+                        </tr>
+                      ) : null}
+                      {forecastResult.upcomingRegularsCents !== 0 ? (
+                        <tr>
+                          <td>Регулярные, ещё не наступившие</td>
+                          <td><Money cents={forecastResult.upcomingRegularsCents} currency={displayCurrency} /></td>
+                        </tr>
+                      ) : null}
+                      <tr>
+                        <td>Желаемая сумма</td>
+                        <td>−<Money cents={forecastResult.goalCents} currency={displayCurrency} /></td>
+                      </tr>
+                      <tr className="forecastBudgetRow">
+                        <td>Доступный остаток</td>
+                        <td className={forecastResult.availableCents < 0 ? "negative" : ""}>
+                          <Money cents={forecastResult.availableCents} currency={displayCurrency} />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>Daily goal ({forecastResult.daysLeftInclToday} дн. до конца)</td>
+                        <td className={forecastResult.dailyGoalCents < 0 ? "negative" : ""}>
+                          <Money cents={forecastResult.dailyGoalCents} currency={displayCurrency} />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                ) : null}
+
+                <h3 className="recurHead">Регулярные платежи ({regularPayments.length})</h3>
+                <p className="panelNote">
+                  Ежемесячные/годовые обязательства. В прогнозе вычитаются те, чей день ещё не наступил
+                  в этом месяце.
+                </p>
+                <ul className="recurList">
+                  {regularPayments.map((rp) => (
+                    <li key={rp.id}>
+                      <span className="recurName">
+                        {rp.name}
+                        {rp.category ? <span className="forecastMuted"> · {rp.category}</span> : null}
+                      </span>
+                      <span className="recurMeta">{regularPeriodLabel(rp)}</span>
+                      <span className="recurAmt"><Money cents={rp.amountCents} currency={rp.currency} /></span>
+                      <button type="button" className="textButton" onClick={() => void removeRegular(rp.id)}>
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="forecastAddForm">
+                  <input
+                    placeholder="Название"
+                    value={regularDraft.name}
+                    onChange={(e) => setRegularDraft({ ...regularDraft, name: e.target.value })}
+                  />
+                  <input
+                    placeholder={`Сумма (${displayCurrency})`}
+                    inputMode="decimal"
+                    value={regularDraft.amount}
+                    onChange={(e) => setRegularDraft({ ...regularDraft, amount: e.target.value })}
+                  />
+                  <input
+                    placeholder="Категория"
+                    value={regularDraft.category}
+                    onChange={(e) => setRegularDraft({ ...regularDraft, category: e.target.value })}
+                  />
+                  <select
+                    value={regularDraft.periodicity}
+                    onChange={(e) => setRegularDraft({ ...regularDraft, periodicity: e.target.value })}
+                  >
+                    <option value="monthly">Каждый месяц</option>
+                    <option value="yearly">Раз в год</option>
+                    <option value="every_n_months">Раз в N мес.</option>
+                  </select>
+                  {regularDraft.periodicity === "yearly" ? (
+                    <input
+                      placeholder="Месяц 1-12"
+                      inputMode="numeric"
+                      value={regularDraft.month}
+                      onChange={(e) => setRegularDraft({ ...regularDraft, month: e.target.value })}
+                    />
+                  ) : null}
+                  {regularDraft.periodicity === "every_n_months" ? (
+                    <input
+                      placeholder="Каждые N мес."
+                      inputMode="numeric"
+                      value={regularDraft.intervalMonths}
+                      onChange={(e) => setRegularDraft({ ...regularDraft, intervalMonths: e.target.value })}
+                    />
+                  ) : null}
+                  <input
+                    placeholder="День 1-31"
+                    inputMode="numeric"
+                    value={regularDraft.dayOfMonth}
+                    onChange={(e) => setRegularDraft({ ...regularDraft, dayOfMonth: e.target.value })}
+                  />
+                  <button type="button" className="secondaryButton" onClick={() => void addRegular()}>
+                    Добавить
+                  </button>
+                </div>
+
+                <h3 className="recurHead">Займы ({loans.length})</h3>
+                <p className="panelNote">
+                  Долги в обе стороны и возмещения. Учитываются в прогнозе месяца, на который приходится дата.
+                </p>
+                <ul className="recurList">
+                  {loans.map((loan) => (
+                    <li key={loan.id}>
+                      <span className="recurName">{loan.name}</span>
+                      <span className="recurMeta">
+                        {LOAN_DIR_LABEL[loan.direction] ?? loan.direction} · {dmy(loan.dueDate)}
+                        {loan.status === "settled" ? " · закрыт" : ""}
+                      </span>
+                      <span className="recurAmt">
+                        {loan.direction === "owe" ? "−" : "+"}
+                        <Money cents={loan.amountCents} currency={loan.currency} />
+                      </span>
+                      <button type="button" className="textButton" onClick={() => void removeLoan(loan.id)}>
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="forecastAddForm">
+                  <input
+                    placeholder="Название / контрагент"
+                    value={loanDraft.name}
+                    onChange={(e) => setLoanDraft({ ...loanDraft, name: e.target.value })}
+                  />
+                  <input
+                    placeholder={`Сумма (${displayCurrency})`}
+                    inputMode="decimal"
+                    value={loanDraft.amount}
+                    onChange={(e) => setLoanDraft({ ...loanDraft, amount: e.target.value })}
+                  />
+                  <select
+                    value={loanDraft.direction}
+                    onChange={(e) => setLoanDraft({ ...loanDraft, direction: e.target.value })}
+                  >
+                    <option value="owe">Мы должны отдать</option>
+                    <option value="owed">Нам вернут</option>
+                    <option value="reimbursement">Возмещение (страховая)</option>
+                  </select>
+                  <DateField
+                    value={loanDraft.dueDate}
+                    onChange={(iso) => setLoanDraft({ ...loanDraft, dueDate: iso })}
+                  />
+                  <button type="button" className="secondaryButton" onClick={() => void addLoan()}>
+                    Добавить
+                  </button>
+                </div>
+
+                <p className="panelNote forecastAssume">
+                  Фаза 1: текущий месяц, регулярные и займы — вручную. Автоподсказки из истории и
+                  мультимесячный прогноз (+1/3/6/12) — следующие фазы.
+                </p>
+              </>
+            )}
           </section>
         </div>
       ) : null}
