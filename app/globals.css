@@ -1886,3 +1886,28 @@ dd {
 .forecastAssume {
   margin-top: 16px;
 }
+
+/* Suggestions block (history-derived candidates). */
+.suggestBlock {
+  background: var(--surface-strong);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 6px 12px 10px;
+}
+.suggestHead {
+  color: var(--muted-strong);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+.suggestBlock .recurList li {
+  border-bottom-color: transparent;
+}
+.recurList li.editing {
+  background: #eef4ff;
+  border-radius: 6px;
+  margin: 0 -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+}

@@ -46,6 +46,13 @@ export function daysInMonth(ym: string): number {
   return new Date(y, m, 0).getDate();
 }
 
+export function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
+
 // Whole months from anchor (YYYY-MM) to target (YYYY-MM); negative if target is earlier.
 function monthDelta(anchor: string, target: string): number {
   const [ay, am] = anchor.split("-").map(Number);
@@ -161,4 +168,110 @@ export function forecastMonth(input: {
     regularsThisMonth,
     loansThisMonth,
   };
+}
+
+// ── Suggestions (Phase 2) ──────────────────────────────────────────────────
+// Normalize a merchant/description into a grouping key: lowercase, drop digits
+// and punctuation, collapse whitespace. Prefer payee when present.
+export function normalizeKey(description: string, payee?: string): string {
+  const raw = (payee && payee.trim()) || description || "";
+  return raw
+    .toLowerCase()
+    .replace(/[0-9]+/g, " ")
+    .replace(/[^\p{L}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mode<T>(arr: T[]): T | undefined {
+  const freq = new Map<T, number>();
+  let best: T | undefined;
+  let bestN = 0;
+  for (const v of arr) {
+    const n = (freq.get(v) ?? 0) + 1;
+    freq.set(v, n);
+    if (n > bestN) {
+      bestN = n;
+      best = v;
+    }
+  }
+  return best;
+}
+
+export type SuggestTx = {
+  date: string;
+  amountCents: number;
+  currency: string;
+  category: string;
+  description: string;
+  payee?: string;
+};
+
+export type RegularSuggestion = {
+  key: string;
+  name: string;
+  amountCents: number;
+  currency: string;
+  category: string;
+  periodicity: string;
+  dayOfMonth: number;
+  monthsPresent: number;
+};
+
+// Detect likely recurring payments from history: group by normalized
+// description, keep groups that recur in ≥ minMonths of the window at about
+// once a month, and propose a monthly periodicity on the modal day. Amounts are
+// the median monthly total; currency/category are the modal values.
+export function suggestRegulars(
+  txs: SuggestTx[],
+  opts: { windowMonths: string[]; minMonths?: number; maxPerMonth?: number; excludeKeys?: string[] }
+): RegularSuggestion[] {
+  const minMonths = opts.minMonths ?? 2;
+  const maxPerMonth = opts.maxPerMonth ?? 1.5;
+  const exclude = new Set(opts.excludeKeys ?? []);
+  const monthSet = new Set(opts.windowMonths);
+
+  const groups = new Map<
+    string,
+    { descs: string[]; currencies: string[]; categories: string[]; days: number[]; perMonth: Map<string, number> }
+  >();
+  for (const tx of txs) {
+    if (tx.amountCents >= 0) continue; // expenses only
+    const ym = tx.date.slice(0, 7);
+    if (!monthSet.has(ym)) continue;
+    // Key by description only (NOT payee): the suggestion is named after the
+    // modal description, and the /suggest route excludes already-added payments
+    // via normalizeKey(name) — so the group key must be description-derived too,
+    // or an accepted payment would keep reappearing and could be added twice.
+    const key = normalizeKey(tx.description);
+    if (!key || exclude.has(key)) continue;
+    let g = groups.get(key);
+    if (!g) {
+      g = { descs: [], currencies: [], categories: [], days: [], perMonth: new Map() };
+      groups.set(key, g);
+    }
+    g.descs.push(tx.description || key);
+    g.currencies.push(tx.currency);
+    g.categories.push(tx.category);
+    g.days.push(Number(tx.date.slice(8, 10)));
+    g.perMonth.set(ym, (g.perMonth.get(ym) ?? 0) + Math.abs(tx.amountCents));
+  }
+
+  const out: RegularSuggestion[] = [];
+  for (const [key, g] of groups) {
+    const monthsPresent = g.perMonth.size;
+    if (monthsPresent < minMonths) continue;
+    if (g.days.length / monthsPresent > maxPerMonth) continue; // frequent merchant → not a bill
+    out.push({
+      key,
+      name: mode(g.descs) ?? key,
+      amountCents: median([...g.perMonth.values()]),
+      currency: mode(g.currencies) ?? "",
+      category: mode(g.categories) ?? "",
+      periodicity: "monthly",
+      dayOfMonth: mode(g.days) ?? 1,
+      monthsPresent,
+    });
+  }
+  return out.sort((a, b) => b.amountCents - a.amountCents);
 }

@@ -34,9 +34,17 @@ import {
   type ForecastResult,
   type Loan,
   type RegularPayment,
+  type RegularSuggestion,
 } from "../lib/forecast";
 
 type Goal = { month: string; amountCents: number; currency: string };
+type LoanSuggestion = {
+  name: string;
+  amountCents: number;
+  currency: string;
+  direction: string;
+  sourceDate: string;
+};
 
 function regularPeriodLabel(rp: RegularPayment): string {
   const day = rp.dayOfMonth;
@@ -692,11 +700,12 @@ export default function MoneyCounter() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [forecastOn, setForecastOn] = useState(false);
-  // Draft inputs for the «Прогнозирование» section (goal + add-forms).
+  // Draft inputs for the «Прогнозирование» section (goal + add/edit forms).
   const [goalDraft, setGoalDraft] = useState("");
   const emptyRegularDraft = {
     name: "",
     amount: "",
+    currency: "",
     category: "",
     periodicity: "monthly",
     dayOfMonth: "1",
@@ -705,8 +714,15 @@ export default function MoneyCounter() {
     anchorMonth: "",
   };
   const [regularDraft, setRegularDraft] = useState(emptyRegularDraft);
-  const emptyLoanDraft = { name: "", amount: "", direction: "owe", dueDate: "", notes: "" };
+  const [editingRegularId, setEditingRegularId] = useState<number | null>(null);
+  const emptyLoanDraft = { name: "", amount: "", currency: "", direction: "owe", dueDate: "", notes: "" };
   const [loanDraft, setLoanDraft] = useState(emptyLoanDraft);
+  const [editingLoanId, setEditingLoanId] = useState<number | null>(null);
+  // Suggestions (Phase 2) + the keys the user dismissed (localStorage).
+  const [regularSuggestions, setRegularSuggestions] = useState<RegularSuggestion[]>([]);
+  const [loanSuggestions, setLoanSuggestions] = useState<LoanSuggestion[]>([]);
+  const [dismissedRegulars, setDismissedRegulars] = useState<string[]>([]);
+  const [dismissedLoans, setDismissedLoans] = useState<string[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
   // The server's notion of the current (UTC) month — the boundary past which
@@ -926,14 +942,22 @@ export default function MoneyCounter() {
   }, []);
 
   const loadForecastData = useCallback(async () => {
-    const [rp, ln, gl] = await Promise.all([
+    const [rp, ln, gl, rs, ls] = await Promise.all([
       requestJson<{ regularPayments: RegularPayment[] }>("/api/regular-payments"),
       requestJson<{ loans: Loan[] }>("/api/loans"),
       requestJson<{ goals: Goal[] }>("/api/goals"),
+      requestJson<{ suggestions: RegularSuggestion[] }>("/api/regular-payments/suggest").catch(
+        () => ({ suggestions: [] as RegularSuggestion[] })
+      ),
+      requestJson<{ suggestions: LoanSuggestion[] }>("/api/loans/suggest").catch(
+        () => ({ suggestions: [] as LoanSuggestion[] })
+      ),
     ]);
     setRegularPayments(rp.regularPayments);
     setLoans(ln.loans);
     setGoals(gl.goals);
+    setRegularSuggestions(rs.suggestions);
+    setLoanSuggestions(ls.suggestions);
   }, []);
 
   const loadPeriods = useCallback(async () => {
@@ -1356,11 +1380,28 @@ export default function MoneyCounter() {
     void (async () => {
       const v = window.localStorage.getItem("mc.forecastOn");
       if (v != null) setForecastOn(v === "1");
+      const parseList = (key: string): string[] => {
+        try {
+          const raw = window.localStorage.getItem(key);
+          const parsed = raw ? JSON.parse(raw) : null;
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      };
+      setDismissedRegulars(parseList("mc.dismissedRegulars"));
+      setDismissedLoans(parseList("mc.dismissedLoans"));
     })();
   }, []);
   useEffect(() => {
     window.localStorage.setItem("mc.forecastOn", forecastOn ? "1" : "0");
   }, [forecastOn]);
+  useEffect(() => {
+    window.localStorage.setItem("mc.dismissedRegulars", JSON.stringify(dismissedRegulars));
+  }, [dismissedRegulars]);
+  useEffect(() => {
+    window.localStorage.setItem("mc.dismissedLoans", JSON.stringify(dismissedLoans));
+  }, [dismissedLoans]);
 
   // Forecast is computed for the current month only (past = historical view).
   const forecastAvailable = mainPeriod === currentMonth && Boolean(displayCurrency);
@@ -1459,34 +1500,77 @@ export default function MoneyCounter() {
     }
   };
 
-  const addRegular = async () => {
-    if (!displayCurrency) return;
+  const resetRegularForm = () => {
+    setRegularDraft(emptyRegularDraft);
+    setEditingRegularId(null);
+  };
+
+  const saveRegular = async () => {
     const amountCents = parseMoneyInputToCents(regularDraft.amount);
     if (!regularDraft.name.trim() || amountCents === null || amountCents <= 0) {
       setNotice("Укажите название и сумму регулярного платежа");
       return;
     }
+    const body = {
+      id: editingRegularId ?? undefined,
+      name: regularDraft.name.trim(),
+      amountCents,
+      currency: regularDraft.currency || displayCurrency,
+      category: regularDraft.category.trim(),
+      periodicity: regularDraft.periodicity,
+      dayOfMonth: Number(regularDraft.dayOfMonth) || 1,
+      month: Number(regularDraft.month) || 1,
+      intervalMonths: Number(regularDraft.intervalMonths) || 3,
+      anchorMonth: regularDraft.anchorMonth || mainPeriod,
+    };
+    try {
+      await requestJson("/api/regular-payments", {
+        method: editingRegularId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await loadForecastData();
+      resetRegularForm();
+      setNotice(editingRegularId ? "Регулярный платёж обновлён" : "Регулярный платёж добавлен");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Платёж не сохранён");
+    }
+  };
+
+  const startEditRegular = (rp: RegularPayment) => {
+    setEditingRegularId(rp.id);
+    setRegularDraft({
+      name: rp.name,
+      amount: centsToInputValue(rp.amountCents),
+      currency: rp.currency,
+      category: rp.category,
+      periodicity: rp.periodicity,
+      dayOfMonth: String(rp.dayOfMonth),
+      month: String(rp.month ?? 1),
+      intervalMonths: String(rp.intervalMonths ?? 3),
+      anchorMonth: rp.anchorMonth ?? "",
+    });
+  };
+
+  const acceptRegularSuggestion = async (sug: RegularSuggestion) => {
     try {
       await requestJson("/api/regular-payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: regularDraft.name.trim(),
-          amountCents,
-          currency: displayCurrency,
-          category: regularDraft.category.trim(),
-          periodicity: regularDraft.periodicity,
-          dayOfMonth: Number(regularDraft.dayOfMonth) || 1,
-          month: Number(regularDraft.month) || 1,
-          intervalMonths: Number(regularDraft.intervalMonths) || 3,
-          anchorMonth: regularDraft.anchorMonth || mainPeriod,
+          name: sug.name,
+          amountCents: sug.amountCents,
+          currency: sug.currency,
+          category: sug.category,
+          periodicity: sug.periodicity,
+          dayOfMonth: sug.dayOfMonth,
+          source: "suggested",
         }),
       });
       await loadForecastData();
-      setRegularDraft(emptyRegularDraft);
-      setNotice("Регулярный платёж добавлен");
+      setNotice("Добавлено в регулярные");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Платёж не сохранён");
+      setNotice(error instanceof Error ? error.message : "Не удалось добавить");
     }
   };
 
@@ -1495,13 +1579,18 @@ export default function MoneyCounter() {
     try {
       await requestJson(`/api/regular-payments?id=${id}`, { method: "DELETE" });
       await loadForecastData();
+      if (editingRegularId === id) resetRegularForm();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось удалить");
     }
   };
 
-  const addLoan = async () => {
-    if (!displayCurrency) return;
+  const resetLoanForm = () => {
+    setLoanDraft(emptyLoanDraft);
+    setEditingLoanId(null);
+  };
+
+  const saveLoan = async () => {
     const amountCents = parseMoneyInputToCents(loanDraft.amount);
     if (!loanDraft.name.trim() || amountCents === null || amountCents <= 0 || !loanDraft.dueDate) {
       setNotice("Укажите название, сумму и дату займа");
@@ -1509,23 +1598,51 @@ export default function MoneyCounter() {
     }
     try {
       await requestJson("/api/loans", {
-        method: "POST",
+        method: editingLoanId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: editingLoanId ?? undefined,
           name: loanDraft.name.trim(),
           amountCents,
-          currency: displayCurrency,
+          currency: loanDraft.currency || displayCurrency,
           direction: loanDraft.direction,
           dueDate: loanDraft.dueDate,
           notes: loanDraft.notes.trim(),
         }),
       });
       await loadForecastData();
-      setLoanDraft(emptyLoanDraft);
-      setNotice("Заём добавлен");
+      resetLoanForm();
+      setNotice(editingLoanId ? "Заём обновлён" : "Заём добавлен");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Заём не сохранён");
     }
+  };
+
+  const startEditLoan = (loan: Loan) => {
+    setEditingLoanId(loan.id);
+    setLoanDraft({
+      name: loan.name,
+      amount: centsToInputValue(loan.amountCents),
+      currency: loan.currency,
+      direction: loan.direction,
+      dueDate: loan.dueDate,
+      notes: loan.notes,
+    });
+  };
+
+  // Loan suggestions need a due date, so «accept» pre-fills the add form rather
+  // than creating directly — the user sets the date and saves.
+  const acceptLoanSuggestion = (sug: LoanSuggestion) => {
+    setEditingLoanId(null);
+    setLoanDraft({
+      name: sug.name,
+      amount: centsToInputValue(sug.amountCents),
+      currency: sug.currency,
+      direction: sug.direction,
+      dueDate: "",
+      notes: "",
+    });
+    setNotice("Укажи дату и сохрани заём");
   };
 
   const removeLoan = async (id: number) => {
@@ -1533,10 +1650,16 @@ export default function MoneyCounter() {
     try {
       await requestJson(`/api/loans?id=${id}`, { method: "DELETE" });
       await loadForecastData();
+      if (editingLoanId === id) resetLoanForm();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось удалить");
     }
   };
+
+  const loanSuggestionKey = (s: LoanSuggestion) =>
+    `${s.name}|${s.amountCents}|${s.currency}|${s.sourceDate}`;
+  const visibleRegularSuggestions = regularSuggestions.filter((s) => !dismissedRegulars.includes(s.key));
+  const visibleLoanSuggestions = loanSuggestions.filter((s) => !dismissedLoans.includes(loanSuggestionKey(s)));
 
   // ── /Прогнозирование ───────────────────────────────────────────────────────
 
@@ -4478,19 +4601,56 @@ export default function MoneyCounter() {
                 </p>
                 <ul className="recurList">
                   {regularPayments.map((rp) => (
-                    <li key={rp.id}>
+                    <li key={rp.id} className={editingRegularId === rp.id ? "editing" : ""}>
                       <span className="recurName">
                         {rp.name}
                         {rp.category ? <span className="forecastMuted"> · {rp.category}</span> : null}
                       </span>
                       <span className="recurMeta">{regularPeriodLabel(rp)}</span>
                       <span className="recurAmt"><Money cents={rp.amountCents} currency={rp.currency} /></span>
-                      <button type="button" className="textButton" onClick={() => void removeRegular(rp.id)}>
+                      <button type="button" className="textButton" title="Изменить" onClick={() => startEditRegular(rp)}>
+                        ✎
+                      </button>
+                      <button type="button" className="textButton" title="Удалить" onClick={() => void removeRegular(rp.id)}>
                         ×
                       </button>
                     </li>
                   ))}
                 </ul>
+                {visibleRegularSuggestions.length > 0 ? (
+                  <div className="suggestBlock">
+                    <span className="suggestHead">Предложить из истории:</span>
+                    <ul className="recurList">
+                      {visibleRegularSuggestions.map((s) => (
+                        <li key={s.key}>
+                          <span className="recurName">
+                            {s.name}
+                            {s.category ? <span className="forecastMuted"> · {s.category}</span> : null}
+                          </span>
+                          <span className="recurMeta">
+                            ~{s.dayOfMonth}-е · {s.monthsPresent}/6 мес
+                          </span>
+                          <span className="recurAmt"><Money cents={s.amountCents} currency={s.currency} />/мес</span>
+                          <button
+                            type="button"
+                            className="textButton"
+                            onClick={() => void acceptRegularSuggestion(s)}
+                          >
+                            + в регулярные
+                          </button>
+                          <button
+                            type="button"
+                            className="textButton"
+                            title="Скрыть"
+                            onClick={() => setDismissedRegulars((prev) => [...prev, s.key])}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <div className="forecastAddForm">
                   <input
                     placeholder="Название"
@@ -4498,7 +4658,7 @@ export default function MoneyCounter() {
                     onChange={(e) => setRegularDraft({ ...regularDraft, name: e.target.value })}
                   />
                   <input
-                    placeholder={`Сумма (${displayCurrency})`}
+                    placeholder={`Сумма (${regularDraft.currency || displayCurrency})`}
                     inputMode="decimal"
                     value={regularDraft.amount}
                     onChange={(e) => setRegularDraft({ ...regularDraft, amount: e.target.value })}
@@ -4538,9 +4698,14 @@ export default function MoneyCounter() {
                     value={regularDraft.dayOfMonth}
                     onChange={(e) => setRegularDraft({ ...regularDraft, dayOfMonth: e.target.value })}
                   />
-                  <button type="button" className="secondaryButton" onClick={() => void addRegular()}>
-                    Добавить
+                  <button type="button" className="secondaryButton" onClick={() => void saveRegular()}>
+                    {editingRegularId ? "Сохранить" : "Добавить"}
                   </button>
+                  {editingRegularId ? (
+                    <button type="button" className="textButton" onClick={resetRegularForm}>
+                      Отмена
+                    </button>
+                  ) : null}
                 </div>
 
                 <h3 className="recurHead">Займы ({loans.length})</h3>
@@ -4549,7 +4714,7 @@ export default function MoneyCounter() {
                 </p>
                 <ul className="recurList">
                   {loans.map((loan) => (
-                    <li key={loan.id}>
+                    <li key={loan.id} className={editingLoanId === loan.id ? "editing" : ""}>
                       <span className="recurName">{loan.name}</span>
                       <span className="recurMeta">
                         {LOAN_DIR_LABEL[loan.direction] ?? loan.direction} · {dmy(loan.dueDate)}
@@ -4559,12 +4724,42 @@ export default function MoneyCounter() {
                         {loan.direction === "owe" ? "−" : "+"}
                         <Money cents={loan.amountCents} currency={loan.currency} />
                       </span>
-                      <button type="button" className="textButton" onClick={() => void removeLoan(loan.id)}>
+                      <button type="button" className="textButton" title="Изменить" onClick={() => startEditLoan(loan)}>
+                        ✎
+                      </button>
+                      <button type="button" className="textButton" title="Удалить" onClick={() => void removeLoan(loan.id)}>
                         ×
                       </button>
                     </li>
                   ))}
                 </ul>
+                {visibleLoanSuggestions.length > 0 ? (
+                  <div className="suggestBlock">
+                    <span className="suggestHead">Найдено в категории «займ»:</span>
+                    <ul className="recurList">
+                      {visibleLoanSuggestions.map((s) => (
+                        <li key={loanSuggestionKey(s)}>
+                          <span className="recurName">{s.name}</span>
+                          <span className="recurMeta">
+                            {LOAN_DIR_LABEL[s.direction] ?? s.direction} · {dmy(s.sourceDate)}
+                          </span>
+                          <span className="recurAmt"><Money cents={s.amountCents} currency={s.currency} /></span>
+                          <button type="button" className="textButton" onClick={() => acceptLoanSuggestion(s)}>
+                            + заём
+                          </button>
+                          <button
+                            type="button"
+                            className="textButton"
+                            title="Скрыть"
+                            onClick={() => setDismissedLoans((prev) => [...prev, loanSuggestionKey(s)])}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <div className="forecastAddForm">
                   <input
                     placeholder="Название / контрагент"
@@ -4572,7 +4767,7 @@ export default function MoneyCounter() {
                     onChange={(e) => setLoanDraft({ ...loanDraft, name: e.target.value })}
                   />
                   <input
-                    placeholder={`Сумма (${displayCurrency})`}
+                    placeholder={`Сумма (${loanDraft.currency || displayCurrency})`}
                     inputMode="decimal"
                     value={loanDraft.amount}
                     onChange={(e) => setLoanDraft({ ...loanDraft, amount: e.target.value })}
@@ -4589,14 +4784,19 @@ export default function MoneyCounter() {
                     value={loanDraft.dueDate}
                     onChange={(iso) => setLoanDraft({ ...loanDraft, dueDate: iso })}
                   />
-                  <button type="button" className="secondaryButton" onClick={() => void addLoan()}>
-                    Добавить
+                  <button type="button" className="secondaryButton" onClick={() => void saveLoan()}>
+                    {editingLoanId ? "Сохранить" : "Добавить"}
                   </button>
+                  {editingLoanId ? (
+                    <button type="button" className="textButton" onClick={resetLoanForm}>
+                      Отмена
+                    </button>
+                  ) : null}
                 </div>
 
                 <p className="panelNote forecastAssume">
-                  Фаза 1: текущий месяц, регулярные и займы — вручную. Автоподсказки из истории и
-                  мультимесячный прогноз (+1/3/6/12) — следующие фазы.
+                  Текущий месяц. Регулярные и займы можно добавлять вручную или из подсказок (анализ
+                  истории). Мультимесячный прогноз (+1/3/6/12) и закрытые месяцы — следующая фаза.
                 </p>
               </>
             )}
