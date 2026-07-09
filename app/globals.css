@@ -1760,24 +1760,17 @@ dd {
   color: var(--expense);
 }
 
-/* Day-group header: date on the left, day expense total (+ today's target) right. */
-.opsTable .dayGroup td {
-  align-items: baseline;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-}
-.opsTable .dayGroup td > span:first-child {
-  white-space: nowrap;
-}
-.dayTotals {
+/* Day-group header: the day's expense total sits in the «Сумма» column (an
+   ordinary amountCell aligned with the row amounts); today also shows the daily
+   target. Proper per-column cells (no flex on a colSpan cell) keep the table
+   from reflowing when the «Прогнозы» toggle flips. */
+.dayTotalCell {
   font-size: 13px;
-  font-variant-numeric: tabular-nums;
   font-weight: 600;
-  white-space: nowrap;
 }
 .dayTarget {
   color: var(--income);
+  white-space: nowrap;
 }
 
 /* Прогнозирование section. */

@@ -2738,10 +2738,10 @@ export default function MoneyCounter() {
                         dayGroups.map((group) => (
                           <Fragment key={group.date}>
                             <tr className="dayGroup">
-                              <td colSpan={7}>
-                                <span>{formatDayHeader(group.date)}</span>
+                              <td colSpan={4}>{formatDayHeader(group.date)}</td>
+                              <td className="amountCell dayTotalCell">
                                 {displayCurrency ? (
-                                  <span className="dayTotals">
+                                  <>
                                     <Money cents={perDayExpenseCents[group.date] ?? 0} currency={displayCurrency} />
                                     {forecastOverlay && group.date === today() ? (
                                       <span className="dayTarget">
@@ -2749,9 +2749,10 @@ export default function MoneyCounter() {
                                         <Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} />
                                       </span>
                                     ) : null}
-                                  </span>
+                                  </>
                                 ) : null}
                               </td>
+                              <td colSpan={2} />
                             </tr>
                             {group.items.map((row) =>
                               row.kind === "transfer" ? (
