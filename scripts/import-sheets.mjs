@@ -24,8 +24,11 @@ const ACCOUNTS = {
   "kasikorn": { name: "Kasikorn", currency: "THB" },
   "krungsri": { name: "Krungsri", currency: "THB" },
   "bbva": { name: "BBVA", currency: "EUR" },
-  "наличные": { name: "CASH", currency: "EUR" },
-  "cash": { name: "CASH", currency: "EUR" },
+  // Cash accounts in the app are "CASH EUR" and "CASH THB" (currency lives on the
+  // account, so the euro/baht wallets are separate rows). The import route matches
+  // by name+currency exactly, so these MUST be the full names, not bare "CASH".
+  "наличные": { name: "CASH EUR", currency: "EUR" },
+  "cash": { name: "CASH EUR", currency: "EUR" },
   "kast ak": { name: "KAST AK", currency: "USD" },
   "kast vd": { name: "KAST VD", currency: "USD" },
   "kast": { name: "KAST VD", currency: "USD" }, // bare "Kast" = Kast VD (per user)
@@ -116,7 +119,7 @@ function detectLayout(records) {
 }
 
 // --- transform one CSV file into import rows ---------------------------------
-function buildRows(records, report, layout) {
+function buildRows(records, report, layout, opts = {}) {
   const out = [];
   for (const rec of records) {
     const date = isoDate(rec[0]);
@@ -128,11 +131,25 @@ function buildRows(records, report, layout) {
 
     const label = normLabel(bRaw);
     if (SKIP.has(label)) { report.skippedVita += 1; continue; }
-    const acct = ACCOUNTS[label];
+    let acct = ACCOUNTS[label];
     if (!acct) { report.unmapped.set(bRaw.trim(), (report.unmapped.get(bRaw.trim()) ?? 0) + 1); continue; }
 
     const amount = num(rec[layout.amount]); // "Чек" (H or G, see detectLayout)
     if (!Number.isFinite(amount) || amount === 0) { report.badAmount += 1; continue; }
+
+    // THB-era sheets (--home-thb): the home/equivalent column (layout.eur) is THB,
+    // not EUR. "наличные" defaults to CASH EUR, but a cash row with NO conversion
+    // (native amount == THB-home equivalent) is leftover baht cash and belongs on
+    // the separate CASH THB account. In EUR-era sheets the home column IS EUR, so
+    // without --home-thb this never fires and behaviour is unchanged.
+    if (opts.homeThb && (label === "наличные" || label === "cash")) {
+      const home = num(rec[layout.eur]);
+      if (Number.isFinite(home) && Math.abs(amount - home) < 0.01) {
+        acct = { name: "CASH THB", currency: "THB" };
+        report.cashThb += 1;
+      }
+    }
+
     const rawCat = String(rec[3] ?? "").trim();
     const category = rawCat === "N/A" ? "" : rawCat;
     const description = String(rec[4] ?? "").trim();
@@ -173,18 +190,26 @@ function buildRows(records, report, layout) {
     if (isExpense && mentionsCash && !exactCash) {
       report.cashMentions.push(`${date} ${acct.name} «${description}»`);
     }
-    if (isExpense && exactCash && acct.name !== "CASH") {
-      const eurValue = num(rec[layout.eur]);
-      const received = Number.isFinite(eurValue) && eurValue > 0
-        ? Math.round(eurValue * 100) / 100
-        : acct.currency === "EUR"
-          ? amount
-          : NaN;
-      if (Number.isFinite(received)) {
-        out.push({ accountName: "CASH", currency: "EUR", date, amount: received, direction: "income", description, category: "" });
-        report.cashWithdrawals += 1;
+    if (isExpense && exactCash && acct.name !== "CASH EUR" && acct.name !== "CASH THB") {
+      if (opts.homeThb && acct.currency !== "EUR") {
+        // THB-era: the home column is THB (not EUR), so the EUR cash received can't
+        // be read from the CSV, and a THB→EUR withdrawal is cross-currency (the app
+        // never invents an FX rate). Import ONLY the THB debit; the CASH EUR credit
+        // is entered and linked manually in the app afterwards.
+        report.cashCrossThb.push(`${date} ${acct.name} «${description}» ${amount.toFixed(2)}`);
       } else {
-        report.cashNoEur += 1;
+        const eurValue = num(rec[layout.eur]);
+        const received = Number.isFinite(eurValue) && eurValue > 0
+          ? Math.round(eurValue * 100) / 100
+          : acct.currency === "EUR"
+            ? amount
+            : NaN;
+        if (Number.isFinite(received)) {
+          out.push({ accountName: "CASH EUR", currency: "EUR", date, amount: received, direction: "income", description, category: "" });
+          report.cashWithdrawals += 1;
+        } else {
+          report.cashNoEur += 1;
+        }
       }
     }
   }
@@ -195,10 +220,12 @@ function buildRows(records, report, layout) {
 const argv = process.argv.slice(2);
 let postUrl = null;
 let chunk = 1000;
+let homeThb = false;
 const files = [];
 for (let i = 0; i < argv.length; i += 1) {
   if (argv[i] === "--post") { postUrl = argv[i + 1]; i += 1; }
   else if (argv[i] === "--chunk") { chunk = Number(argv[i + 1]) || 1000; i += 1; }
+  else if (argv[i] === "--home-thb") { homeThb = true; }
   else files.push(argv[i]);
 }
 if (files.length === 0) {
@@ -210,14 +237,15 @@ const report = {
   unmapped: new Map(), destinations: new Set(), transfers: 0, skippedVita: 0,
   badAmount: 0, transferWrongSign: 0, transferNonPositive: 0,
   cashWithdrawals: 0, cashNoEur: 0, cashMentions: [],
+  cashThb: 0, cashCrossThb: [],
 };
 let rows = [];
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const recs = parseCsv(text);
   const layout = detectLayout(recs);
-  const built = buildRows(recs, report, layout);
-  console.log(`• ${file}: ${recs.length} строк CSV → ${built.length} операций [раскладка ${layout.name}]`);
+  const built = buildRows(recs, report, layout, { homeThb });
+  console.log(`• ${file}: ${recs.length} строк CSV → ${built.length} операций [раскладка ${layout.name}${homeThb ? ", дом. валюта THB" : ""}]`);
   rows = rows.concat(built);
 }
 
@@ -242,8 +270,13 @@ if (report.skippedVita) console.log(`Пропущено VITA: ${report.skippedVi
 if (report.badAmount) console.log(`Пропущено (нет/0 суммы): ${report.badAmount}`);
 if (report.transferWrongSign) console.log(`⚠ Переводы с неожиданным знаком (не ➖): ${report.transferWrongSign}`);
 if (report.transferNonPositive) console.log(`⚠ Перевод с приходом ≤ 0 (пропущен кредит): ${report.transferNonPositive}`);
-if (report.cashWithdrawals) console.log(`Снятий наличных → приход на CASH: ${report.cashWithdrawals} (связать в приложении: «Найти переводы»)`);
+if (report.cashThb) console.log(`Наличные в батах → CASH THB (без конвертации): ${report.cashThb}`);
+if (report.cashWithdrawals) console.log(`Снятий наличных → приход на CASH EUR: ${report.cashWithdrawals} (связать в приложении: «Найти переводы»)`);
 if (report.cashNoEur) console.log(`⚠ Снятие наличных БЕЗ EUR-эквивалента (CASH-приход пропущен): ${report.cashNoEur}`);
+if (report.cashCrossThb.length) {
+  console.log(`⚠ Кросс-валютные снятия THB→EUR — залит ТОЛЬКО расход, нога CASH EUR НЕ создана (добавить и связать вручную):`);
+  for (const line of report.cashCrossThb) console.log(`  ${line}`);
+}
 if (report.cashMentions.length) {
   console.log(`⚠ Упоминают снятие, но описание не точное — CASH-приход НЕ создан (реши вручную):`);
   for (const line of report.cashMentions) console.log(`  ${line}`);
