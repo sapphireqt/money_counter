@@ -2739,9 +2739,9 @@ export default function MoneyCounter() {
                           <Fragment key={group.date}>
                             <tr className="dayGroup">
                               <td colSpan={4}>{formatDayHeader(group.date)}</td>
-                              <td className="amountCell dayTotalCell">
+                              <td className="dayTotalCell">
                                 {displayCurrency ? (
-                                  <>
+                                  <span className="dayTotalInner">
                                     <Money cents={perDayExpenseCents[group.date] ?? 0} currency={displayCurrency} />
                                     {forecastOverlay && group.date === today() ? (
                                       <span className="dayTarget">
@@ -2749,7 +2749,7 @@ export default function MoneyCounter() {
                                         <Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} />
                                       </span>
                                     ) : null}
-                                  </>
+                                  </span>
                                 ) : null}
                               </td>
                               <td colSpan={2} />

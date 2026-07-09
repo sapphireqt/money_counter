@@ -1739,21 +1739,26 @@ dd {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Compact so the 3-row card matches the height of the other summary cards. */
 .forecastMetric {
   background: #f0f9f2;
   border-color: #bfe3ca;
-  gap: 6px;
+  gap: 3px;
+  justify-content: center;
+  padding: 12px 14px;
 }
 .forecastRow {
   align-items: baseline;
   color: var(--muted);
   display: flex;
-  font-size: 12.5px;
+  font-size: 11.5px;
+  gap: 10px;
   justify-content: space-between;
+  white-space: nowrap;
 }
 .forecastRow b {
   color: var(--foreground);
-  font-size: 15px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .forecastRow b.negative {
@@ -1764,9 +1769,20 @@ dd {
    ordinary amountCell aligned with the row amounts); today also shows the daily
    target. Proper per-column cells (no flex on a colSpan cell) keep the table
    from reflowing when the «Прогнозы» toggle flips. */
+/* The total is painted absolutely inside the «Сумма» cell so it does NOT
+   contribute to the column's width — the data columns keep their own sizing and
+   nothing shifts when the total (a day sum) or today's target appears. */
 .dayTotalCell {
+  position: relative;
+}
+.dayTotalInner {
+  bottom: 6px;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
+  position: absolute;
+  right: 8px;
+  white-space: nowrap;
 }
 .dayTarget {
   color: var(--income);
