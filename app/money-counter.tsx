@@ -974,7 +974,9 @@ export default function MoneyCounter() {
       const base = new URLSearchParams({ from, to, limit: "500" });
       const filtered = new URLSearchParams(base);
       if (selectedAccountId !== "all") filtered.set("accountId", selectedAccountId);
-      if (query.trim()) filtered.set("q", query.trim());
+      // Text search is applied CLIENT-side (see searchedTransactions): SQLite's
+      // LOWER()/LIKE only case-fold ASCII, so a Cyrillic query never matched a
+      // capitalized word. JS toLowerCase() handles Unicode correctly.
       if (typeFilter !== "all") filtered.set("type", typeFilter);
       if (categoryFilter) filtered.set("category", categoryFilter);
       if (flaggedOnly) filtered.set("flagged", "1");
@@ -997,7 +999,7 @@ export default function MoneyCounter() {
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось загрузить операции");
     }
-  }, [mainPeriod, selectedAccountId, query, typeFilter, categoryFilter, flaggedOnly]);
+  }, [mainPeriod, selectedAccountId, typeFilter, categoryFilter, flaggedOnly]);
 
   const loadStats = useCallback(async () => {
     if (!chartCurrency) {
@@ -1680,6 +1682,21 @@ export default function MoneyCounter() {
     );
   };
 
+  // Text search runs CLIENT-side (SQLite LIKE/LOWER only case-fold ASCII, so a
+  // Cyrillic query silently failed to match a capitalized word). The list is one
+  // month (≤500 rows), so a Unicode-correct substring filter is instant.
+  const searchedTransactions = useMemo(() => {
+    const qq = query.trim().toLowerCase();
+    if (!qq) return transactions;
+    return transactions.filter(
+      (t) =>
+        (t.description ?? "").toLowerCase().includes(qq) ||
+        (t.category ?? "").toLowerCase().includes(qq) ||
+        (t.payee ?? "").toLowerCase().includes(qq) ||
+        (t.accountName ?? "").toLowerCase().includes(qq)
+    );
+  }, [transactions, query]);
+
   // Operations grouped by day. The list is one month, sorted date DESC, so
   // same-date rows are already consecutive; the date becomes a group header
   // instead of a per-row column. When both legs of a transfer are loaded they
@@ -1688,7 +1705,7 @@ export default function MoneyCounter() {
   // with a «перемещение» badge.
   const dayGroups = useMemo(() => {
     const legsByGroup = new Map<string, Transaction[]>();
-    for (const tx of transactions) {
+    for (const tx of searchedTransactions) {
       if (!tx.transferGroup) continue;
       const legs = legsByGroup.get(tx.transferGroup) ?? [];
       legs.push(tx);
@@ -1696,7 +1713,7 @@ export default function MoneyCounter() {
     }
     const placed = new Set<string>();
     const groups: { date: string; items: DisplayRow[] }[] = [];
-    for (const tx of transactions) {
+    for (const tx of searchedTransactions) {
       let row: DisplayRow | null = null;
       if (tx.transferGroup) {
         if (placed.has(tx.transferGroup)) continue;
@@ -1716,7 +1733,7 @@ export default function MoneyCounter() {
       else groups.push({ date: tx.date, items: [row] });
     }
     return groups;
-  }, [transactions]);
+  }, [searchedTransactions]);
 
   // The account-currency amount in its own column, next to the display-currency
   // "Сумма". Empty (—) when the account currency already equals the display
@@ -1778,6 +1795,16 @@ export default function MoneyCounter() {
       maximumSignificantDigits: 5,
     });
     return `1 ${code} = ${rate} ${displayCurrency}`;
+  };
+
+  // Accounts whose lifetime covers the given operation date — for the create/
+  // edit form's account selects, so a closed / not-yet-opened account isn't
+  // offered for that date. Empty date falls back to today.
+  const accountsActiveOn = (dateIso: string) => {
+    const d = dateIso || today();
+    return accounts.filter(
+      (a) => (!a.openedAt || a.openedAt <= d) && (!a.closedAt || a.closedAt >= d)
+    );
   };
 
   // Per-account SPENDING over the loaded period, per currency. Transfer legs
@@ -2851,10 +2878,14 @@ export default function MoneyCounter() {
                       </tr>
                     </thead>
                     <tbody>
-                      {transactions.length === 0 ? (
+                      {dayGroups.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="emptyTable">
-                            {loading ? "Загрузка" : "Нет операций за период"}
+                            {loading
+                              ? "Загрузка"
+                              : query.trim()
+                                ? "Ничего не найдено"
+                                : "Нет операций за период"}
                           </td>
                         </tr>
                       ) : (
@@ -3101,26 +3132,28 @@ export default function MoneyCounter() {
                     panelAccounts.map((account) => (
                       <tr key={account.id}>
                         <td className="balName">{account.name}</td>
-                        <td className="amountCell">{renderAccountBalance(account)}</td>
                         <td className="amountCell">
-                          {/* Easter egg: hovering the native figure reveals the
-                              exact conversion rate. */}
+                          {/* Easter egg: hovering the display-currency figure —
+                              the one that was converted — reveals the exact rate. */}
                           <span className="ratesPeek">
-                            <span className="altAmount">
-                              {displayCurrency && account.currency !== displayCurrency ? (
-                                <Money
-                                  cents={account.balanceCents}
-                                  currency={account.currency}
-                                />
-                              ) : (
-                                "—"
-                              )}
-                            </span>
+                            <span>{renderAccountBalance(account)}</span>
                             {displayCurrency &&
                             account.currency !== displayCurrency &&
                             rateInfo(account.currency) ? (
                               <span className="ratesPop">{rateInfo(account.currency)}</span>
                             ) : null}
+                          </span>
+                        </td>
+                        <td className="amountCell">
+                          <span className="altAmount">
+                            {displayCurrency && account.currency !== displayCurrency ? (
+                              <Money
+                                cents={account.balanceCents}
+                                currency={account.currency}
+                              />
+                            ) : (
+                              "—"
+                            )}
                           </span>
                         </td>
                         <td className="amountCell flowCell">
@@ -3313,7 +3346,7 @@ export default function MoneyCounter() {
                           }
                         >
                           <option value="">Выберите счет</option>
-                          {accounts.map((account) => (
+                          {accountsActiveOn(transactionForm.date).map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.name}
                             </option>
@@ -3333,7 +3366,7 @@ export default function MoneyCounter() {
                           }
                         >
                           <option value="">Выберите счет</option>
-                          {accounts
+                          {accountsActiveOn(transactionForm.date)
                             .filter((account) => String(account.id) !== transactionForm.accountId)
                             .map((account) => (
                               <option key={account.id} value={account.id}>
@@ -3637,7 +3670,7 @@ export default function MoneyCounter() {
                           }
                         >
                           <option value="">Выберите счет</option>
-                          {accounts.map((account) => (
+                          {accountsActiveOn(transactionForm.date).map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.name}
                             </option>
