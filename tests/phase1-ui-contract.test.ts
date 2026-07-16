@@ -57,6 +57,7 @@ test("table header and right rail use viewport sticky containers", () => {
     css,
     /\.rightStickyStack\s*\{[^}]*position:\s*sticky[^}]*top:\s*10px/
   );
+  assert.doesNotMatch(component, /rightStackSticky|stickyDisabled|setRightStackSticky/);
 });
 
 test("history date mode uses year groups and a per-row date column", () => {

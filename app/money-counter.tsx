@@ -971,9 +971,7 @@ export default function MoneyCounter() {
   const [sortOpen, setSortOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [operationSort, setOperationSort] = useState<OperationSort>("date");
-  const [rightStackSticky, setRightStackSticky] = useState(true);
   const stickyToolsRef = useRef<HTMLDivElement>(null);
-  const rightStackRef = useRef<HTMLDivElement>(null);
   const accountsPanelRef = useRef<HTMLElement>(null);
   const [accountsExpanded, setAccountsExpanded] = useState(false);
   const [viewedOverflowAccountIds, setViewedOverflowAccountIds] = useState<Set<number>>(
@@ -1554,22 +1552,6 @@ export default function MoneyCounter() {
       // Keep the in-memory session state when storage is unavailable.
     }
   }, [accountsExpanded, viewedOverflowAccountIds, accountsPanelSessionReady]);
-
-  useEffect(() => {
-    if (activeTab !== "main") return;
-    const element = rightStackRef.current;
-    if (!element) return;
-    const update = () => setRightStackSticky(element.scrollHeight <= window.innerHeight - 78);
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    window.addEventListener("resize", update);
-    const frame = window.requestAnimationFrame(update);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener("resize", update);
-    };
-  }, [activeTab, accounts.length, periodTransactions.length, loading]);
 
   const refreshAfterMutation = useCallback(async () => {
     await Promise.all([reloadMeta(), loadTransactions()]);
@@ -4111,10 +4093,7 @@ export default function MoneyCounter() {
 
             <aside className="p1RightRail">
               <div
-                ref={rightStackRef}
-                className={`rightStickyStack ${compactMetricsVisible ? "scrolled" : ""} ${
-                  rightStackSticky ? "" : "stickyDisabled"
-                }`}
+                className={`rightStickyStack ${compactMetricsVisible ? "scrolled" : ""}`}
               >
                 <section ref={accountsPanelRef} className="p1AccountsPanel" aria-label="Баланс по счетам">
                   <div className="accountPanelGrid accountPanelHead" aria-hidden="true">

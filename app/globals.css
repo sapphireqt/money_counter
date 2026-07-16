@@ -3409,10 +3409,6 @@ textarea:focus-visible,
   top: 68px;
 }
 
-.rightStickyStack.stickyDisabled {
-  position: static;
-}
-
 .p1AccountsPanel,
 .p1CategoryPanel {
   background: var(--surface);
