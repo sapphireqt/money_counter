@@ -1,16 +1,9 @@
 import { ensureSchema, getD1 } from "../../../../db";
 import {
+  descriptionHistoryWindowStart,
   rankDescriptionSuggestions,
   type DescriptionHistoryRow,
 } from "../../../../lib/operations";
-
-function twelveMonthsAgo(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth();
-  const day = date.getUTCDate();
-  const target = new Date(Date.UTC(year - 1, month, day));
-  return target.toISOString().slice(0, 10);
-}
 
 export async function GET(request: Request) {
   try {
@@ -27,7 +20,7 @@ export async function GET(request: Request) {
            AND TRIM(description) <> ''
          ORDER BY date DESC, id DESC`
       )
-      .bind(twelveMonthsAgo(new Date()))
+      .bind(descriptionHistoryWindowStart(new Date()))
       .all<DescriptionHistoryRow>();
 
     return Response.json({

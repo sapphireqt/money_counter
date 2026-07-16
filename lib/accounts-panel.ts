@@ -13,6 +13,7 @@ export function selectAccountPanelItems<T extends AccountPanelItem>(
     return {
       visible: accounts,
       hidden: [] as T[],
+      promoted: null as T | null,
     };
   }
 
@@ -29,5 +30,6 @@ export function selectAccountPanelItems<T extends AccountPanelItem>(
   return {
     visible,
     hidden: accounts.filter((account) => !visibleIds.has(account.id)),
+    promoted: promotedNegative ?? null,
   };
 }

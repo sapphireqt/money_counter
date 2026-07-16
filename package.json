@@ -14,6 +14,7 @@
     "docker:run": "docker run --rm -p 8787:8787 -v money-counter-data:/data money-counter-demo",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:visual": "node tests/phase1-visual-acceptance.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
@@ -34,6 +35,7 @@
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "playwright": "^1.61.1",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",

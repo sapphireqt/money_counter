@@ -1,0 +1,4865 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Family Finance — главный экран v34 · единая сетка контента</title>
+<style>
+:root{
+  --bg:#f5f5f7;--surface:#fff;--surface-soft:#fafafa;--text:#222229;--muted:#7b7b86;
+  --line:#e7e7ec;--line-strong:#d8d8df;--accent:#8769c8;--accent-soft:#eee9f9;
+  --green:#2e9b68;--danger:#d55353;--warning:#d78b1f;--sidebar:#202026;
+  --sidebar-w:72px;--metrics-h:58px;--toolbar-h:64px;
+  --left-col:922px;--right-col:350px;--content-gap:18px;--content-max:1346px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{display:grid;grid-template-columns:var(--sidebar-w) minmax(0,1fr);min-height:100vh}
+.app{transition:grid-template-columns .22s ease}
+body.sidebar-expanded{--sidebar-w:215px}
+.sidebar{
+  position:sticky;top:0;height:100vh;background:var(--sidebar);color:#fff;
+  padding:14px 10px;z-index:80;overflow:visible
+}
+.sidebar-head{
+  display:flex;align-items:center;gap:10px;height:42px;margin-bottom:18px;
+  white-space:nowrap
+}
+.sidebar-toggle{
+  flex:0 0 42px;width:42px;height:42px;border:0;border-radius:11px;
+  display:grid;place-items:center;background:#302e36;color:#fff
+}
+.sidebar-toggle:hover{background:#3a3742}
+.sidebar-toggle svg{width:20px;height:20px;transition:transform .22s ease}
+body.sidebar-expanded .sidebar-toggle svg{transform:rotate(180deg)}
+.brand{
+  min-width:0;overflow:hidden;opacity:0;transform:translateX(-5px);
+  font-size:16px;font-weight:800;transition:opacity .14s ease,transform .22s ease
+}
+body.sidebar-expanded .brand{opacity:1;transform:none}
+.sidebar-nav{display:grid;gap:6px}
+.nav-item{
+  position:relative;display:flex;align-items:center;gap:12px;height:44px;
+  color:#c9c9cf;padding:0 11px;border-radius:11px;text-decoration:none;
+  white-space:nowrap;transition:background .15s ease,color .15s ease
+}
+.nav-item:hover{background:#2d2b32;color:#fff}
+.nav-item.active{background:#4f68d9;color:#fff}
+.nav-icon{
+  flex:0 0 20px;width:20px;height:20px;display:grid;place-items:center
+}
+.nav-icon svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav-item{width:100%;min-width:0}
+.nav-label{
+  width:0;min-width:0;overflow:hidden;opacity:0;transform:translateX(-5px);
+  transition:width .22s ease,opacity .14s ease,transform .22s ease
+}
+body.sidebar-expanded .nav-label{width:auto;opacity:1;transform:none}
+body:not(.sidebar-expanded) .nav-item::after{
+  content:attr(data-label);position:absolute;left:52px;top:50%;transform:translateY(-50%) translateX(-3px);
+  background:#111116;color:#fff;border:1px solid #3d3d46;border-radius:8px;
+  padding:7px 9px;font-size:12px;box-shadow:0 8px 24px #0005;
+  opacity:0;pointer-events:none;transition:.14s;z-index:100
+}
+body:not(.sidebar-expanded) .nav-item:hover::after{
+  opacity:1;transform:translateY(-50%) translateX(0)
+}
+.compact-metrics{transition:left .22s ease,width .22s ease}
+main{min-width:0}
+.top{width:min(100%,var(--content-max));margin-inline:auto;padding:22px 28px 10px}
+.topline{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.right-global{display:flex;align-items:center;gap:10px}
+.period,.currency,.forecast{border:1px solid var(--line-strong);background:#fff;border-radius:10px;padding:9px 11px}
+.summary-row{
+  display:grid;
+  grid-template-columns:var(--left-col) var(--right-col);
+  gap:var(--content-gap);
+  align-items:stretch
+}
+.summary-row.forecast-off{grid-template-columns:minmax(0,1fr)}
+.facts-panel{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:14px;
+  overflow:hidden
+}
+.summary-item{
+  min-width:0;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center
+}
+.summary-item + .summary-item{border-left:1px solid var(--line)}
+.card-label{font-size:12px;color:var(--muted);margin-bottom:7px}
+.card-value{font-size:21px;font-weight:800;letter-spacing:-.015em}
+
+.green{color:var(--green)}
+.forecast{display:flex;align-items:center;gap:7px}
+.forecast-dot{width:8px;height:8px;border-radius:50%;background:#b9b9c2;transition:.18s}
+.forecast.active{border-color:#c9bbe9;background:var(--accent-soft);color:#5d438f;font-weight:700}
+.forecast.active .forecast-dot{background:var(--accent)}
+.forecast-card{
+  background:#f1f8f2;
+  border:1px solid #d2e9d5;
+  border-radius:14px;
+  padding:10px 16px 12px;
+  display:grid;
+  grid-template-rows:auto 1fr;
+  row-gap:7px
+}
+.forecast-card.hidden{display:none}
+.forecast-card-title{
+  font-size:10px;
+  font-weight:700;
+  color:#6c806f;
+  line-height:1.2
+}
+.forecast-columns{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:center;
+  column-gap:18px
+}
+.forecast-col{
+  min-width:0
+}
+.forecast-col + .forecast-col{
+  border-left:1px solid #dcecdf;
+  padding-left:18px
+}
+.forecast-col span{
+  display:block;
+  color:#718074;
+  font-size:11px;
+  margin-bottom:2px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis
+}
+.forecast-col strong{
+  display:block;
+  font-size:15px;
+  white-space:nowrap
+}
+.forecast-col.subtle strong{
+  color:#536356;
+  font-size:14px
+}
+
+
+.compact-metrics{
+  display:grid;
+  position:fixed;
+  left:calc(var(--sidebar-w) + (100vw - var(--sidebar-w))/2);
+  right:auto;
+  top:0;
+  z-index:60;
+  width:min(var(--content-max),calc(100vw - var(--sidebar-w)));
+  height:var(--metrics-h);
+  grid-template-columns:150px minmax(0,1fr) var(--right-col);
+  gap:12px;
+  align-items:center;
+  padding:7px 28px;
+  background:rgba(255,255,255,.97);
+  border-bottom:1px solid var(--line);
+  box-shadow:0 4px 18px #0000000b;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transform:translateX(-50%);
+  transition:
+    left .22s ease,
+    width .22s ease,
+    opacity .18s ease,
+    visibility .18s ease;
+  will-change:opacity
+}
+.compact-metrics.show{
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto
+}
+.compact-facts{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  min-width:0
+}
+.compact-fact{
+  min-width:0;
+  padding:0 12px
+}
+.compact-fact + .compact-fact{border-left:1px solid var(--line)}
+.compact-fact span{display:block;font-size:11px;color:var(--muted)}
+.compact-fact strong{display:block;font-size:15px;margin-top:2px;white-space:nowrap}
+.compact-forecast span{display:initial}
+.compact-period{border:0;background:transparent;padding:7px 0;font-weight:800;text-align:left}
+.compact-forecast{
+  min-width:320px;
+  padding:5px 10px;
+  border:1px solid #d2e9d5;
+  border-radius:9px;
+  background:#f1f8f2;
+  display:grid;
+  grid-template-columns:auto auto auto auto;
+  align-items:center;
+  column-gap:12px
+}
+.compact-forecast.hidden{display:none}
+.compact-forecast-title{
+  color:#5d7661;
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap
+}
+.compact-mini{
+  display:flex;
+  align-items:baseline;
+  gap:4px;
+  min-width:0;
+  white-space:nowrap
+}
+.compact-mini span{
+  color:#718074;
+  font-size:10px
+}
+.compact-mini b{
+  color:#536356;
+  font-size:11px
+}
+.compact-metrics.forecast-off{
+  grid-template-columns:150px minmax(0,1fr)
+}
+
+
+.layout{
+  width:min(100%,var(--content-max));
+  margin-inline:auto;
+  display:grid;
+  grid-template-columns:var(--left-col) var(--right-col);
+  gap:var(--content-gap);
+  padding:0 28px 28px
+}
+.left{
+  width:var(--left-col);
+  max-width:100%;
+  min-width:0
+}
+.sticky-tools{
+  position:sticky;
+  top:var(--metrics-h);
+  z-index:30;
+  padding:10px 0 8px;
+  background:linear-gradient(var(--bg) 82%,rgba(245,245,247,0))
+}
+.tools{
+  width:100%;
+  display:grid;
+  grid-template-columns:minmax(420px,1fr) auto auto;
+  gap:8px;
+  align-items:center;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:10px;
+  box-shadow:0 4px 18px #0000000a
+}
+.query-cluster{
+  position:relative;
+  display:grid;
+  grid-template-columns:auto minmax(190px,1fr) auto;
+  align-items:center;
+  border:1px solid var(--line-strong);
+  border-radius:10px;
+  background:#fff;
+  min-width:0
+}
+.scope{
+  border:0;
+  border-right:1px solid var(--line);
+  background:var(--surface-soft);
+  border-radius:10px 0 0 10px;
+  padding:9px 10px;
+  color:#555560
+}
+.search{display:flex;align-items:center;gap:7px;padding:0 10px;min-width:0}
+.search input{border:0;outline:0;width:100%;min-width:0;padding:9px 0;background:transparent}
+.filter-zone{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+  padding-left:6px;
+  border-left:1px solid var(--line)
+}
+.active-filter-chips{
+  display:none;
+  align-items:center;
+  gap:5px;
+  min-width:0;
+  max-width:360px;
+  overflow:hidden
+}
+.active-filter-chips.show{display:flex}
+.filter-chip{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  height:28px;
+  border:1px solid #d3c8e7;
+  border-radius:999px;
+  background:var(--accent-soft);
+  color:#5f4a86
+}
+.filter-chip-main{
+  min-width:0;
+  max-width:170px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  border:0;
+  background:transparent;
+  color:inherit;
+  padding:0 5px 0 9px;
+  font:inherit;
+  font-size:11px;
+  font-weight:700
+}
+.filter-chip-remove{
+  width:25px;
+  height:25px;
+  border:0;
+  border-left:1px solid #d3c8e7;
+  border-radius:0 999px 999px 0;
+  background:transparent;
+  color:#725c99;
+  font-size:15px;
+  line-height:1
+}
+.filter-chip-remove:hover{background:#e8def5}
+.filter-trigger{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  border:0;
+  background:#fff;
+  padding:9px 10px 9px 5px;
+  border-radius:0 10px 10px 0;
+  white-space:nowrap
+}
+.filter-trigger.active{color:var(--accent);font-weight:700}
+.filter-chevron{
+  display:inline-block;
+  color:#87818f;
+  font-size:10px;
+  transition:transform .15s ease
+}
+.query-cluster.panel-open .filter-chevron{transform:rotate(180deg)}
+.filter-panel{
+  display:none;
+  position:absolute;
+  left:0;
+  right:0;
+  top:46px;
+  z-index:55;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:8px;
+  box-shadow:0 12px 34px #0002
+}
+.query-cluster.panel-open .filter-panel{display:block}
+.filter-grid{
+  display:grid;
+  grid-template-columns:minmax(125px,1.2fr) minmax(125px,1.2fr) minmax(120px,1fr) auto auto auto;
+  gap:7px;
+  align-items:center
+}
+.filter-field{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  height:36px;
+  padding:0 7px;
+  border:1px solid var(--line-strong);
+  border-radius:9px;
+  background:#fff
+}
+.filter-grid .select{
+  min-width:0;
+  width:100%;
+  border:0;
+  outline:0;
+  background:#fff;
+  color:var(--text);
+  font-size:11px
+}
+.attention-filter,
+.combine-filter{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  height:36px;
+  padding:0 9px;
+  border:1px solid var(--line-strong);
+  border-radius:9px;
+  background:#fff;
+  color:var(--text);
+  font-size:11px;
+  white-space:nowrap
+}
+.combine-filter{
+  border-style:dashed;
+  color:#66616d
+}
+.reset{
+  display:none;
+  height:36px;
+  margin:0;
+  border:1px solid #d9a9a9;
+  background:#fff;
+  color:#a34747;
+  border-radius:9px;
+  padding:0 10px;
+  white-space:nowrap
+}
+.reset.show{display:inline-flex;align-items:center}
+.filter-mode-note{
+  display:none;
+  margin-top:6px;
+  padding-left:2px;
+  color:var(--muted);
+  font-size:10px
+}
+.query-cluster.panel-open .filter-mode-note{display:block}
+@media(max-width:1250px){
+  .active-filter-chips{max-width:230px}
+  .filter-grid{grid-template-columns:minmax(110px,1fr) minmax(110px,1fr) minmax(105px,.9fr) auto auto}
+  .combine-filter{display:none}
+}
+.sort-holder,.add-holder{position:relative}
+.sort-trigger{border:1px solid var(--line-strong);background:#fff;border-radius:10px;padding:9px 11px;white-space:nowrap;min-width:88px}
+.sort-menu,.add-menu{display:none;position:absolute;right:0;top:43px;z-index:55;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 10px 30px #0002}
+.sort-menu{min-width:140px}.add-menu{min-width:210px}
+.sort-holder.open .sort-menu,.add-holder.open .add-menu{display:block}
+.sort-menu button,.add-menu button{display:block;width:100%;border:0;background:transparent;text-align:left;padding:8px;border-radius:7px}
+.sort-menu button:hover,.add-menu button:hover{background:#f5f4f8}
+.add-wrap{display:flex}
+.add{border:0;background:var(--accent);color:#fff;padding:9px 11px;font-weight:700}
+.add:first-child{border-radius:10px 0 0 10px}.add:last-child{border-left:1px solid #ffffff44;border-radius:0 10px 10px 0}
+
+.table{
+  width:var(--left-col);
+  max-width:100%;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:clip
+}
+.thead,.row,.group{display:grid;grid-template-columns:24px 132px 300px 244px 104px 42px;gap:10px}
+.thead{
+  position:sticky;top:74px;z-index:20;
+  align-items:center;
+  padding:10px 12px;
+  background:rgba(255,255,255,.97);
+  border-bottom:1px solid var(--line);
+  color:#777983;
+  font-size:11.5px;
+  font-weight:600;
+  letter-spacing:.005em
+}
+body.scrolled .thead{top:132px}
+.row{
+  min-height:44px;
+  padding:8px 12px;
+  align-items:center;
+  border-top:1px solid #f3f4f7;
+  transition:background .15s
+}
+.row:hover{background:#faf9fc}
+.row.transfer{
+  min-height:52px;
+  align-items:start
+}
+.status{color:var(--warning)}
+.account,.desc,.cat{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.account{
+  color:#6f717b;
+  font-size:12.5px;
+  font-weight:400;
+  line-height:1.35
+}
+.desc{
+  color:#292b31;
+  font-size:13.5px;
+  font-weight:500;
+  line-height:1.3
+}
+.combined-op{display:none;min-width:0}
+.combined-account{
+  color:#777983;
+  font-size:11.5px;
+  font-weight:400;
+  line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.combined-desc{
+  margin-top:3px;
+  color:#292b31;
+  font-size:13.5px;
+  font-weight:500;
+  line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.amounts{
+  display:grid;
+  grid-template-columns:112px 92px;
+  column-gap:9px;
+  justify-items:end;
+  white-space:nowrap;
+  line-height:1.15
+}
+.main-amt{
+  color:#34363d;
+  font-size:13.5px;
+  font-weight:500
+}
+.main-amt.green,
+.main-amt.income,
+.green.main-amt{
+  color:#2e8a5c
+}
+.local-amt{
+  color:#858791;
+  font-size:12px;
+  font-weight:400
+}
+.transfer-to{
+  grid-column:2;
+  justify-self:end;
+  align-self:start;
+  display:flex;
+  gap:6px;
+  margin-top:3px;
+  color:#8b8d96;
+  font-size:12px;
+  font-weight:500;
+  line-height:1
+}
+.cat{
+  color:#73757e;
+  font-size:12.5px;
+  font-weight:400;
+  line-height:1.35
+}
+.row:not(.transfer) > *{align-self:center}
+.row.transfer > *{align-self:start}
+.row.transfer .amounts{padding-top:1px}
+.actions{position:relative;display:flex;justify-content:flex-end}
+.icon-btn{width:28px;height:28px;border:0;background:transparent;border-radius:8px;color:#6d6d76}
+.icon-btn:hover{background:#ecebf0}
+.cat-wrap{position:relative;min-width:0}
+.row:hover .cat-wrap:after{content:"";position:absolute;right:-2px;top:-3px;width:44px;height:24px;background:linear-gradient(90deg,transparent,#faf9fc 75%)}
+.row-menu{display:none;position:absolute;right:0;top:29px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;min-width:150px;box-shadow:0 10px 30px #0002;z-index:60}
+.actions.open .row-menu{display:block}.row-menu button{border:0;background:transparent;padding:8px;width:100%;text-align:left}
+.group{
+  padding:16px 12px 8px;
+  align-items:end;
+  border-bottom:1px solid var(--line)
+}
+.group + .row{border-top:0}
+.group-date{
+  grid-column:1/4;
+  color:#30323a;
+  font-size:14px;
+  font-weight:750;
+  line-height:1.2
+}
+.group-sum{
+  grid-column:4;
+  display:grid;
+  grid-template-columns:112px 92px;
+  column-gap:9px;
+  justify-items:end;
+  line-height:1.15
+}
+.day-total{grid-column:1;display:grid;justify-items:end}
+.day-actual{
+  color:#30323a;
+  font-size:15px;
+  font-weight:700;
+  letter-spacing:-.01em
+}
+.day-goal{
+  grid-column:1;
+  margin-top:4px;
+  color:#8a8c95;
+  font-size:10.5px;
+  font-weight:500
+}
+.year{padding:18px 14px 8px;font-size:16px;font-weight:800}
+.count{display:flex;justify-content:space-between;align-items:center;padding:14px;color:var(--muted);font-size:13px}
+.more{border:1px solid var(--line-strong);background:#fff;border-radius:9px;padding:8px 11px}
+.empty{padding:56px 24px;text-align:center;color:var(--muted)}
+.hidden{display:none!important}
+.date{display:none}
+.history .thead,.history .row{grid-template-columns:62px 132px 300px 244px 104px 42px}
+.history .row{border-top:1px solid var(--line)}
+.history .date{display:block;color:#777983;font-size:12.5px;font-weight:500}.history .statushead,.history .status{display:none}
+.flat .thead,.flat .row{grid-template-columns:86px 132px 320px 232px 96px 42px}
+.flat .row{border-top:1px solid var(--line)}
+.flat .date{display:block;color:#777983;font-size:12.5px;font-weight:500}.flat .statushead,.flat .status{display:none}
+.combined .thead,.combined .row{grid-template-columns:24px 452px 244px 104px 42px}
+.combined .account,.combined .desc{display:none}.combined .combined-op{display:block}.combined .accounthead{display:none}.combined .deschead{grid-column:2}
+.combined.history .thead,.combined.history .row{grid-template-columns:62px 452px 244px 104px 42px}
+.combined.flat .thead,.combined.flat .row{grid-template-columns:86px 476px 232px 96px 42px}
+
+.right{min-width:0}
+.right-sticky-stack{position:sticky;top:10px;display:grid;gap:14px;align-self:start}
+body.scrolled .right-sticky-stack{top:68px}
+.right-sticky-stack.sticky-disabled{position:static}
+.accounts{position:relative;z-index:1;background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px}
+
+.accounts-head,.acc-row{display:grid;grid-template-columns:minmax(0,1fr) 84px 110px;gap:10px}
+.accounts-head{font-size:11px;color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--line)}
+.acc-row{margin:9px 0}.acc-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#555560}.acc-spent{text-align:right;color:#666671}.acc-bal{text-align:right}.acc-primary{font-weight:700}.acc-secondary{font-size:12px;color:var(--muted)}.neg{color:var(--danger)}.zero{color:#aaa}
+.expand{border:0;background:transparent;color:var(--accent);padding:4px 0}.total{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:12px;margin-top:10px;font-weight:800}
+.chart{margin-top:0;position:relative;z-index:1;background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px}.chartline{display:flex;justify-content:space-between;margin-top:12px}.bar{height:9px;background:#ececf1;border-radius:999px;margin-top:7px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+@media(max-width:1420px){
+  .summary-row{grid-template-columns:1fr}
+  .forecast-card{display:none}
+  .layout{grid-template-columns:1fr}
+  .right{display:none}
+  .tools{grid-template-columns:minmax(360px,1fr) auto auto}
+}
+@media(max-width:1560px){
+  body.sidebar-expanded .summary-row{grid-template-columns:1fr}
+  body.sidebar-expanded .forecast-card{display:none}
+  body.sidebar-expanded .layout{grid-template-columns:1fr}
+  body.sidebar-expanded .right{display:none}
+}
+
+/* Prototype controls for loading states */
+.prototype-state-panel{
+  position:fixed;right:18px;bottom:18px;z-index:120;
+  display:flex;gap:8px;align-items:center;
+  padding:8px;background:rgba(255,255,255,.96);
+  border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 12px 35px #0002
+}
+.prototype-state-panel span{
+  color:var(--muted);font-size:11px;margin-right:2px
+}
+.prototype-state-panel button{
+  border:1px solid #d8d8df;background:#fff;border-radius:8px;
+  padding:7px 9px;font-size:12px
+}
+.prototype-state-panel button.active{
+  border-color:#bcaee0;background:#efeaf9;color:#5d438f;font-weight:700
+}
+
+.skeleton{
+  position:relative;overflow:hidden;background:#ececf1!important;color:transparent!important;
+  border-color:transparent!important;box-shadow:none!important
+}
+.skeleton::after{
+  content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.72),transparent);
+  animation:skeleton-shimmer 1.25s infinite
+}
+@keyframes skeleton-shimmer{100%{transform:translateX(100%)}}
+.skeleton-line{
+  display:block;height:10px;border-radius:999px;background:#e4e4ea;overflow:hidden;position:relative
+}
+.skeleton-line::after{
+  content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.76),transparent);
+  animation:skeleton-shimmer 1.25s infinite
+}
+.skeleton-line.sm{height:8px}
+.skeleton-line.lg{height:15px}
+.skeleton-line.w35{width:35%}.skeleton-line.w45{width:45%}.skeleton-line.w55{width:55%}
+.skeleton-line.w65{width:65%}.skeleton-line.w75{width:75%}.skeleton-line.w90{width:90%}
+
+.loading-summary .card-label,
+.loading-summary .card-value,
+.loading-summary .forecast-card-title,
+.loading-summary .forecast-col span,
+.loading-summary .forecast-col strong{
+  color:transparent!important
+}
+.loading-summary .summary-item,
+.loading-summary .forecast-card{position:relative;overflow:hidden}
+.loading-summary .summary-item::after,
+.loading-summary .forecast-card::after{
+  content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.62),transparent);
+  animation:skeleton-shimmer 1.25s infinite
+}
+.loading-summary .card-label,
+.loading-summary .forecast-card-title,
+.loading-summary .forecast-col span{
+  background:#e4e4ea;border-radius:999px;width:58%;height:9px;margin-bottom:8px
+}
+.loading-summary .card-value,
+.loading-summary .forecast-col strong{
+  background:#dedee5;border-radius:999px;width:72%;height:16px
+}
+.loading-summary .forecast-columns{gap:14px}
+.loading-summary .forecast-col + .forecast-col{border-left-color:#e4e4ea}
+
+.loading-table .group,
+.loading-table .row,
+.loading-table .count{display:none!important}
+.table-skeleton{display:none}
+.loading-table .table-skeleton{display:block}
+.skeleton-group{
+  display:grid;grid-template-columns:1fr 246px 112px 54px;
+  gap:12px;padding:14px 14px 8px
+}
+.skeleton-row{
+  display:grid;
+  grid-template-columns:24px 136px minmax(248px,.94fr) 246px 112px 54px;
+  gap:12px;align-items:center;min-height:48px;padding:10px 14px;
+  border-top:1px solid var(--line)
+}
+.skeleton-pill{height:10px;border-radius:999px;background:#e4e4ea;position:relative;overflow:hidden}
+.skeleton-pill::after{
+  content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.76),transparent);
+  animation:skeleton-shimmer 1.25s infinite
+}
+
+.accounts-loading .acc-row,
+.accounts-loading .expand,
+.accounts-loading .total{display:none!important}
+.accounts-skeleton{display:none}
+.accounts-loading .accounts-skeleton{display:block}
+.accounts-skeleton-row{
+  display:grid;grid-template-columns:minmax(0,1fr) 86px 110px;
+  gap:10px;align-items:center;margin:10px 0
+}
+
+.table-progress{
+  display:none;position:absolute;left:0;right:0;top:0;height:2px;
+  overflow:hidden;background:#ece9f5;z-index:40
+}
+.table-progress::before{
+  content:"";position:absolute;top:0;bottom:0;width:35%;left:-35%;
+  background:var(--accent);animation:table-progress 2.2s infinite ease-in-out
+}
+@keyframes table-progress{to{left:100%}}
+.table.reloading{position:relative}
+.table.reloading .table-progress{display:block}
+.table.reloading .row,.table.reloading .group{opacity:.45;pointer-events:none}
+
+
+.chart-skeleton{display:none}
+.chart-loading .chart-content{display:none}
+.chart-loading .chart-skeleton{display:grid;gap:12px}
+.chart-skeleton-line{
+  display:flex;justify-content:space-between;gap:18px
+}
+
+
+.prototype-state-panel{
+  flex-direction:column;
+  align-items:stretch;
+  max-width:720px
+}
+.prototype-group{
+  display:flex;
+  gap:8px;
+  align-items:center
+}
+.prototype-group + .prototype-group{
+  padding-top:7px;
+  border-top:1px solid var(--line)
+}
+.prototype-group span{
+  width:58px;
+  flex:0 0 58px
+}
+
+.period-empty{
+  min-height:310px;
+  display:grid;
+  place-items:center;
+  padding:44px 24px;
+  text-align:center
+}
+.period-empty-inner{
+  max-width:410px
+}
+.empty-icon{
+  width:42px;height:42px;margin:0 auto 14px;
+  display:grid;place-items:center;border-radius:12px;
+  background:#f0edf7;color:#6f58a4;font-size:22px
+}
+.period-empty h3,.chart-empty h3{
+  margin:0 0 7px;font-size:16px
+}
+.period-empty p,.chart-empty p,.forecast-message p{
+  margin:0;color:var(--muted);line-height:1.45
+}
+.empty-action,.forecast-setup{
+  margin-top:16px;border:0;border-radius:9px;
+  padding:9px 13px;background:var(--accent);color:#fff;font-weight:700
+}
+
+.chart-empty{
+  min-height:160px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  padding:24px 18px
+}
+.chart-empty div{max-width:255px}
+
+.forecast-card.message-state{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:7px
+}
+.forecast-message{
+  font-size:12px;
+  line-height:1.4
+}
+.forecast-message.no-goal-layout{
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto;
+  align-items:center;
+  gap:14px
+}
+.forecast-message.no-goal-layout p{
+  max-width:none;
+  white-space:nowrap
+}
+.forecast-message.no-goal-layout .forecast-setup{
+  margin-top:0;
+  white-space:nowrap
+}
+.forecast-message p{color:#617064}
+.forecast-message .forecast-setup{
+  margin-top:10px;
+  padding:7px 10px;
+  font-size:12px
+}
+.compact-forecast.message-state{
+  display:block
+}
+.compact-forecast-message{
+  color:#617064;
+  font-size:11px;
+  line-height:1.25
+}
+.savings-positive{color:var(--green)!important}
+
+
+.no-results{
+  min-height:310px;
+  display:grid;
+  place-items:center;
+  padding:44px 24px;
+  text-align:center
+}
+.no-results-inner{
+  max-width:430px
+}
+.no-results-icon{
+  width:42px;height:42px;margin:0 auto 14px;
+  display:grid;place-items:center;border-radius:12px;
+  background:#f2f2f5;color:#777781;font-size:20px
+}
+.no-results h3{
+  margin:0 0 7px;font-size:16px
+}
+.no-results p{
+  margin:0;color:var(--muted);line-height:1.45
+}
+.no-results-reset{
+  margin-top:16px;
+  border:1px solid #d8d8df;
+  border-radius:9px;
+  padding:9px 13px;
+  background:#fff;
+  color:var(--text);
+  font-weight:700
+}
+.no-results-reset:hover{
+  background:#f7f7f9
+}
+
+
+.prototype-state-panel{
+  width:max-content;
+  max-width:calc(100vw - 36px);
+  overflow-x:auto;
+  flex-direction:column;
+  align-items:stretch
+}
+.prototype-group{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  gap:8px;
+  white-space:nowrap
+}
+.prototype-group + .prototype-group{
+  padding-top:7px;
+  border-top:1px solid var(--line)
+}
+.prototype-group span{
+  width:58px;
+  flex:0 0 58px
+}
+.prototype-state-panel button{
+  flex:0 0 auto;
+  white-space:nowrap
+}
+
+.screen-error{
+  display:none;
+  width:min(100%,var(--content-max));
+  min-height:520px;
+  margin-inline:auto;
+  padding:20px 28px 40px;
+  box-sizing:border-box;
+  place-items:center
+}
+.screen-error-card{
+  width:min(100%,520px);
+  box-sizing:border-box;
+  padding:38px 34px;
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:18px;
+  text-align:center;
+  box-shadow:0 12px 35px #0000000a
+}
+.screen-error-icon{
+  width:48px;
+  height:48px;
+  margin:0 auto 16px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#fff1f1;
+  color:#c84d4d;
+  font-size:22px;
+  font-weight:800
+}
+.screen-error-card h2{
+  margin:0 0 8px;
+  font-size:19px
+}
+.screen-error-card p{
+  margin:0;
+  color:var(--muted);
+  line-height:1.5
+}
+.screen-error-retry{
+  margin-top:20px;
+  border:0;
+  border-radius:9px;
+  padding:10px 15px;
+  background:var(--accent);
+  color:#fff;
+  font-weight:700
+}
+body.screen-error-mode .summary-row,
+body.screen-error-mode .layout,
+body.screen-error-mode .compact-metrics{
+  display:none!important
+}
+body.screen-error-mode .screen-error{
+  display:grid
+}
+
+
+.block-error{
+  display:grid;
+  place-items:center;
+  text-align:center;
+  color:var(--muted)
+}
+.block-error-inner{
+  max-width:360px
+}
+.block-error-icon{
+  width:38px;
+  height:38px;
+  margin:0 auto 12px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:#fff1f1;
+  color:#c84d4d;
+  font-size:18px;
+  font-weight:800
+}
+.block-error h3{
+  margin:0 0 6px;
+  color:var(--text);
+  font-size:15px
+}
+.block-error p{
+  margin:0;
+  line-height:1.45;
+  font-size:13px
+}
+.block-error-retry{
+  margin-top:14px;
+  border:1px solid #d8d8df;
+  border-radius:9px;
+  padding:8px 12px;
+  background:#fff;
+  color:var(--text);
+  font-weight:700
+}
+.block-error-retry:hover{
+  background:#f7f7f9
+}
+.table-block-error{
+  min-height:310px;
+  padding:36px 24px
+}
+.accounts.error-mode #accountRows{
+  min-height:255px;
+  display:grid
+}
+.accounts.error-mode .expand,
+.accounts.error-mode .total{
+  display:none
+}
+.accounts-block-error{
+  min-height:255px;
+  padding:24px 18px
+}
+.chart-block-error{
+  min-height:160px;
+  padding:22px 16px
+}
+.forecast-error-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:14px
+}
+.forecast-error-layout p{
+  margin:0;
+  color:#617064;
+  font-size:12px;
+  line-height:1.35
+}
+.forecast-error-layout .block-error-retry{
+  margin-top:0;
+  white-space:nowrap
+}
+.compact-forecast-error{
+  color:#617064;
+  font-size:11px;
+  line-height:1.25
+}
+
+
+.prototype-state-shell{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:120;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px
+}
+.prototype-state-shell .prototype-state-panel{
+  position:static;
+  right:auto;
+  bottom:auto;
+  width:max-content;
+  max-width:calc(100vw - 36px);
+  overflow-x:auto;
+  transform-origin:bottom right;
+  transition:opacity .16s ease,transform .16s ease
+}
+.prototype-state-toggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:9px 12px;
+  background:rgba(255,255,255,.97);
+  color:var(--text);
+  font-size:12px;
+  font-weight:700;
+  box-shadow:0 10px 28px #0002
+}
+.prototype-state-chevron{
+  display:inline-block;
+  transition:transform .16s ease
+}
+.prototype-state-shell.collapsed .prototype-state-panel{
+  display:none
+}
+.prototype-state-shell:not(.collapsed) .prototype-state-chevron{
+  transform:rotate(180deg)
+}
+
+
+.op-overlay{
+  position:fixed;inset:0;z-index:125;display:none;place-items:center;
+  padding:24px;background:rgba(26,27,32,.46);backdrop-filter:blur(1.5px)
+}
+.op-overlay.open{display:grid}
+.op-dialog{
+  width:min(660px,calc(100vw - 48px));max-height:calc(100vh - 48px);
+  overflow:hidden;background:#fff;border-radius:16px;
+  border:1px solid rgba(255,255,255,.65);box-shadow:0 24px 70px rgba(0,0,0,.28)
+}
+.op-header{
+  height:60px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--line)
+}
+.op-header h2{margin:0;font-size:19px}
+.op-close{
+  border:0;background:transparent;font-size:27px;line-height:1;color:#565963;
+  width:34px;height:34px;border-radius:8px
+}
+.op-close:hover{background:#f2f2f5}
+#operationForm{display:flex;flex-direction:column;max-height:calc(100vh - 48px - 60px)}
+.op-body{padding:20px 22px 8px;overflow:auto}
+.op-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.op-gap{margin-top:18px}
+.op-field-group{position:relative;min-width:0}
+.op-field-group>label{display:block;margin-bottom:7px;font-size:12px;font-weight:700;color:#4d5059}
+.op-control,.op-amount{
+  width:100%;height:42px;box-sizing:border-box;border:1px solid #cfd1d7;
+  border-radius:8px;background:#fff;color:var(--text);font:inherit;font-size:13px
+}
+.op-control{padding:0 11px}
+textarea.op-control{height:auto}
+.op-control:focus,.op-amount:focus-within{outline:none;border-color:#8d78bd;box-shadow:0 0 0 3px #8d78bd18}
+.op-amount{display:flex;align-items:center}
+.op-amount input{min-width:0;flex:1;border:0;outline:0;padding:0 11px;font:inherit;background:transparent}
+.op-amount span{padding:0 11px;color:var(--muted);font-size:12px}
+.op-segments{height:42px;display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #cfd1d7;border-radius:8px;overflow:hidden}
+.op-segments button{border:0;border-right:1px solid #d9dae0;background:#fff;font:inherit;font-size:12px;color:#5f626b}
+.op-segments button:last-child{border-right:0}
+.op-segments button.active{background:#ece6f7;color:#5e438f;font-weight:750}
+.op-help,.op-error-text,.op-counter{font-size:10.5px;margin-top:5px;color:var(--muted)}
+.op-counter{text-align:right}
+.op-error-text{display:none;color:#b64545}
+.op-field-group.invalid .op-control{border-color:#c95a5a;background:#fffafa}
+.op-field-group.invalid .op-error-text{display:block}
+.op-description-wrap{z-index:4}
+.op-suggestions{
+  display:none;position:absolute;left:0;right:0;top:68px;z-index:20;
+  border:1px solid #c9cbd1;border-radius:9px;background:#fff;overflow:hidden;
+  box-shadow:0 12px 28px rgba(0,0,0,.14)
+}
+.op-suggestions.open{display:block}
+.op-suggestions button{
+  width:100%;border:0;border-bottom:1px solid var(--line);background:#fff;
+  padding:11px 13px;display:grid;grid-template-columns:1fr auto;align-items:center;
+  text-align:left;font:inherit
+}
+.op-suggestions button:last-child{border-bottom:0}
+.op-suggestions button:hover{background:#f7f5fb}
+.op-suggestions span{display:flex;gap:8px;align-items:baseline}
+.op-suggestions strong{font-size:13px}
+.op-suggestions small{font-size:11px;color:#7459a5}
+.op-suggestions em{font-style:normal;font-size:10px;color:var(--muted)}
+.op-auto-badge{
+  display:none;margin-top:6px;width:max-content;padding:4px 7px;border-radius:999px;
+  background:#eef6ef;color:#4e7653;font-size:10px;font-weight:700
+}
+.op-auto-badge.show{display:block}
+.op-additional-toggle{
+  width:100%;height:42px;margin-top:18px;border:1px solid #d8d9de;border-radius:8px;
+  background:#fafafa;display:flex;align-items:center;gap:8px;padding:0 12px;
+  color:#50535c;font:inherit;font-size:12px;font-weight:700
+}
+.op-additional-chevron{font-size:21px;line-height:1;transition:transform .15s}
+.op-additional-toggle[aria-expanded="true"] .op-additional-chevron{transform:rotate(90deg)}
+.op-additional{display:none;padding-top:17px}
+.op-additional.open{display:block}
+.op-note{height:72px;padding:10px 11px;resize:vertical}
+.op-checkbox{display:flex;align-items:center;gap:9px;margin-top:13px;font-size:12px;color:#4e515a}
+.op-checkbox input{width:17px;height:17px;accent-color:#6f55a2}
+.op-footer{
+  min-height:66px;padding:12px 22px;border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff
+}
+.op-footer-left,.op-footer-right{display:flex;align-items:center;gap:9px}
+.op-button{
+  height:38px;padding:0 13px;border:1px solid #cfd1d7;border-radius:8px;
+  background:#fff;color:var(--text);font:inherit;font-size:12px;font-weight:700
+}
+.op-button:hover{background:#f6f6f8}
+.op-button.primary{background:#343638;border-color:#343638;color:#fff}
+.op-button.danger{background:#b64444;border-color:#b64444;color:#fff}
+.op-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px
+}
+.op-button svg{
+  width:15px;
+  height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round
+}
+.op-button.destructive-outline{
+  border-color:#d46d6d;
+  background:#fff;
+  color:#b04444
+}
+.op-button.destructive-outline:hover{
+  border-color:#bd5050;
+  background:#fff5f5
+}
+#deleteOperation,#editActions{display:none}
+.op-dialog.editing #deleteOperation,.op-dialog.editing #editActions{display:flex}
+.op-dialog.editing #addActions{display:none}
+.op-confirm-overlay{
+  position:fixed;inset:0;z-index:145;display:none;place-items:center;
+  padding:20px;background:rgba(24,24,29,.56)
+}
+.op-confirm-overlay.open{display:grid}
+.op-confirm{
+  width:min(390px,calc(100vw - 40px));background:#fff;border-radius:14px;
+  padding:24px;box-shadow:0 22px 64px rgba(0,0,0,.32)
+}
+.op-confirm h3{margin:0 0 8px;font-size:17px}
+.op-confirm p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.op-confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+.op-toast{
+  position:fixed;left:50%;top:20px;z-index:155;transform:translate(-50%,-14px);
+  opacity:0;pointer-events:none;padding:10px 14px;border-radius:10px;
+  background:#292b2f;color:#fff;font-size:12px;font-weight:700;
+  box-shadow:0 12px 28px rgba(0,0,0,.22);transition:.18s
+}
+.op-toast.show{opacity:1;transform:translate(-50%,0)}
+body.operation-modal-open{overflow:hidden}
+body.operation-modal-open .prototype-state-shell{z-index:135}
+
+
+.tr-overlay{
+  position:fixed;
+  inset:0;
+  z-index:126;
+  display:none;
+  place-items:center;
+  padding:22px;
+  background:rgba(26,27,32,.46);
+  backdrop-filter:blur(1.5px)
+}
+.tr-overlay.open{display:grid}
+.tr-dialog{
+  width:min(660px,calc(100vw - 44px));
+  max-height:calc(100vh - 44px);
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  overflow:hidden;
+  background:#fff;
+  border:1px solid rgba(255,255,255,.65);
+  border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.28)
+}
+.tr-header{
+  min-height:60px;
+  padding:0 22px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--line)
+}
+.tr-header h2{margin:0;font-size:19px}
+.tr-close{
+  width:34px;height:34px;border:0;border-radius:8px;background:transparent;
+  color:#565963;font-size:27px;line-height:1
+}
+.tr-close:hover{background:#f2f2f5}
+.tr-body{padding:20px 22px 16px;overflow:auto}
+.tr-footer{
+  min-height:66px;padding:12px 22px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;border-top:1px solid var(--line);background:#fff
+}
+.tr-footer-left,.tr-footer-right{display:flex;align-items:center;gap:9px}
+.tr-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.tr-gap{margin-top:18px}
+.tr-field{min-width:0;position:relative}
+.tr-field>label{display:block;margin-bottom:7px;font-size:12px;font-weight:700;color:#4d5059}
+.tr-control,.tr-amount{
+  width:100%;height:42px;box-sizing:border-box;border:1px solid #cfd1d7;
+  border-radius:8px;background:#fff;color:var(--text);font:inherit;font-size:13px
+}
+.tr-control{padding:0 11px}
+textarea.tr-control{height:72px;padding:10px 11px;resize:vertical}
+.tr-control:focus,.tr-amount:focus-within{
+  outline:none;border-color:#8d78bd;box-shadow:0 0 0 3px #8d78bd18
+}
+.tr-amount{display:flex;align-items:center}
+.tr-amount input{min-width:0;flex:1;border:0;outline:0;padding:0 11px;background:transparent;font:inherit}
+.tr-amount span{padding:0 11px;color:var(--muted);font-size:12px}
+.tr-help,.tr-counter{margin-top:5px;color:var(--muted);font-size:10.5px}
+.tr-counter{text-align:right}
+.tr-segments{
+  height:42px;display:grid;grid-template-columns:repeat(3,1fr);
+  border:1px solid #cfd1d7;border-radius:8px;overflow:hidden
+}
+.tr-segments button{
+  border:0;border-right:1px solid #d9dae0;background:#fff;color:#5f626b;
+  font:inherit;font-size:12px
+}
+.tr-segments button:last-child{border-right:0}
+.tr-segments button.active{background:#ece6f7;color:#5e438f;font-weight:750}
+.tr-arrow{display:grid;place-items:center;align-self:end;height:42px;color:#777b84;font-size:18px}
+.tr-amounts-different{display:grid;grid-template-columns:1fr 28px 1fr;gap:9px;align-items:end}
+.tr-additional-toggle{
+  width:100%;height:42px;margin-top:18px;border:1px solid #d8d9de;border-radius:8px;
+  background:#fafafa;display:flex;align-items:center;gap:8px;padding:0 12px;
+  color:#50535c;font:inherit;font-size:12px;font-weight:700
+}
+.tr-additional-toggle span:first-child{font-size:21px;line-height:1;transition:transform .15s}
+.tr-additional-toggle[aria-expanded="true"] span:first-child{transform:rotate(90deg)}
+.tr-additional{display:none;padding-top:17px}
+.tr-additional.open{display:block}
+.tr-checkbox{display:flex;align-items:center;gap:9px;margin-top:13px;font-size:12px;color:#4e515a}
+.tr-checkbox input{width:17px;height:17px;accent-color:#6f55a2}
+.tr-source{padding:12px 13px;border:1px solid #d8d9de;border-radius:9px;background:#fafafa}
+.tr-source-head{margin-bottom:8px;color:#6d7079;font-size:11px;font-weight:700}
+.tr-source-row,.tr-candidate{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center}
+.tr-source strong,.tr-candidate strong{display:block;font-size:13px}
+.tr-source small,.tr-candidate small{display:block;margin-top:4px;color:var(--muted);font-size:11px}
+.tr-source b,.tr-candidate b{white-space:nowrap;font-size:13px}
+.tr-tabs{
+  margin-top:16px;display:grid;grid-template-columns:1fr 1fr;
+  border:1px solid #d6d7dc;border-radius:9px;overflow:hidden
+}
+.tr-tabs button{
+  min-height:42px;border:0;border-right:1px solid #d6d7dc;background:#fff;
+  color:#62656e;font:inherit;font-size:12px;font-weight:700
+}
+.tr-tabs button:last-child{border-right:0}
+.tr-tabs button.active{background:#ece6f7;color:#5e438f}
+.tr-section-intro{margin:16px 0 10px}
+.tr-section-intro h3{margin:0 0 5px;font-size:14px}
+.tr-section-intro p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.45}
+.tr-candidates{display:grid;gap:7px;max-height:280px;overflow:auto;padding-right:3px}
+.tr-candidate{
+  width:100%;padding:10px 12px;border:1px solid #d8d9de;border-radius:8px;
+  background:#fff;text-align:left;font:inherit
+}
+.tr-candidate:hover{border-color:#a997cf;background:#faf8fd}
+.tr-candidate.selected{border-color:#7f67b1;background:#f4f0fb;box-shadow:0 0 0 2px #7f67b117}
+.tr-candidate-meta{display:flex;gap:8px;align-items:baseline}
+.tr-candidate-meta em{font-style:normal;color:#7459a5;font-size:10.5px}
+.tr-info{
+  margin-top:10px;padding:9px 11px;border-radius:8px;background:#f5f5f7;
+  color:#656871;font-size:11px;line-height:1.45
+}
+.tr-linked-banner{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-bottom:17px;
+  padding:9px 11px;
+  border-radius:8px;
+  background:#f5f5f7;
+  color:#656871;
+  font-size:11px;
+  line-height:1.4
+}
+.tr-linked-banner-icon{
+  width:17px;
+  height:17px;
+  flex:0 0 auto;
+  color:#786b86
+}
+.tr-linked-banner-icon path{
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round
+}
+.tr-linked-banner strong{
+  color:#3d4049;
+  font-weight:750
+}
+.tr-edit-date-row{
+  display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start
+}
+.tr-edit-grid{
+  position:relative;margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:0
+}
+.tr-edit-side{min-width:0}
+.tr-edit-side:first-child{padding-right:20px}
+.tr-edit-side:last-child{padding-left:20px;border-left:1px solid #e2e3e7}
+.tr-side-title{
+  margin-bottom:13px;color:#343741;font-size:12px;font-weight:800
+}
+.tr-edit-side .tr-field+.tr-field{margin-top:13px}
+.tr-edit-amount-help{min-height:15px;margin-top:5px;color:var(--muted);font-size:10.5px}
+.tr-amount.is-synced{background:#f7f7f9;border-color:#d8d9de}
+.tr-amount.is-synced input{color:#4e515a;cursor:default}
+.tr-amount-sync-icon{
+  width:16px;height:16px;margin-left:8px;flex:0 0 auto;color:#81728f
+}
+.tr-amount-sync-icon path{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tr-edit-date-help{min-height:15px}
+.tr-confirm-overlay{
+  position:fixed;inset:0;z-index:146;display:none;place-items:center;
+  padding:20px;background:rgba(24,24,29,.58)
+}
+.tr-confirm-overlay.open{display:grid}
+.tr-confirm{
+  width:min(520px,calc(100vw - 40px));padding:24px;background:#fff;
+  border-radius:14px;box-shadow:0 22px 64px rgba(0,0,0,.32)
+}
+.tr-confirm h3{margin:0 0 16px;font-size:17px}
+.tr-confirm-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tr-confirm-pair>div{
+  position:relative;padding:12px 13px;border:1px solid #dddde2;
+  border-radius:9px;background:#fafafa
+}
+.tr-confirm-pair span{display:block;margin-bottom:8px;color:#6c6f78;font-size:10px;font-weight:700}
+.tr-confirm-pair strong{display:block;font-size:12px}
+.tr-confirm-pair small{display:block;margin-top:4px;padding-right:72px;color:var(--muted);font-size:10px}
+.tr-confirm-pair b{position:absolute;right:12px;top:38px;font-size:11px}
+.tr-warning{margin-top:14px;padding:12px 13px;border-radius:9px;background:#fff8ed;color:#6b573a}
+.tr-warning strong{font-size:11.5px}
+.tr-warning p{margin:5px 0 0;font-size:10.5px;line-height:1.45}
+.tr-confirm-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+body.transfer-modal-open{overflow:hidden}
+body.transfer-modal-open .prototype-state-shell{z-index:136}
+
+@media(max-width:700px){
+  .op-overlay{padding:10px}
+  .op-dialog{width:100%;max-height:calc(100vh - 20px)}
+  #operationForm{max-height:calc(100vh - 80px)}
+  .op-grid{grid-template-columns:1fr}
+  .op-footer{align-items:flex-end}
+  .op-footer-right{flex-wrap:wrap;justify-content:flex-end}
+  .tr-edit-date-row,.tr-edit-grid{grid-template-columns:1fr}
+  .tr-edit-side:first-child{padding-right:0}
+  .tr-edit-side:last-child{margin-top:18px;padding:18px 0 0;border-left:0;border-top:1px solid #e2e3e7}
+}
+
+
+.search input:focus::placeholder,
+.op-dialog input:focus::placeholder,
+.op-dialog textarea:focus::placeholder,
+.tr-dialog input:focus::placeholder,
+.tr-dialog textarea:focus::placeholder{
+  color:transparent;
+  opacity:0
+}
+
+
+.op-confirm-operation{
+  margin-top:15px;
+  padding:12px 13px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  border:1px solid #dddde2;
+  border-radius:9px;
+  background:#fafafa
+}
+.op-confirm-operation strong{display:block;font-size:12px}
+.op-confirm-operation small{
+  display:block;
+  margin-top:4px;
+  overflow:hidden;
+  color:var(--muted);
+  font-size:10.5px;
+  text-overflow:ellipsis;
+  white-space:nowrap
+}
+.op-confirm-operation b{white-space:nowrap;font-size:12px}
+
+
+.compact-metrics.header-context{
+  grid-template-columns:auto minmax(0,1fr) auto;
+  gap:0;
+  padding-block:0
+}
+.header-context .compact-period{
+  padding:0 15px 0 0;
+  margin-right:2px;
+  border-right:1px solid var(--line);
+  font-size:13px;
+  line-height:1;
+  white-space:nowrap
+}
+.header-context .compact-facts{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  height:100%
+}
+.header-context .compact-fact{
+  display:flex;
+  align-items:baseline;
+  gap:5px;
+  min-width:0;
+  padding:0 11px
+}
+.header-context .compact-fact + .compact-fact{
+  border-left:1px solid var(--line)
+}
+.header-context .compact-fact span{
+  display:inline;
+  color:#858891;
+  font-size:9.5px;
+  font-weight:600;
+  white-space:nowrap
+}
+.header-context .compact-fact strong{
+  display:inline;
+  margin:0;
+  font-size:12px;
+  font-weight:750;
+  white-space:nowrap
+}
+.header-context .compact-forecast{
+  min-width:0;
+  margin-left:4px;
+  padding:0 0 0 13px;
+  border:0;
+  border-left:1px solid #cbdccc;
+  border-radius:0;
+  background:transparent;
+  display:flex;
+  align-items:baseline;
+  gap:9px
+}
+.header-context .compact-forecast-title{
+  color:#5d7661;
+  font-size:9.5px;
+  white-space:nowrap
+}
+.header-context .compact-mini{
+  gap:3px
+}
+.header-context .compact-mini span{
+  font-size:9px
+}
+.header-context .compact-mini b{
+  font-size:10.5px
+}
+.header-context .compact-forecast.message-state{
+  display:flex;
+  align-items:center
+}
+.header-context .compact-forecast-message,
+.header-context .compact-forecast-error{
+  font-size:10px;
+  white-space:nowrap
+}
+.compact-metrics.header-context.forecast-off{
+  grid-template-columns:auto minmax(0,1fr)
+}
+@media(max-width:1180px){
+  .header-context .compact-fact{padding-inline:8px}
+  .header-context .compact-fact span{font-size:9px}
+  .header-context .compact-fact strong{font-size:11px}
+  .header-context .compact-forecast{gap:6px;padding-left:9px}
+  .header-context .compact-mini span{display:none}
+}
+
+
+
+
+.category-donut{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+  align-items:center;
+  margin-top:10px
+}
+.category-donut-left{
+  position:relative;
+  min-height:382px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column
+}
+.category-donut-svg{
+  width:280px;
+  height:280px;
+  overflow:visible
+}
+.category-segment{
+  transition:opacity .15s ease, filter .15s ease
+}
+.category-donut-left.dimmed .category-segment{opacity:.28}
+.category-donut-left .category-segment.active{opacity:1;filter:brightness(1.03)}
+.category-label{
+  font-size:11px;
+  font-weight:700;
+  fill:#505562
+}
+.category-total-value{
+  font-size:12px;
+  font-weight:700;
+  fill:#20222A
+}
+.category-tooltip{
+  position:absolute;
+  left:50%;
+  bottom:68px;
+  transform:translateX(-50%);
+  min-width:168px;
+  max-width:220px;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 8px 24px #00000012;
+  display:none;
+  font-size:12px;
+  z-index:7
+}
+.category-tooltip.show{display:block}
+.category-tooltip strong{
+  display:block;
+  margin-bottom:4px;
+  color:#20222A
+}
+.category-tooltip-meta{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:#666B77
+}
+.category-legend-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px 14px;
+  width:100%;
+  margin-top:18px
+}
+.category-legend-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  padding:2px 0;
+  border-radius:8px;
+  transition:background .14s ease
+}
+.category-legend-item.active{background:#F1EDF8}
+.category-legend-dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  flex:0 0 auto
+}
+.category-legend-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:11px;
+  color:#2C2F39
+}
+.category-legend-pct{
+  margin-left:auto;
+  flex:0 0 auto;
+  font-size:11px;
+  color:#767B86
+}
+@media(max-width:1180px){
+  .category-donut{grid-template-columns:1fr}
+}
+
+
+
+
+/* Import workflow */
+.im-overlay{
+  position:fixed;inset:0;z-index:127;display:none;place-items:center;
+  padding:22px;background:rgba(26,27,32,.46);backdrop-filter:blur(1.5px)
+}
+.im-overlay.open{display:grid}
+.im-dialog{
+  width:min(660px,calc(100vw - 44px));
+  max-height:calc(100vh - 32px);
+  display:grid;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+  overflow:hidden;
+  background:#fff;
+  border:1px solid rgba(255,255,255,.65);
+  border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.28)
+}
+.im-dialog.review-fixed{
+  height:min(760px,calc(100vh - 32px));
+}
+.im-header{
+  min-height:60px;padding:0 22px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--line)
+}
+.im-header h2{margin:0;font-size:19px}
+.im-close{
+  width:34px;height:34px;border:0;border-radius:8px;background:transparent;
+  color:#565963;font-size:27px;line-height:1
+}
+.im-close:hover{background:#f2f2f5}
+.im-stepper{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;
+  padding:11px 22px;border-bottom:1px solid var(--line);background:#fafafa
+}
+.im-step{
+  min-width:0;display:flex;align-items:center;gap:8px;padding:8px 9px;
+  border:1px solid #dedfe4;border-radius:9px;background:#fff;color:var(--muted)
+}
+.im-step.active{border-color:#aa98d0;background:#f5f1fb;color:var(--text)}
+.im-step.done{border-color:#cfe2d3;background:#f5faf6;color:var(--text)}
+.im-step-no{
+  width:23px;height:23px;flex:0 0 auto;border-radius:999px;
+  display:grid;place-items:center;background:#efeff2;color:#666973;
+  font-size:10.5px;font-weight:800
+}
+.im-step.active .im-step-no{background:#70549f;color:#fff}
+.im-step.done .im-step-no{background:#4d875c;color:#fff}
+.im-step-copy{min-width:0}
+.im-step-copy strong{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;color:var(--text)
+}
+.im-body{min-height:0;padding:18px 22px 16px;overflow:auto}
+.im-dialog.review-fixed .im-body{overflow:hidden}
+.im-screen[hidden]{display:none}
+.im-dialog.review-fixed .im-screen[data-import-screen="3"]:not([hidden]){
+  height:100%;
+  min-height:0;
+  display:grid;
+  grid-template-rows:auto auto minmax(0,1fr) minmax(38px,auto);
+  row-gap:12px;
+}
+.im-dialog.review-fixed .im-preview{
+  min-height:0;
+  display:grid;
+  grid-template-rows:auto minmax(0,1fr);
+}
+.im-dialog.review-fixed #importReviewRows{
+  min-height:0;
+  overflow:auto;
+}
+.im-dropzone{
+  min-height:286px;padding:30px;border:1.5px dashed #cfd1d7;border-radius:12px;
+  display:grid;place-items:center;text-align:center;background:#fafafa;
+  transition:border-color .15s ease,background .15s ease
+}
+.im-dropzone:hover{border-color:#9c89c4;background:#fbf9fe}
+.im-upload-icon{
+  width:50px;height:50px;margin:0 auto 13px;border-radius:14px;
+  display:grid;place-items:center;background:#eee8f7;color:#70549f
+}
+.im-upload-icon svg{
+  width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round
+}
+.im-dropzone h3{margin:0 0 6px;font-size:16px}
+.im-dropzone p{margin:0;color:var(--muted);font-size:11.5px}
+.im-dropzone .op-button{margin-top:17px}
+.im-formats{margin-top:9px;font-size:10px;color:#9698a1}
+.im-global-note{
+  max-width:510px;margin:14px auto 0;padding:10px 12px;border-radius:8px;
+  background:#f5f5f7;color:#656871;font-size:10.5px;line-height:1.45;text-align:left
+}
+.im-file-card{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  margin-bottom:16px;padding:12px 13px;border:1px solid var(--line);
+  border-radius:10px;background:#fff
+}
+.im-file-main{display:flex;align-items:center;gap:11px;min-width:0}
+.im-file-icon{
+  width:38px;height:38px;flex:0 0 auto;border-radius:9px;
+  display:grid;place-items:center;background:#eee8f7;color:#70549f;
+  font-size:10px;font-weight:800
+}
+.im-file-copy{min-width:0}
+.im-file-copy strong{
+  display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px
+}
+.im-file-copy span{display:block;margin-top:2px;color:var(--muted);font-size:10.5px}
+.im-link-button{
+  border:0;background:transparent;color:#6a4f99;padding:6px 3px;
+  font-size:11px;font-weight:750
+}
+.im-link-button:hover{text-decoration:underline}
+.im-section{
+  min-width:0;padding:15px;border:1px solid var(--line);border-radius:12px;background:#fff
+}
+.im-section-title{margin:0 0 12px;font-size:13px;font-weight:800}
+.im-field{min-width:0}
+.im-field+.im-field{margin-top:12px}
+.im-field>label{
+  display:block;margin-bottom:7px;font-size:12px;font-weight:700;color:#4d5059
+}
+.im-field small{display:block;margin-top:5px;font-size:10.5px;color:var(--muted);line-height:1.4}
+.im-account-confirm{
+  display:flex;align-items:flex-start;gap:8px;margin-top:10px;
+  color:#55705d;font-size:10.5px;line-height:1.4
+}
+.im-banner{
+  display:flex;align-items:flex-start;gap:9px;margin-bottom:13px;padding:10px 12px;
+  border:1px solid #d9e6dc;border-radius:9px;background:#f6faf7;
+  color:#476b51;font-size:10.5px;line-height:1.45
+}
+.im-banner.warning{border-color:#ead9d9;background:#fff8f8;color:#8a5050}
+.im-mapping-intro{margin-bottom:13px}
+.im-mapping-intro h3{margin:0 0 4px;font-size:14px}
+.im-mapping-intro p{margin:0;color:var(--muted);font-size:10.5px;line-height:1.4}
+.im-mapping-list{
+  overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#fff
+}
+.im-map-row{
+  display:grid;
+  grid-template-columns:18px minmax(108px,.8fr) 18px minmax(0,1.45fr) auto;
+  gap:8px;
+  align-items:center;
+  padding:11px 12px;
+  border-bottom:1px solid var(--line)
+}
+.im-map-row:last-child{border-bottom:0}
+.im-map-check{
+  width:17px;height:17px;border-radius:999px;display:grid;place-items:center;
+  background:#eef7f1;color:#3f7c52;font-size:10px;font-weight:900
+}
+.im-map-source{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:#5d6069;font-size:10.5px
+}
+.im-map-source code{
+  padding:3px 5px;border-radius:5px;background:#f3f3f5;color:#4b4e57;
+  font:600 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace
+}
+.im-map-arrow{text-align:center;color:#9a9ca4;font-size:12px}
+.im-map-result{min-width:0;font-size:10.5px;color:#4d5059}
+.im-map-result strong{font-weight:800;color:#30323a}
+.im-map-example{
+  display:inline;margin-left:4px;color:#202229;font-size:11.5px;font-weight:700
+}
+.im-map-edit{
+  border:0;background:transparent;color:#6a4f99;padding:4px 0;
+  font-size:10px;font-weight:750
+}
+.im-map-edit:hover{text-decoration:underline}
+.im-map-editor{
+  grid-column:2 / -1;
+  margin-top:2px;
+  padding-top:10px;
+  border-top:1px dashed #dedee4
+}
+.im-map-editor[hidden]{display:none}
+.im-map-editor-label{
+  display:block;margin-bottom:6px;color:#666972;font-size:10px;font-weight:700
+}
+.im-map-editor-controls{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center
+}
+.im-map-editor .op-control{height:38px;font-size:11px}
+.im-map-editor .op-button{height:38px;padding-inline:12px}
+.im-map-subline{
+  display:block;margin-top:5px;color:var(--muted);font-size:9.5px;line-height:1.4
+}
+.im-fee-note{
+  margin-top:13px;padding:11px 12px;border-radius:9px;background:#f5f5f7;
+  color:#5f626b;font-size:10.5px;line-height:1.45
+}
+.im-fee-note strong{color:#34363d}
+.im-preview{
+  overflow:hidden;border:1px solid var(--line);border-radius:11px;background:#fff
+}
+.im-preview-head,.im-preview-row{
+  display:grid;grid-template-columns:96px minmax(0,1fr) 112px;
+  gap:10px;align-items:center
+}
+.im-preview-head{
+  position:relative;z-index:1;
+  padding:9px 12px;border-bottom:1px solid var(--line);
+  background:#fafafa;color:var(--muted);font-size:9.5px;font-weight:750
+}
+.im-preview-row{padding:9px 12px;border-bottom:1px solid var(--line);font-size:10.5px}
+.im-preview-row:last-of-type{border-bottom:0}
+.im-preview-description{font-weight:650}
+.im-preview-amount{text-align:right;font-weight:750;color:#34363d}
+.im-preview-amount.income{color:#2e8a5c}
+.im-review-intro{margin-bottom:13px}
+.im-review-intro h3{margin:0 0 4px;font-size:14px}
+.im-review-intro p{margin:0;color:var(--muted);font-size:10.5px;line-height:1.4}
+.im-summary-note{
+  margin-top:12px;padding:10px 12px;border-radius:8px;background:#f5f5f7;
+  color:#656871;font-size:10.5px;line-height:1.45
+}
+.im-dialog.review-fixed .im-summary-note{
+  min-height:38px;
+  margin-top:0;
+  display:flex;
+  align-items:center;
+  box-sizing:border-box;
+}
+.im-footer{
+  min-height:66px;padding:12px 22px;border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff
+}
+.im-footer-left,.im-footer-right{display:flex;align-items:center;gap:9px}
+.im-file-pill{
+  max-width:235px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--muted);font-size:10.5px
+}
+.im-file-pill strong{color:var(--text)}
+.im-footer .op-button:disabled{opacity:.45;cursor:not-allowed}
+
+.im-review-alert{
+  margin-bottom:13px;padding:10px 12px;border:1px solid #ead7bd;border-radius:9px;
+  background:#fff9f0;color:#74552d;font-size:10.5px;line-height:1.45
+}
+.im-review-alert strong{color:#5d431f}
+.im-issue-block{border-bottom:1px solid var(--line);background:#fffaf5}
+.im-issue-block:last-child{border-bottom:0}
+.im-issue-block .im-preview-row{border-bottom:0;background:transparent}
+.im-issue-block.resolved{background:#f7faf7}
+.im-issue-block.excluded{background:#f7f7f8;opacity:.8}
+.im-issue-strip{
+  min-height:35px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:center;
+  padding:0 12px 8px 12px
+}
+.im-issue-message{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#75542a;
+  font-size:9.5px;
+  line-height:1.3
+}
+.im-issue-message strong{color:#5f431e;font-size:10px}
+.im-issue-block.resolved .im-issue-message,
+.im-issue-block.resolved .im-issue-message strong{color:#4f7259}
+.im-issue-block.excluded .im-issue-message,
+.im-issue-block.excluded .im-issue-message strong{color:#666972}
+.im-issue-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:5px;
+  flex-wrap:nowrap
+}
+.im-issue-actions .op-button{
+  height:28px;
+  min-height:28px;
+  padding:0 8px;
+  border-radius:7px;
+  font-size:9px;
+  white-space:nowrap
+}
+.im-issue-actions .im-link-button{
+  padding:4px 2px;
+  font-size:9px;
+  white-space:nowrap
+}
+.im-issue-actions .im-issue-exclude{color:#666972}
+.im-issue-actions .im-issue-exclude:hover{color:#40434b}
+.im-issue-select{
+  width:142px;
+  height:28px!important;
+  min-height:28px!important;
+  padding:0 28px 0 8px!important;
+  border-radius:7px!important;
+  font-size:9px!important
+}
+.im-review-badge{
+  display:inline-flex;
+  align-items:center;
+  margin-left:6px;
+  padding:2px 5px;
+  border-radius:999px;
+  background:#fff0d8;
+  color:#795624;
+  font-size:8px;
+  font-weight:800;
+  vertical-align:1px
+}
+.im-review-badge.resolved{background:#e8f4eb;color:#4b7757}
+.im-full-overlay{
+  position:fixed;inset:0;z-index:142;display:none;place-items:center;
+  padding:24px;background:rgba(26,27,32,.54);backdrop-filter:blur(2px)
+}
+.im-full-overlay.open{display:grid}
+.im-full-dialog{
+  width:min(980px,calc(100vw - 48px));height:min(760px,calc(100vh - 48px));
+  display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;
+  overflow:hidden;border:1px solid rgba(255,255,255,.65);border-radius:16px;
+  background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.3)
+}
+.im-full-header{
+  min-height:60px;padding:0 22px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--line)
+}
+.im-full-header h2{margin:0;font-size:18px}
+.im-full-toolbar{
+  display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:10px;
+  padding:12px 22px;border-bottom:1px solid var(--line);background:#fafafa
+}
+.im-full-body{overflow:auto}
+.im-full-table{min-width:720px}
+.im-full-head,.im-full-row{
+  display:grid;grid-template-columns:110px minmax(0,1fr) 120px 130px;
+  gap:12px;align-items:center
+}
+.im-full-head{
+  position:sticky;top:0;z-index:2;padding:9px 22px;border-bottom:1px solid var(--line);
+  background:#f7f7f9;color:var(--muted);font-size:9.5px;font-weight:800
+}
+.im-full-row{
+  min-height:42px;padding:8px 22px;border-bottom:1px solid var(--line);
+  font-size:10.5px;background:#fff
+}
+.im-full-row.attention{background:#fffaf4}
+.im-full-row .amount{text-align:right;font-weight:750}
+.im-full-row .amount.income{color:#2e8a5c}
+.im-full-status{color:var(--muted);font-size:9.5px}
+.im-full-status.attention{color:#7a5829;font-weight:750}
+.im-full-footer{
+  min-height:54px;padding:0 22px;display:flex;align-items:center;
+  justify-content:space-between;border-top:1px solid var(--line);
+  color:var(--muted);font-size:10.5px
+}
+body.import-full-open{overflow:hidden}
+@media(max-width:720px){
+  .im-issue-strip{grid-template-columns:1fr;gap:5px;padding-top:3px}
+  .im-issue-actions{justify-content:flex-start}
+  .im-full-toolbar{grid-template-columns:1fr}
+}
+
+body.import-modal-open{overflow:hidden}
+body.import-modal-open .prototype-state-shell{z-index:136}
+@media(max-width:620px){
+  .im-overlay{padding:10px}
+  .im-dialog{width:100%;max-height:calc(100vh - 20px)}
+  .im-dialog.review-fixed{height:calc(100vh - 20px)}
+  .im-step{justify-content:center}
+  .im-step-copy{display:none}
+  .im-preview-head,.im-preview-row{grid-template-columns:82px minmax(0,1fr) 92px}
+  .im-footer-left{display:none}
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-head">
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Развернуть меню" title="Развернуть меню">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 5 5-5 5"/></svg>
+    </button>
+    <div class="brand">Family Finance</div>
+  </div>
+  <nav class="sidebar-nav" aria-label="Основная навигация">
+    <a class="nav-item active" data-label="Операции" href="#">
+      <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span>
+      <span class="nav-label">Операции</span>
+    </a>
+    <a class="nav-item" data-label="Прогнозы" href="#">
+      <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 3 7-8"/><path d="M14 7h5v5"/></svg></span>
+      <span class="nav-label">Прогнозы</span>
+    </a>
+    <a class="nav-item" data-label="Отчёты" href="#">
+      <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+      <span class="nav-label">Отчёты</span>
+    </a>
+    <a class="nav-item" data-label="Настройки" href="#">
+      <span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg></span>
+      <span class="nav-label">Настройки</span>
+    </a>
+  </nav>
+</aside>
+<main>
+<div class="compact-metrics header-context" id="compactMetrics">
+  <button class="compact-period" id="compactPeriod">Июль 2026</button>
+  <div class="compact-facts">
+    <div class="compact-fact"><span>Начало</span><strong id="compactOpening">24 860,12 €</strong></div>
+    <div class="compact-fact"><span>Поступления</span><strong class="green" id="compactIncome">+8 420,00 €</strong></div>
+    <div class="compact-fact"><span>Расходы</span><strong id="compactExpense">−5 947,31 €</strong></div>
+    <div class="compact-fact"><span>Сейчас</span><strong id="compactCurrent">27 332,81 €</strong></div>
+  </div>
+  <div class="compact-forecast" id="compactForecast">
+    <span class="compact-forecast-title">Прогноз на июль</span>
+    <div class="compact-mini"><span>Цель</span><b>2 500 €</b></div>
+    <div class="compact-mini"><span>Траты в день</span><b>185 €</b></div>
+    <div class="compact-mini"><span>Доступно</span><b>3 145,60 €</b></div>
+  </div>
+</div>
+<section class="top">
+  <div class="topline"><button class="period" id="periodButton">Июль 2026 ▾</button><div class="right-global"><select class="currency"><option>EUR</option><option>USD</option><option>THB</option></select><button class="forecast active" id="forecastToggle" aria-pressed="true"><span class="forecast-dot"></span>Прогнозы</button></div></div>
+  <div class="summary-row" id="metricCards">
+    <div class="facts-panel">
+      <div class="summary-item">
+        <div class="card-label">Баланс на начало периода</div>
+        <div class="card-value" id="openingBalance">24 860,12 €</div>
+      </div>
+      <div class="summary-item">
+        <div class="card-label">Поступления за период</div>
+        <div class="card-value green" id="periodIncome">+8 420,00 €</div>
+      </div>
+      <div class="summary-item">
+        <div class="card-label">Расходы за период</div>
+        <div class="card-value" id="periodExpense">−5 947,31 €</div>
+      </div>
+      <div class="summary-item">
+        <div class="card-label">Текущий баланс</div>
+        <div class="card-value" id="currentBalance">27 332,81 €</div>
+      </div>
+    </div>
+    <div class="forecast-card" id="forecastCard">
+      <div class="forecast-card-title">Прогноз на июль</div>
+      <div class="forecast-columns">
+        <div class="forecast-col">
+          <span>Цель</span>
+          <strong>2 500,00 €</strong>
+        </div>
+        <div class="forecast-col">
+          <span>Траты в день</span>
+          <strong>185,00 €</strong>
+        </div>
+        <div class="forecast-col subtle">
+          <span>Доступно</span>
+          <strong>3 145,60 €</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="screen-error" id="screenError" aria-live="polite">
+  <div class="screen-error-card">
+    <div class="screen-error-icon" aria-hidden="true">!</div>
+    <h2>Не удалось загрузить данные за июль 2026</h2>
+    <p>Проверьте подключение к интернету и попробуйте ещё раз.</p>
+    <button class="screen-error-retry" id="screenErrorRetry">Повторить</button>
+  </div>
+</section>
+
+<section class="layout">
+<div class="left">
+  <div class="sticky-tools" id="stickyTools"><div class="tools">
+    <div class="query-cluster" id="queryCluster">
+      <select class="scope" id="scope" aria-label="Область поиска и фильтрации"><option value="period">Текущий период</option><option value="history">Вся история</option></select>
+      <label class="search">⌕ <input id="search" aria-label="Поиск по операциям" placeholder="Поиск по операциям"></label>
+      <div class="filter-zone">
+        <div class="active-filter-chips" id="activeFilterChips" aria-live="polite"></div>
+        <button class="filter-trigger" id="filterTrigger" aria-expanded="false">
+          <span>Фильтры</span><span class="filter-chevron" aria-hidden="true">⌄</span>
+        </button>
+      </div>
+      <div class="filter-panel" id="filterPanel">
+        <div class="filter-grid">
+          <label class="filter-field"><select class="select" id="accountFilter" aria-label="Счёт"><option>Все счета</option><option>BBVA</option><option>KAST AK</option><option>REVOLUT (VD EUR)</option></select></label>
+          <label class="filter-field"><select class="select" id="categoryFilter" aria-label="Категория"><option>Все категории</option><option>Food</option><option>LS (home)</option><option>Shopping</option></select></label>
+          <label class="filter-field"><select class="select" id="typeFilter" aria-label="Тип операции"><option>Все типы</option><option>Расход</option><option>Поступление</option><option>Перевод</option></select></label>
+          <label class="attention-filter"><input type="checkbox" id="attentionFilter"> Внимание</label>
+          <label class="combine-filter" title="При выключенной опции новый фильтр заменяет текущий"><input type="checkbox" id="combineFilters"> Сочетать</label>
+          <button class="reset" id="reset" type="button">Сбросить</button>
+        </div>
+        <div class="filter-mode-note" id="filterModeNote">Новый фильтр заменит текущий. Включите «Сочетать», чтобы применить несколько условий.</div>
+      </div>
+    </div>
+    <div class="sort-holder" id="sortHolder"><button class="sort-trigger" id="sortTrigger">Дата ↓</button><div class="sort-menu" id="sortMenu"><button data-sort="date">Дата ↓</button><button data-sort="amount-desc">Сумма ↓</button><button data-sort="amount-asc">Сумма ↑</button></div></div>
+    <div class="add-holder" id="addHolder"><div class="add-wrap"><button class="add" id="addOperationButton">+ Добавить</button><button class="add" id="addChev">⌄</button></div><div class="add-menu"><button id="importOperationsButton" type="button">Импортировать операции</button></div></div>
+  </div></div>
+  <div class="table" id="table">
+<div class="table-progress"></div>
+<div class="thead"><div class="statushead"></div><div class="date">Дата</div><div class="accounthead">Счёт</div><div class="deschead">Назначение</div><div>Сумма</div><div>Категория</div><div></div></div>
+<div class="table-skeleton" aria-hidden="true">
+  <div class="skeleton-group">
+    <span class="skeleton-pill" style="width:85px"></span>
+    <span class="skeleton-pill" style="width:82px;justify-self:end"></span>
+  </div>
+  <div class="skeleton-row"><span></span><span class="skeleton-pill" style="width:72%"></span><span class="skeleton-pill" style="width:84%"></span><span class="skeleton-pill" style="width:74%"></span><span class="skeleton-pill" style="width:70%"></span><span></span></div>
+  <div class="skeleton-row"><span></span><span class="skeleton-pill" style="width:61%"></span><span class="skeleton-pill" style="width:92%"></span><span class="skeleton-pill" style="width:66%"></span><span class="skeleton-pill" style="width:58%"></span><span></span></div>
+  <div class="skeleton-row"><span></span><span class="skeleton-pill" style="width:79%"></span><span class="skeleton-pill" style="width:70%"></span><span class="skeleton-pill" style="width:82%"></span><span class="skeleton-pill" style="width:76%"></span><span></span></div>
+  <div class="skeleton-group">
+    <span class="skeleton-pill" style="width:72px"></span>
+    <span class="skeleton-pill" style="width:76px;justify-self:end"></span>
+  </div>
+  <div class="skeleton-row"><span></span><span class="skeleton-pill" style="width:68%"></span><span class="skeleton-pill" style="width:88%"></span><span class="skeleton-pill" style="width:71%"></span><span class="skeleton-pill" style="width:63%"></span><span></span></div>
+  <div class="skeleton-row"><span></span><span class="skeleton-pill" style="width:57%"></span><span class="skeleton-pill" style="width:77%"></span><span class="skeleton-pill" style="width:84%"></span><span class="skeleton-pill" style="width:70%"></span><span></span></div>
+  <div class="skeleton-row"><span></span><span class="skeleton-pill" style="width:83%"></span><span class="skeleton-pill" style="width:63%"></span><span class="skeleton-pill" style="width:68%"></span><span class="skeleton-pill" style="width:81%"></span><span></span></div>
+</div>
+    <div id="rows"></div>
+  </div>
+</div>
+<div class="right">
+  <div class="right-sticky-stack" id="rightStickyStack">
+  <section class="accounts" id="accounts"><div class="accounts-head"><div>Счёт</div><div style="text-align:right">Расходы</div><div style="text-align:right">Баланс</div></div>
+<div class="accounts-skeleton" aria-hidden="true">
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:72%"></span><span class="skeleton-pill" style="width:62%;justify-self:end"></span><span class="skeleton-pill" style="width:78%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:88%"></span><span class="skeleton-pill" style="width:55%;justify-self:end"></span><span class="skeleton-pill" style="width:66%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:80%"></span><span class="skeleton-pill" style="width:69%;justify-self:end"></span><span class="skeleton-pill" style="width:74%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:61%"></span><span class="skeleton-pill" style="width:48%;justify-self:end"></span><span class="skeleton-pill" style="width:81%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:76%"></span><span class="skeleton-pill" style="width:63%;justify-self:end"></span><span class="skeleton-pill" style="width:70%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:84%"></span><span class="skeleton-pill" style="width:51%;justify-self:end"></span><span class="skeleton-pill" style="width:75%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:65%"></span><span class="skeleton-pill" style="width:58%;justify-self:end"></span><span class="skeleton-pill" style="width:68%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:90%"></span><span class="skeleton-pill" style="width:44%;justify-self:end"></span><span class="skeleton-pill" style="width:82%;justify-self:end"></span></div>
+  <div class="accounts-skeleton-row"><span class="skeleton-pill" style="width:73%"></span><span class="skeleton-pill" style="width:60%;justify-self:end"></span><span class="skeleton-pill" style="width:72%;justify-self:end"></span></div>
+</div><div id="accountRows"></div><button class="expand" id="expandAccounts">Показать ещё 8</button><div class="total"><span>Всего</span><span id="accountTotal">22 734,09 €</span></div></section>
+  <section class="chart" id="categoryChart">
+  <div class="chart-content" id="chartContent">
+    <b>Расходы по категориям</b>
+  </div>
+  <div class="chart-skeleton" aria-hidden="true">
+    <span class="skeleton-line w55"></span>
+    <div class="chart-skeleton-line"><span class="skeleton-line w35"></span><span class="skeleton-line w35"></span></div>
+    <span class="skeleton-line"></span>
+    <div class="chart-skeleton-line"><span class="skeleton-line w45"></span><span class="skeleton-line w35"></span></div>
+    <span class="skeleton-line w75"></span>
+  </div>
+</section>
+  </div>
+</div>
+</section>
+</main>
+</div>
+
+
+<div class="im-overlay" id="importOverlay" aria-hidden="true">
+  <section class="im-dialog" id="importDialog" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <header class="im-header">
+      <h2 id="importTitle">Импорт выписки</h2>
+      <button class="im-close" id="importClose" type="button" aria-label="Закрыть">×</button>
+    </header>
+
+    <div class="im-stepper" aria-label="Этапы импорта">
+      <div class="im-step active" data-import-step="1">
+        <span class="im-step-no">1</span>
+        <span class="im-step-copy"><strong>Файл и счёт</strong></span>
+      </div>
+      <div class="im-step" data-import-step="2">
+        <span class="im-step-no">2</span>
+        <span class="im-step-copy"><strong>Сопоставление</strong></span>
+      </div>
+      <div class="im-step" data-import-step="3">
+        <span class="im-step-no">3</span>
+        <span class="im-step-copy"><strong>Проверка</strong></span>
+      </div>
+    </div>
+
+    <div class="im-body">
+      <section class="im-screen" data-import-screen="1">
+        <div id="importPreUpload">
+          <div class="im-dropzone" id="importDropzone">
+            <div>
+              <div class="im-upload-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5M5 14.5V19h14v-4.5"/>
+                </svg>
+              </div>
+              <h3>Перетащите сюда банковскую выписку</h3>
+              <p>или выберите файл на компьютере</p>
+              <button class="op-button primary" id="importChooseFile" type="button">Выбрать файл</button>
+              <div class="im-formats">PDF, CSV, TSV, XLS или XLSX · до 20 МБ</div>
+              <div class="im-global-note">
+                Один файл выписки импортируется в один счёт. Система сама попробует
+                распознать дату, описание, сумму и тип каждой операции.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="importPostUpload" hidden>
+          <div class="im-file-card">
+            <div class="im-file-main">
+              <div class="im-file-icon">TSV</div>
+              <div class="im-file-copy">
+                <strong id="importFileName" title="account-statement_2026-06-01_2026-06-20_en_e4ec72.tsv">account-statement_2026-06…tsv</strong>
+                <span id="importFileMeta">14 операций · 1–20 июня 2026 · EUR</span>
+              </div>
+            </div>
+            <button class="im-link-button" id="importReplaceFile" type="button">Заменить файл</button>
+          </div>
+
+          <section class="im-section">
+            <div class="im-field">
+              <label for="importAccount">Импортировать в счёт</label>
+              <select class="op-control" id="importAccount">
+                <option selected>REVOLUT (VD EUR)</option>
+                <option>BBVA</option>
+                <option>KAST VD</option>
+                <option>Kasikorn</option>
+              </select>
+              <small>Все найденные операции будут созданы в выбранном счёте.</small>
+            </div>
+            <div class="im-account-confirm">✓ Валюта счёта совпадает с валютой выписки: EUR</div>
+          </section>
+        </div>
+      </section>
+
+      <section class="im-screen" data-import-screen="2" hidden>
+        <div class="im-mapping-intro">
+          <h3>Проверьте сопоставление</h3>
+          <p>Так данные из файла будут записаны в операции.</p>
+        </div>
+
+        <div class="im-mapping-list">
+          <div class="im-map-row" data-map-row="date">
+            <span class="im-map-check">✓</span>
+            <span class="im-map-source"><code data-map-source="date">Completed Date</code></span>
+            <span class="im-map-arrow">→</span>
+            <span class="im-map-result"><strong>Дата:</strong><span class="im-map-example" data-map-example="date">«01.06.2026»</span></span>
+            <button class="im-map-edit" type="button" data-map-edit="date">Изменить</button>
+
+            <div class="im-map-editor" data-map-editor="date" hidden>
+              <label class="im-map-editor-label" for="importMapDate">Выберите колонку файла</label>
+              <div class="im-map-editor-controls">
+                <select class="op-control" id="importMapDate" data-map-select="date">
+                  <option value="Completed Date" data-example="«01.06.2026»" selected>Completed Date — 01.06.2026</option>
+                  <option value="Started Date" data-example="«31.05.2026»">Started Date — 31.05.2026</option>
+                </select>
+                <button class="op-button" type="button" data-map-done="date">Готово</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="im-map-row" data-map-row="description">
+            <span class="im-map-check">✓</span>
+            <span class="im-map-source"><code data-map-source="description">Description</code></span>
+            <span class="im-map-arrow">→</span>
+            <span class="im-map-result"><strong>Описание:</strong><span class="im-map-example" data-map-example="description">«Tren De Palau»</span></span>
+            <button class="im-map-edit" type="button" data-map-edit="description">Изменить</button>
+
+            <div class="im-map-editor" data-map-editor="description" hidden>
+              <label class="im-map-editor-label" for="importMapDescription">Выберите колонку файла</label>
+              <div class="im-map-editor-controls">
+                <select class="op-control" id="importMapDescription" data-map-select="description">
+                  <option value="Description" data-example="«Tren De Palau»" selected>Description — Tren De Palau</option>
+                  <option value="Type" data-example="«Card Payment»">Type — Card Payment</option>
+                  <option value="Product" data-example="«Current»">Product — Current</option>
+                </select>
+                <button class="op-button" type="button" data-map-done="description">Готово</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="im-map-row" data-map-row="amount">
+            <span class="im-map-check">✓</span>
+            <span class="im-map-source"><code data-map-source="amount">Amount</code></span>
+            <span class="im-map-arrow">→</span>
+            <span class="im-map-result">
+              <strong>Сумма и тип:</strong><span class="im-map-example" data-map-example="amount">«9,00 € · расход»</span>
+              <span class="im-map-subline" id="importTypeStats">Распознано: 13 расходов и 1 поступление.</span>
+            </span>
+            <button class="im-map-edit" type="button" data-map-edit="amount">Изменить</button>
+
+            <div class="im-map-editor" data-map-editor="amount" hidden>
+              <label class="im-map-editor-label" for="importMapAmount">Выберите колонку файла</label>
+              <div class="im-map-editor-controls">
+                <select class="op-control" id="importMapAmount" data-map-select="amount">
+                  <option value="Amount" data-example="«9,00 € · расход»" selected>Amount — −9,00</option>
+                  <option value="Fee" data-example="«8,99 € · расход»">Fee — 8,99</option>
+                  <option value="Balance" data-example="«2 054,33 €»">Balance — 2 054,33</option>
+                </select>
+                <button class="op-button" type="button" data-map-done="amount">Готово</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="im-fee-note" id="importFeeNote">
+          <strong>Найдена 1 комиссия на сумму 8,99 €.</strong>
+          Она будет импортирована как отдельный расход.
+        </div>
+      </section>
+
+      <section class="im-screen" data-import-screen="3" hidden>
+        <div class="im-review-intro">
+          <h3 id="importReviewTitle">Проверьте операции перед импортом</h3>
+          <p id="importReviewText">Все найденные операции показаны ниже.</p>
+        </div>
+
+        <div class="im-review-alert" id="importReviewAlert" hidden></div>
+
+        <div class="im-preview">
+          <div class="im-preview-head"><div>Дата</div><div>Описание</div><div style="text-align:right">Сумма</div></div>
+          <div id="importReviewRows"></div>
+        </div>
+
+
+        <div class="im-summary-note" id="importSummaryNote">
+          Будут созданы 14 операций в счёте <strong>REVOLUT (VD EUR)</strong>.
+        </div>
+      </section>
+    </div>
+
+    <footer class="im-footer">
+      <div class="im-footer-left">
+        <button class="im-link-button" id="importOpenFullList" type="button" hidden>Открыть полный список</button>
+        <div class="im-file-pill" id="importFilePill"></div>
+      </div>
+      <div class="im-footer-right">
+        <button class="op-button" id="importBack" type="button">Назад</button>
+        <button class="op-button" id="importCancel" type="button">Отмена</button>
+        <button class="op-button primary" id="importNext" type="button">Далее</button>
+      </div>
+    </footer>
+  </section>
+</div>
+
+
+<div class="im-full-overlay" id="importFullOverlay" aria-hidden="true">
+  <section class="im-full-dialog" id="importFullDialog" role="dialog" aria-modal="true" aria-labelledby="importFullTitle">
+    <header class="im-full-header">
+      <h2 id="importFullTitle">Все операции к импорту</h2>
+      <button class="im-close" id="importFullClose" type="button" aria-label="Закрыть">×</button>
+    </header>
+
+    <div class="im-full-toolbar">
+      <input class="op-control" id="importFullSearch" type="search" placeholder="Поиск по описанию">
+      <select class="op-control" id="importFullFilter" aria-label="Фильтр операций">
+        <option value="all">Все операции</option>
+        <option value="attention">Требуют внимания</option>
+        <option value="expense">Расходы</option>
+        <option value="income">Поступления</option>
+      </select>
+    </div>
+
+    <div class="im-full-body">
+      <div class="im-full-table">
+        <div class="im-full-head">
+          <div>Дата</div><div>Описание</div><div style="text-align:right">Сумма</div><div>Статус</div>
+        </div>
+        <div id="importFullRows"></div>
+      </div>
+    </div>
+
+    <footer class="im-full-footer">
+      <span id="importFullCount"></span>
+      <button class="op-button" id="importFullDone" type="button">Готово</button>
+    </footer>
+  </section>
+</div>
+
+<div class="op-overlay" id="operationOverlay" aria-hidden="true">
+  <section class="op-dialog" id="operationDialog" role="dialog" aria-modal="true" aria-labelledby="operationTitle">
+    <header class="op-header">
+      <h2 id="operationTitle">Новая операция</h2>
+      <button class="op-close" id="operationClose" type="button" aria-label="Закрыть">×</button>
+    </header>
+
+    <form id="operationForm">
+      <div class="op-body">
+        <div class="op-grid">
+          <div class="op-field-group">
+            <label>Тип операции</label>
+            <div class="op-segments" id="operationType">
+              <button type="button" data-operation-type="expense" class="active">Расход</button>
+              <button type="button" data-operation-type="income">Поступление</button>
+              <button type="button" data-operation-type="transfer">Перевод</button>
+            </div>
+          </div>
+
+          <div class="op-field-group">
+            <label for="operationDate">Дата</label>
+            <input class="op-control" id="operationDate" value="13.07.2026">
+            <div class="op-help">Дата влияет на список доступных счетов</div>
+          </div>
+        </div>
+
+        <div class="op-grid op-gap">
+          <div class="op-field-group" id="accountGroup">
+            <label for="operationAccount">Счёт</label>
+            <select class="op-control" id="operationAccount">
+              <option>BBVA</option>
+              <option>REVOLUT (AK)</option>
+              <option>REVOLUT (VD EUR)</option>
+              <option>CASH EUR</option>
+              <option>KAST AK</option>
+              <option>CASH THB</option>
+            </select>
+            <div class="op-error-text" id="accountError">Этот счёт недоступен на выбранную дату. Выберите другой счёт.</div>
+          </div>
+
+          <div class="op-field-group">
+            <label for="operationAmount">Сумма</label>
+            <div class="op-amount">
+              <input id="operationAmount" inputmode="decimal" placeholder="0,00">
+              <span id="operationCurrency">EUR</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="op-field-group op-gap op-description-wrap">
+          <label for="operationDescription">Описание</label>
+          <input class="op-control" id="operationDescription" maxlength="200" autocomplete="off">
+          <div class="op-counter"><span id="descriptionCount">0</span> / 200</div>
+          <div class="op-suggestions" id="descriptionSuggestions">
+            <button type="button" data-description="Mercadona" data-category="Food">
+              <span><strong>Mercadona</strong><small>Food</small></span><em>Использовано 12 раз</em>
+            </button>
+            <button type="button" data-description="MediaMarkt" data-category="Shopping">
+              <span><strong>MediaMarkt</strong><small>Shopping</small></span><em>Использовано 3 раза</em>
+            </button>
+            <button type="button" data-description="Metro Sabadell" data-category="Transport">
+              <span><strong>Metro Sabadell</strong><small>Transport</small></span><em>Использовано 2 раза</em>
+            </button>
+          </div>
+        </div>
+
+        <div class="op-field-group op-gap" id="categoryGroup">
+          <label for="operationCategory">Категория</label>
+          <select class="op-control" id="operationCategory">
+            <option value="">Выберите категорию</option>
+            <option value="Food">Food</option>
+            <option value="LS (home)">LS (home)</option>
+            <option value="Shopping">Shopping</option>
+            <option value="Transport">Transport</option>
+            <option value="Subscriptions">Subscriptions</option>
+            <option value="Health">Health</option>
+            <option value="Communication">Communication</option>
+            <option value="Other">Other</option>
+          </select>
+          <div class="op-auto-badge" id="autoCategoryBadge">Подставлено автоматически</div>
+        </div>
+
+        <button class="op-additional-toggle" id="additionalToggle" type="button" aria-expanded="false">
+          <span class="op-additional-chevron">›</span>
+          <span>Дополнительно</span>
+        </button>
+
+        <div class="op-additional" id="additionalFields">
+          <div class="op-field-group">
+            <label for="operationNote">Заметка</label>
+            <textarea class="op-control op-note" id="operationNote" maxlength="500"></textarea>
+            <div class="op-counter"><span id="noteCount">0</span> / 500</div>
+          </div>
+          <label class="op-checkbox">
+            <input type="checkbox" id="operationAttention">
+            <span>Требует внимания</span>
+          </label>
+        </div>
+      </div>
+
+      <footer class="op-footer">
+        <div class="op-footer-left">
+          <button class="op-button destructive-outline" id="deleteOperation" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>
+            </svg>
+            <span>Удалить</span>
+          </button>
+        </div>
+        <div class="op-footer-right" id="addActions">
+          <button class="op-button" data-close-operation type="button">Отмена</button>
+          <button class="op-button" id="addAndClose" type="button">Добавить и закрыть</button>
+          <button class="op-button primary" id="addMore" type="button">Добавить ещё</button>
+        </div>
+        <div class="op-footer-right" id="editActions">
+          <button class="op-button" data-close-operation type="button">Отмена</button>
+          <button class="op-button primary" id="saveOperation" type="button">Сохранить</button>
+        </div>
+      </footer>
+    </form>
+  </section>
+</div>
+
+<div class="op-confirm-overlay" id="deleteConfirmOverlay" aria-hidden="true">
+  <section class="op-confirm" role="alertdialog" aria-modal="true" aria-labelledby="deleteConfirmTitle">
+    <h3 id="deleteConfirmTitle">Удалить операцию?</h3>
+    <p>Операция будет удалена из истории. Это действие нельзя отменить.</p>
+    <div class="op-confirm-operation" id="deleteConfirmOperation">
+      <div>
+        <strong id="deleteConfirmAccount">BBVA</strong>
+        <small id="deleteConfirmMeta">12.07.2026 · Mercadona</small>
+      </div>
+      <b id="deleteConfirmAmount">54,73 €</b>
+    </div>
+    <div class="op-confirm-actions">
+      <button class="op-button" id="cancelDelete" type="button">Отмена</button>
+      <button class="op-button danger" id="confirmDelete" type="button">Удалить</button>
+    </div>
+  </section>
+</div>
+
+<div class="op-toast" id="operationToast" role="status" aria-live="polite">Операция удалена</div>
+
+<div class="tr-overlay" id="transferOverlay" aria-hidden="true">
+  <section class="tr-dialog" id="transferDialog" role="dialog" aria-modal="true" aria-labelledby="transferTitle">
+    <header class="tr-header">
+      <h2 id="transferTitle">Новый перевод</h2>
+      <button class="tr-close" id="transferClose" type="button" aria-label="Закрыть">×</button>
+    </header>
+    <div class="tr-body" id="transferBody"></div>
+    <footer class="tr-footer" id="transferFooter"></footer>
+  </section>
+</div>
+
+<div class="tr-confirm-overlay" id="unlinkConfirmOverlay" aria-hidden="true">
+  <section class="tr-confirm" role="alertdialog" aria-modal="true" aria-labelledby="unlinkTitle">
+    <h3 id="unlinkTitle">Разъединить этот перевод?</h3>
+
+    <div class="tr-confirm-pair">
+      <div>
+        <span>Исходная операция</span>
+        <strong id="unlinkSourceAccount">Ledger</strong>
+        <small id="unlinkSourceMeta">01.07.2026 · На Kast AK</small>
+        <b id="unlinkSourceAmount">−2 628,72 €</b>
+      </div>
+      <div>
+        <span>Операция-напарник</span>
+        <strong id="unlinkPartnerAccount">Kast AK</strong>
+        <small id="unlinkPartnerMeta">01.07.2026 · Перевод от Ledger</small>
+        <b id="unlinkPartnerAmount">2 628,72 €</b>
+      </div>
+    </div>
+
+    <div class="tr-warning">
+      <strong>После разъединения</strong>
+      <p>Связь между операциями будет удалена. Они останутся в истории и будут учитываться отдельно: списание — как расход, зачисление — как поступление.</p>
+    </div>
+
+    <div class="tr-confirm-actions">
+      <button class="op-button" id="cancelUnlink" type="button">Отмена</button>
+      <button class="op-button danger" id="confirmUnlink" type="button">Разъединить</button>
+    </div>
+  </section>
+</div>
+
+<div class="prototype-state-shell collapsed" id="prototypeStateShell">
+  <button class="prototype-state-toggle" id="prototypeStateToggle" type="button"
+          aria-expanded="false" aria-controls="prototypeStatePanel">
+    <span>Состояния</span>
+    <span class="prototype-state-chevron" aria-hidden="true">⌃</span>
+  </button>
+
+  <div class="prototype-state-panel" id="prototypeStatePanel">
+    <div class="prototype-group">
+      <span>Экран:</span>
+      <button data-view="normal" class="active">Текущий</button>
+      <button data-view="table-b">Таблица Б</button>
+      <button data-view="empty">Пустой период</button>
+      <button data-view="not-found">Ничего не найдено</button>
+      <button data-view="no-goal">Без цели</button>
+      <button data-view="past">Прошедший</button>
+    </div>
+    <div class="prototype-group">
+      <span>Загрузка:</span>
+      <button data-state="normal" class="active">Нет</button>
+      <button data-state="initial">Первое открытие</button>
+      <button data-state="period">Смена периода</button>
+      <button data-state="table">Поиск / фильтры</button>
+    </div>
+    <div class="prototype-group">
+      <span>Ошибки:</span>
+      <button data-error="none" class="active">Нет</button>
+      <button data-error="screen">Весь экран</button>
+      <button data-error="table">Таблица</button>
+      <button data-error="accounts">Счета</button>
+      <button data-error="chart">Диаграмма</button>
+      <button data-error="forecast">Прогноз</button>
+    </div>
+    <div class="prototype-group">
+      <span>Шапка:</span>
+      <button data-header-mode="context" class="active">Контекстная</button>
+      <button data-header-mode="cards">Карточки</button>
+    </div>
+    <div class="prototype-group">
+      <span>Импорт:</span>
+      <button data-import-review="small">14 операций</button>
+      <button data-import-review="large">327 операций</button>
+      <button data-import-review="attention">327 + 3 проблемы</button>
+    </div>
+    <div class="prototype-group">
+      <span>Формы:</span>
+      <button data-operation-form="add">Новая</button>
+      <button data-operation-form="suggestions">Подсказки</button>
+      <button data-operation-form="autocategory">Автокатегория</button>
+      <button data-operation-form="invalid-account">Неверный счёт</button>
+      <button data-operation-form="edit-expense">Ред. расход</button>
+      <button data-operation-form="edit-income">Ред. поступление</button>
+      <button data-open-transfer="01-new-transfer-same-currency">Новый перевод</button>
+      <button data-open-transfer="02-new-transfer-different-currencies">Разные валюты</button>
+      <button data-open-transfer="03-link-existing-candidates">Связать</button>
+      <button data-open-transfer="04-create-partner-operation">Создать напарника</button>
+      <button data-open-transfer="05-edit-linked-transfer">Ред. перевод</button>
+      <button data-open-transfer="06-confirm-unlink">Разъединить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const OPS=[
+{date:'2026-07-12',label:'12 июля',account:'BBVA',desc:'Mercadona',main:'−54,73 €',local:'',cat:'Food',type:'Расход',attention:true},
+{date:'2026-07-12',label:'12 июля',account:'KAST AK',desc:'IKEA — полка и органайзеры',main:'−96,45 €',local:'110,07 $',cat:'LS (home)',type:'Расход'},
+{date:'2026-07-12',label:'12 июля',account:'KAST AK → BBVA',desc:'Перевод между счетами',main:'5 257,44 €',local:'6 000,00 $',to:'5 245,80 €',cat:'',type:'Перевод'},
+{date:'2026-07-12',label:'12 июля',account:'REVOLUT (AK)',desc:'Simyo',main:'−14,99 €',local:'',cat:'Communication',type:'Расход'},
+{date:'2026-07-12',label:'12 июля',account:'CASH EUR',desc:'Fruites Martínez',main:'−21,26 €',local:'',cat:'Food',type:'Расход'},
+{date:'2026-07-11',label:'11 июля',account:'REVOLUT (VD EUR)',desc:'Carrefour',main:'−68,21 €',local:'',cat:'Food',type:'Расход'},
+{date:'2026-07-11',label:'11 июля',account:'BBVA',desc:'Amazon',main:'−42,90 €',local:'',cat:'Shopping',type:'Расход'},
+{date:'2026-07-11',label:'11 июля',account:'KAST VD',desc:'Bauhaus',main:'−77,86 €',local:'88,91 $',cat:'LS (home)',type:'Расход'},
+{date:'2026-07-10',label:'10 июля',account:'TINKOFF (AK)',desc:'Ozon',main:'−38,64 €',local:'3 431,25 ₽',cat:'Shopping',type:'Расход'},
+{date:'2026-07-10',label:'10 июля',account:'Krungsri',desc:'7-Eleven',main:'−1,32 €',local:'50,02 ฿',cat:'Food',type:'Расход'},
+{date:'2026-07-10',label:'10 июля',account:'REVOLUT (VD EUR)',desc:'Зачисление зарплаты',main:'+3 600,00 €',local:'',cat:'',type:'Поступление'},
+{date:'2026-07-09',label:'9 июля',account:'BBVA',desc:'IKEA — доставка и сборка',main:'−312,40 €',local:'',cat:'LS (home)',type:'Расход'},
+{date:'2026-07-09',label:'9 июля',account:'CASH EUR',desc:'Кофе и выпечка',main:'−8,40 €',local:'',cat:'Food',type:'Расход'},
+{date:'2026-07-08',label:'8 июля',account:'TINKOFF (AK)',desc:'Яндекс Плюс',main:'−7,18 €',local:'637,14 ₽',cat:'Subscriptions',type:'Расход'},
+{date:'2026-07-08',label:'8 июля',account:'REVOLUT (AK)',desc:'Аптека',main:'−23,55 €',local:'',cat:'Health',type:'Расход'},
+{date:'2026-07-07',label:'7 июля',account:'KAST AK',desc:'Онлайн-покупка с очень длинным назначением для проверки ширины колонки',main:'−132,80 €',local:'151,37 $',cat:'Shopping',type:'Расход'},
+{date:'2026-07-06',label:'6 июля',account:'BBVA',desc:'Возврат налога',main:'+840,00 €',local:'',cat:'',type:'Поступление'},
+{date:'2026-07-05',label:'5 июля',account:'Kasikorn',desc:"Lotus's",main:'−18,60 €',local:'705,28 ฿',cat:'Food',type:'Расход'},
+{date:'2026-07-04',label:'4 июля',account:'REVOLUT (VD EUR)',desc:'Decathlon',main:'−89,99 €',local:'',cat:'Sport',type:'Расход'},
+{date:'2026-07-03',label:'3 июля',account:'BBVA',desc:'Verisure',main:'−49,80 €',local:'',cat:'Home services',type:'Расход'},
+{date:'2025-12-17',label:'17 декабря 2025',account:'KAST AK → BBVA',desc:'Перевод между счетами',main:'4 812,00 €',local:'5 500,00 $',to:'4 795,00 €',cat:'',type:'Перевод'},
+{date:'2025-03-08',label:'8 марта 2025',account:'CASH EUR',desc:'Carrefour',main:'−68,20 €',local:'',cat:'Food',type:'Расход'}
+];
+const DAY_SUMS={'2026-07-12':'187,43 €','2026-07-11':'188,97 €','2026-07-10':'39,96 €','2026-07-09':'320,80 €','2026-07-08':'30,73 €','2026-07-07':'132,80 €','2026-07-06':'0,00 €','2026-07-05':'18,60 €','2026-07-04':'89,99 €','2026-07-03':'49,80 €'};
+const PAST_OPS=OPS.filter(o=>o.date.startsWith('2026-07')).map(o=>{
+  const day=o.date.slice(-2);
+  return {...o,date:`2026-06-${day}`,label:`${Number(day)} июня`};
+});
+const PAST_DAY_SUMS={
+  '2026-06-12':'187,43 €','2026-06-11':'188,97 €','2026-06-10':'39,96 €',
+  '2026-06-09':'320,80 €','2026-06-08':'30,73 €','2026-06-07':'132,80 €',
+  '2026-06-06':'0,00 €','2026-06-05':'18,60 €','2026-06-04':'89,99 €','2026-06-03':'49,80 €'
+};
+const ACCOUNTS=[
+['BBVA','3 529,17 €','','2 624,09 €'],['REVOLUT (AK)','55,51 €','','68,21 €'],['REVOLUT (VD EUR)','449,62 €','','1 083,64 €'],['REVOLUT (VD USD)','0,00 €','0,00 $','—'],['KAST VD','936,81 €','1 069,12 $','77,86 €'],['KAST AK','1 877,06 €','2 142,18 $','329,01 €'],['Bybit','30,77 €','35,12 $','—'],['Ledger','12 314,32 €','14 053,59 $','—'],['DEMO NEGATIVE','−14,00 €','−16,00 $','—'],['Garna','1 197,42 €','1 366,54 $','—'],['TINKOFF (AK)','46,94 €','4 167,73 ₽','511,81 €'],['TINKOFF (VD)','191,66 €','17 018,65 ₽','—'],['Kasikorn','86,60 €','3 287,57 ฿','—'],['Krungsri','7,51 €','284,92 ฿','1,32 €'],['Т-Биржа','672,69 €','767,70 $','—'],['Т-Инвестиции','1 195,93 €','106 195,78 ₽','—'],['CASH EUR','142,48 €','','—']
+];
+const els={
+ table:document.getElementById('table'),rows:document.getElementById('rows'),scope:document.getElementById('scope'),search:document.getElementById('search'),
+ accountFilter:document.getElementById('accountFilter'),categoryFilter:document.getElementById('categoryFilter'),typeFilter:document.getElementById('typeFilter'),attentionFilter:document.getElementById('attentionFilter'),combineFilters:document.getElementById('combineFilters'),
+ filterTrigger:document.getElementById('filterTrigger'),filterPanel:document.getElementById('filterPanel'),queryCluster:document.getElementById('queryCluster'),reset:document.getElementById('reset'),activeFilterChips:document.getElementById('activeFilterChips'),filterModeNote:document.getElementById('filterModeNote'),
+ sortHolder:document.getElementById('sortHolder'),sortTrigger:document.getElementById('sortTrigger'),addHolder:document.getElementById('addHolder'),compactMetrics:document.getElementById('compactMetrics'),forecastToggle:document.getElementById('forecastToggle'),forecastCard:document.getElementById('forecastCard'),compactForecast:document.getElementById('compactForecast'),metricCards:document.getElementById('metricCards'),stickyTools:document.getElementById('stickyTools'),sidebarToggle:document.getElementById('sidebarToggle'),
+ periodButton:document.getElementById('periodButton'),compactPeriod:document.getElementById('compactPeriod'),
+ openingBalance:document.getElementById('openingBalance'),periodIncome:document.getElementById('periodIncome'),
+ periodExpense:document.getElementById('periodExpense'),currentBalance:document.getElementById('currentBalance'),
+ compactOpening:document.getElementById('compactOpening'),compactIncome:document.getElementById('compactIncome'),
+ compactExpense:document.getElementById('compactExpense'),compactCurrent:document.getElementById('compactCurrent'),
+ chartContent:document.getElementById('chartContent'),accountTotal:document.getElementById('accountTotal'),
+ accounts:document.getElementById('accounts'),categoryChart:document.getElementById('categoryChart'),rightStickyStack:document.getElementById('rightStickyStack'),
+ expandAccounts:document.getElementById('expandAccounts')
+};
+let sortMode='date';let accountsExpanded=false;let forecastMode=true;let screenMode='normal';let errorMode='none';
+let savedSidebarState=null;
+try{savedSidebarState=localStorage.getItem('familyFinanceSidebarExpanded')}catch(error){}
+if(savedSidebarState==='true')document.body.classList.add('sidebar-expanded');
+function updateSidebarButton(){
+  const expanded=document.body.classList.contains('sidebar-expanded');
+  els.sidebarToggle.setAttribute('aria-label',expanded?'Свернуть меню':'Развернуть меню');
+  els.sidebarToggle.title=expanded?'Свернуть меню':'Развернуть меню';
+}
+updateSidebarButton();
+function amountValue(s){const cleaned=s.replace(/[^0-9,.-]/g,'').replace(/\./g,'').replace(',','.');return Math.abs(parseFloat(cleaned)||0)}
+function filterCount(){return Number(els.accountFilter.value!=='Все счета')+Number(els.categoryFilter.value!=='Все категории')+Number(els.typeFilter.value!=='Все типы')+Number(els.attentionFilter.checked)}
+function hasSearchOrFilters(){return !!els.search.value.trim()||filterCount()>0}
+function filteredOps(){
+ let source=screenMode==='past'?PAST_OPS:OPS;
+ let periodPrefix=screenMode==='past'?'2026-06':'2026-07';
+ const useHistory=els.scope.value==='history'&&hasSearchOrFilters();
+ let data=(screenMode==='empty'&&!useHistory?[]:source).filter(o=>useHistory||o.date.startsWith(periodPrefix));
+ const q=els.search.value.trim().toLowerCase();if(q)data=data.filter(o=>[o.account,o.desc,o.cat,o.main,o.local].join(' ').toLowerCase().includes(q));
+ if(els.accountFilter.value!=='Все счета')data=data.filter(o=>o.account.includes(els.accountFilter.value));
+ if(els.categoryFilter.value!=='Все категории')data=data.filter(o=>o.cat===els.categoryFilter.value);
+ if(els.typeFilter.value!=='Все типы')data=data.filter(o=>o.type===els.typeFilter.value);
+ if(els.attentionFilter.checked)data=data.filter(o=>o.attention);
+ return data;
+}
+function shortDate(date,withYear=false){const d=new Date(date+'T00:00:00');const months=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];return `${d.getDate()} ${months[d.getMonth()]}${withYear?' '+d.getFullYear():''}`}
+function rowHtml(o,showDate=false,fullDate=false){
+ const date=showDate?`<div class="date">${shortDate(o.date,fullDate)}</div>`:`<div class="status">${o.attention?'⚠':''}</div>`;
+ const visualMain=o.type==='Расход'?o.main.replace(/^[−-]\s*/,''):o.main;
+ const rowPayload=encodeURIComponent(JSON.stringify(o));
+ return `<div class="row ${o.type==='Перевод'?'transfer':''}" data-op-type="${o.type}" data-op="${rowPayload}">${date}<div class="account" title="${o.account}">${o.account}</div><div class="combined-op"><div class="combined-account">${o.account}</div><div class="combined-desc">${o.desc}</div></div><div class="desc" title="${o.desc}">${o.desc}</div><div class="amounts"><div class="main-amt ${o.type==='Поступление'?'green':''}">${visualMain}</div><div class="local-amt">${o.local||''}</div>${o.type==='Перевод'?`<div class="transfer-to"><span>→</span><span>${o.to}</span></div>`:''}</div><div class="cat-wrap"><div class="cat" title="${o.cat}">${o.cat}</div></div><div class="actions"><button class="icon-btn dots" aria-label="Действия">⋮</button><div class="row-menu"><button>Править</button><button>${o.type==='Перевод'?'Разъединить':'Удалить'}</button></div></div></div>`
+}
+function renderRows(){
+ const active=hasSearchOrFilters();
+ const history=els.scope.value==='history'&&active;
+ if(errorMode==='table'){
+   els.table.classList.remove('history','flat');
+   els.rows.innerHTML=`<div class="block-error table-block-error"><div class="block-error-inner">
+     <div class="block-error-icon">!</div>
+     <h3>Не удалось загрузить операции</h3>
+     <p>Попробуйте загрузить список ещё раз.</p>
+     <button class="block-error-retry" data-retry-error="table">Повторить</button>
+   </div></div>`;
+   return;
+ }
+ if(screenMode==='empty'&&!history){
+   els.table.classList.remove('history','flat');
+   els.rows.innerHTML=`<div class="period-empty"><div class="period-empty-inner">
+     <div class="empty-icon">＋</div>
+     <h3>В этом периоде пока нет операций</h3>
+     <p>Добавьте первую операцию, чтобы начать вести учёт за выбранный период.</p>
+     <button class="empty-action">+ Добавить операцию</button>
+   </div></div>`;
+   return;
+ }
+ els.table.classList.toggle('history',history&&sortMode==='date');els.table.classList.toggle('flat',sortMode!=='date');
+ let data=filteredOps();
+ if(data.length===0&&active){
+   els.rows.innerHTML=`<div class="no-results"><div class="no-results-inner">
+     <div class="no-results-icon">⌕</div>
+     <h3>Ничего не найдено</h3>
+     <p>Попробуйте изменить поисковый запрос или выбранные фильтры.</p>
+     <button class="no-results-reset">Сбросить поиск и фильтры</button>
+   </div></div>`;
+   return;
+ }
+ if(sortMode==='amount-desc')data.sort((a,b)=>amountValue(b.main)-amountValue(a.main));
+ if(sortMode==='amount-asc')data.sort((a,b)=>amountValue(a.main)-amountValue(b.main));
+ let html='';
+ if(sortMode==='date'&&!history){let current='';for(const o of data){if(o.date!==current){current=o.date;const goal=screenMode==='normal'&&forecastMode&&o.date==='2026-07-12'?'<span class="day-goal">Цель 185,00 €</span>':'';const sums=screenMode==='past'?PAST_DAY_SUMS:DAY_SUMS;html+=`<div class="group"><div class="group-date">${o.label}</div><div class="group-sum"><span class="day-total"><span class="day-actual">${sums[o.date]||'0,00 €'}</span></span>${goal}</div></div>`}html+=rowHtml(o)}}
+ else if(sortMode==='date'&&history){let year='';for(const o of data.sort((a,b)=>b.date.localeCompare(a.date))){const y=o.date.slice(0,4);if(y!==year){year=y;html+=`<div class="year">${year}</div>`}html+=rowHtml(o,true,false)}}
+ else{for(const o of data)html+=rowHtml(o,true,true)}
+ const total=history?132:data.length;html+=`<div class="count"><span>Показано ${history?Math.min(50,data.length):data.length} из ${history?total:data.length} операций</span>${history&&data.length?'<button class="more">Показать ещё 50</button>':''}</div>`;
+ els.rows.innerHTML=html;
+}
+function activeFilterEntries(){
+  const entries=[];
+  if(els.accountFilter.value!=='Все счета')entries.push({key:'account',label:`Счёт: ${els.accountFilter.value}`});
+  if(els.categoryFilter.value!=='Все категории')entries.push({key:'category',label:`Категория: ${els.categoryFilter.value}`});
+  if(els.typeFilter.value!=='Все типы')entries.push({key:'type',label:`Тип: ${els.typeFilter.value}`});
+  if(els.attentionFilter.checked)entries.push({key:'attention',label:'Требует внимания'});
+  return entries;
+}
+function renderActiveFilterChips(){
+  const entries=activeFilterEntries();
+  els.activeFilterChips.classList.toggle('show',entries.length>0);
+  els.activeFilterChips.innerHTML=entries.map(entry=>`
+    <div class="filter-chip">
+      <button class="filter-chip-main" type="button" data-filter-open="${entry.key}" title="Изменить фильтр">${entry.label}</button>
+      <button class="filter-chip-remove" type="button" data-filter-clear="${entry.key}" aria-label="Снять фильтр ${entry.label}">×</button>
+    </div>`).join('');
+}
+function updateControls(){
+  const n=filterCount();
+  els.filterTrigger.classList.toggle('active',n>0);
+  els.filterTrigger.setAttribute('aria-expanded',String(els.queryCluster.classList.contains('panel-open')));
+  els.reset.classList.toggle('show',n>0);
+  const disabled=['Поступление','Перевод'].includes(els.typeFilter.value);
+  if(disabled){els.categoryFilter.value='Все категории'}
+  els.categoryFilter.disabled=disabled;
+  els.filterModeNote.textContent=els.combineFilters.checked
+    ?'Фильтры будут применяться одновременно.'
+    :'Новый фильтр заменит текущий. Включите «Сочетать», чтобы применить несколько условий.';
+  renderActiveFilterChips();
+}
+function render(){updateControls();renderRows()}
+function renderAccounts(){
+ const visible=ACCOUNTS.slice(0,9);const hidden=ACCOUNTS.slice(9);const list=accountsExpanded?ACCOUNTS:visible;
+ els.accounts.classList.toggle('error-mode',errorMode==='accounts');
+ if(errorMode==='accounts'){
+   document.getElementById('accountRows').innerHTML=`<div class="block-error accounts-block-error"><div class="block-error-inner">
+     <div class="block-error-icon">!</div>
+     <h3>Не удалось загрузить счета</h3>
+     <p>Баланс и расходы по счетам временно недоступны.</p>
+     <button class="block-error-retry" data-retry-error="accounts">Повторить</button>
+   </div></div>`;
+   return;
+ }
+ document.getElementById('accountRows').innerHTML=list.map(a=>{const[n,d,l,s]=a;const cls=d.startsWith('−')?'neg':d.startsWith('0,00')?'zero':'';const spend=screenMode==='empty'?'—':s;return `<div class="acc-row"><div class="acc-name" title="${n}">${n}</div><div class="acc-spent">${spend}</div><div class="acc-bal"><div class="acc-primary ${cls}">${d}</div>${l?`<div class="acc-secondary ${cls}">${l}</div>`:''}</div></div>`}).join('');
+ els.expandAccounts.textContent=accountsExpanded?'Свернуть':`Показать ещё ${hidden.length}`
+}
+
+function setSummaryValues({period,opening,income,expense,current}){
+  els.periodButton.textContent=`${period} ▾`;
+  els.compactPeriod.textContent=period;
+  els.openingBalance.textContent=opening;
+  els.periodIncome.textContent=income;
+  els.periodExpense.textContent=expense;
+  els.currentBalance.textContent=current;
+  els.compactOpening.textContent=opening;
+  els.compactIncome.textContent=income;
+  els.compactExpense.textContent=expense;
+  els.compactCurrent.textContent=current;
+}
+
+function renderForecastState(){
+  els.forecastCard.classList.remove('message-state');
+  els.compactForecast.classList.remove('message-state');
+
+  if(errorMode==='forecast'){
+    const title=screenMode==='past'?'Накопления за июнь':'Прогноз на июль';
+    els.forecastCard.classList.add('message-state');
+    els.forecastCard.innerHTML=`<div class="forecast-card-title">${title}</div>
+      <div class="forecast-error-layout">
+        <p>Не удалось загрузить данные.</p>
+        <button class="block-error-retry" data-retry-error="forecast">Повторить</button>
+      </div>`;
+    els.compactForecast.classList.add('message-state');
+    els.compactForecast.innerHTML=`<span class="compact-forecast-title">${title}</span>
+      <div class="compact-forecast-error">Не удалось загрузить данные.</div>`;
+    return;
+  }
+
+  if(screenMode==='empty'){
+    els.forecastToggle.innerHTML='<span class="forecast-dot"></span>Прогнозы';
+    els.forecastCard.classList.add('message-state');
+    els.forecastCard.innerHTML=`<div class="forecast-card-title">Прогноз на июль</div>
+      <div class="forecast-message"><p>Прогноз станет доступен, когда в этом периоде появятся операции.</p></div>`;
+    els.compactForecast.classList.add('message-state');
+    els.compactForecast.innerHTML=`<span class="compact-forecast-title">Прогноз на июль</span>
+      <div class="compact-forecast-message">Станет доступен после появления операций.</div>`;
+  }else if(screenMode==='no-goal'){
+    els.forecastToggle.innerHTML='<span class="forecast-dot"></span>Прогнозы';
+    els.forecastCard.classList.add('message-state');
+    els.forecastCard.innerHTML=`<div class="forecast-card-title">Прогноз на июль</div>
+      <div class="forecast-message no-goal-layout">
+        <p>Настройте цель,<br>чтобы увидеть прогноз на месяц.</p>
+        <button class="forecast-setup">Настроить цель</button>
+      </div>`;
+    els.compactForecast.classList.add('message-state');
+    els.compactForecast.innerHTML=`<span class="compact-forecast-title">Прогноз на июль</span>
+      <div class="compact-forecast-message">Настройте цель, чтобы увидеть прогноз.</div>`;
+  }else if(screenMode==='past'){
+    els.forecastToggle.innerHTML='<span class="forecast-dot"></span>Накопления';
+    els.forecastCard.innerHTML=`<div class="forecast-card-title">Накопления за июнь</div>
+      <div class="forecast-columns">
+        <div class="forecast-col"><span>План</span><strong>500,00 €</strong></div>
+        <div class="forecast-col"><span>Факт</span><strong>620,00 €</strong></div>
+        <div class="forecast-col subtle"><span>Разница</span><strong class="savings-positive">+120,00 €</strong></div>
+      </div>`;
+    els.compactForecast.innerHTML=`<span class="compact-forecast-title">Накопления за июнь</span>
+      <div class="compact-mini"><span>План</span><b>500 €</b></div>
+      <div class="compact-mini"><span>Факт</span><b>620 €</b></div>
+      <div class="compact-mini"><span>Разница</span><b class="savings-positive">+120 €</b></div>`;
+  }else{
+    els.forecastToggle.innerHTML='<span class="forecast-dot"></span>Прогнозы';
+    els.forecastCard.innerHTML=`<div class="forecast-card-title">Прогноз на июль</div>
+      <div class="forecast-columns">
+        <div class="forecast-col"><span>Цель</span><strong>2 500,00 €</strong></div>
+        <div class="forecast-col"><span>Траты в день</span><strong>185,00 €</strong></div>
+        <div class="forecast-col subtle"><span>Доступно</span><strong>3 145,60 €</strong></div>
+      </div>`;
+    els.compactForecast.innerHTML=`<span class="compact-forecast-title">Прогноз на июль</span>
+      <div class="compact-mini"><span>Цель</span><b>2 500 €</b></div>
+      <div class="compact-mini"><span>Траты в день</span><b>185 €</b></div>
+      <div class="compact-mini"><span>Доступно</span><b>3 145,60 €</b></div>`;
+  }
+}
+
+function formatCategoryEUR(value){
+  return value.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+}
+
+
+function getCategoryChartMarkup(){
+  const total = CATEGORY_DATA.reduce((sum,item)=>sum+item.value,0);
+  const cx=140, cy=140, r=100, stroke=56, circumference=2*Math.PI*r;
+
+  const segments = CATEGORY_DATA.map((item,index)=>{
+    const startAngle=-90+item.start*360;
+    const dash=item.pct/100*circumference;
+    const gap=circumference-dash;
+    return `<circle class="category-segment" data-index="${index}" cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${item.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}" transform="rotate(${startAngle} ${cx} ${cy})"></circle>`;
+  }).join('');
+
+  const labels = CATEGORY_DATA.filter(item=>item.pct>=7.5).map(item=>{
+    const startAngle=-90+item.start*360;
+    const endAngle=-90+item.end*360;
+    const mid=((startAngle+endAngle)/2)*(Math.PI/180);
+    const x=cx+Math.cos(mid)*(r+4);
+    const y=cy+Math.sin(mid)*(r+4);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" class="category-label">${Math.round(item.pct)}%</text>`;
+  }).join('');
+
+  const legend = CATEGORY_DATA.slice(0,4).map((item,index)=>`
+    <div class="category-legend-item" data-index="${index}">
+      <span class="category-legend-dot" style="background:${item.color}"></span>
+      <span class="category-legend-name" title="${item.name}">${item.name}</span>
+      <span class="category-legend-pct">${formatCategoryEUR(item.value)}</span>
+    </div>
+  `).join('');
+
+  return `
+    <b>Расходы по категориям</b>
+    <div class="category-donut">
+      <div class="category-donut-left" id="categoryDonutLeft">
+        <svg class="category-donut-svg" viewBox="0 0 280 280" aria-label="Расходы по категориям">
+          <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#ECECF1" stroke-width="${stroke}"></circle>
+          ${segments}
+          ${labels}
+          <text x="${cx}" y="${cy+4}" text-anchor="middle" class="category-total-value">${formatCategoryEUR(total)}</text>
+        </svg>
+        <div class="category-tooltip" id="categoryTooltip"></div>
+        <div class="category-legend-grid">${legend}</div>
+      </div>
+    </div>`;
+}
+
+
+
+function bindCategoryChartInteractions(){
+  const root=els.chartContent;
+  if(!root) return;
+
+  const left=root.querySelector('#categoryDonutLeft');
+  const tooltip=root.querySelector('#categoryTooltip');
+  const segments=[...root.querySelectorAll('.category-segment')];
+  const legendItems=[...root.querySelectorAll('.category-legend-item')];
+
+  const clearState=()=>{
+    left?.classList.remove('dimmed');
+    segments.forEach(node=>node.classList.remove('active'));
+    legendItems.forEach(node=>node.classList.remove('active'));
+    tooltip?.classList.remove('show');
+  };
+
+  const setState=index=>{
+    const item=CATEGORY_DATA[index];
+    if(!item) return;
+    clearState();
+    left?.classList.add('dimmed');
+    segments[index]?.classList.add('active');
+    legendItems.forEach(node=>{
+      if(Number(node.dataset.index)===index) node.classList.add('active');
+    });
+    if(tooltip){
+      tooltip.innerHTML=`<strong>${item.name}</strong><div class="category-tooltip-meta"><span>${formatCategoryEUR(item.value)}</span><span>${item.pct.toFixed(1)}%</span></div>`;
+      tooltip.classList.add('show');
+    }
+  };
+
+  segments.forEach((node,index)=>{
+    node.addEventListener('mouseenter',()=>setState(index));
+    node.addEventListener('mouseleave',clearState);
+  });
+
+  legendItems.forEach(node=>{
+    const index=Number(node.dataset.index);
+    node.addEventListener('mouseenter',()=>setState(index));
+    node.addEventListener('mouseleave',clearState);
+  });
+}
+
+
+function renderChartState(){
+  if(errorMode==='chart'){
+    els.chartContent.innerHTML=`<b>Расходы по категориям</b>
+      <div class="block-error chart-block-error"><div class="block-error-inner">
+        <div class="block-error-icon">!</div>
+        <h3>Не удалось загрузить диаграмму</h3>
+        <p>Данные о расходах по категориям временно недоступны.</p>
+        <button class="block-error-retry" data-retry-error="chart">Повторить</button>
+      </div></div>`;
+    return;
+  }
+  if(screenMode==='empty'){
+    els.chartContent.innerHTML=`<b>Расходы по категориям</b>
+      <div class="chart-empty"><div><h3>Пока нет расходов</h3>
+      <p>Добавьте расход, чтобы увидеть распределение по категориям.</p></div></div>`;
+  }else{
+    els.chartContent.innerHTML=getCategoryChartMarkup();
+    bindCategoryChartInteractions();
+    updateRightStickyMode();
+  }
+}
+
+function applyScreenMode(mode){
+  screenMode=mode;
+  document.querySelectorAll('[data-view]').forEach(btn=>btn.classList.toggle('active',btn.dataset.view===mode));
+
+  if(mode==='not-found'){
+    els.search.value='Wolt Barcelona';
+  }else if(els.search.value==='Wolt Barcelona'){
+    els.search.value='';
+  }
+
+  if(mode==='empty'){
+    setSummaryValues({period:'Июль 2026',opening:'24 860,12 €',income:'0,00 €',expense:'0,00 €',current:'24 860,12 €'});
+    els.accountTotal.textContent='24 860,12 €';
+  }else if(mode==='past'){
+    setSummaryValues({period:'Июнь 2026',opening:'23 750,00 €',income:'+7 820,00 €',expense:'−6 150,00 €',current:'25 420,00 €'});
+    els.accountTotal.textContent='25 420,00 €';
+  }else{
+    setSummaryValues({period:'Июль 2026',opening:'24 860,12 €',income:'+8 420,00 €',expense:'−5 947,31 €',current:'27 332,81 €'});
+    els.accountTotal.textContent='22 734,09 €';
+  }
+
+  renderForecastState();
+  renderChartState();
+  renderAccounts();
+  render();
+}
+
+
+[els.scope,els.search].forEach(control=>control.addEventListener('input',render));
+
+const FILTER_DEFAULTS={
+  account:'Все счета',
+  category:'Все категории',
+  type:'Все типы',
+  attention:false
+};
+let lastActiveFilter='account';
+
+function clearFilterByKey(key){
+  if(key==='account')els.accountFilter.value=FILTER_DEFAULTS.account;
+  if(key==='category')els.categoryFilter.value=FILTER_DEFAULTS.category;
+  if(key==='type')els.typeFilter.value=FILTER_DEFAULTS.type;
+  if(key==='attention')els.attentionFilter.checked=false;
+}
+function clearAllFilters(){
+  Object.keys(FILTER_DEFAULTS).forEach(clearFilterByKey);
+}
+function filterIsActive(key){
+  if(key==='account')return els.accountFilter.value!==FILTER_DEFAULTS.account;
+  if(key==='category')return els.categoryFilter.value!==FILTER_DEFAULTS.category;
+  if(key==='type')return els.typeFilter.value!==FILTER_DEFAULTS.type;
+  if(key==='attention')return els.attentionFilter.checked;
+  return false;
+}
+function focusFilterControl(key){
+  const control={
+    account:els.accountFilter,
+    category:els.categoryFilter,
+    type:els.typeFilter,
+    attention:els.attentionFilter
+  }[key];
+  if(control)requestAnimationFrame(()=>control.focus());
+}
+function handleFilterChange(key){
+  lastActiveFilter=key;
+  if(!els.combineFilters.checked&&filterIsActive(key)){
+    Object.keys(FILTER_DEFAULTS).forEach(otherKey=>{
+      if(otherKey!==key)clearFilterByKey(otherKey);
+    });
+  }
+  render();
+}
+els.accountFilter.addEventListener('input',()=>handleFilterChange('account'));
+els.categoryFilter.addEventListener('input',()=>handleFilterChange('category'));
+els.typeFilter.addEventListener('input',()=>handleFilterChange('type'));
+els.attentionFilter.addEventListener('input',()=>handleFilterChange('attention'));
+
+els.combineFilters.addEventListener('input',()=>{
+  if(!els.combineFilters.checked&&filterCount()>1){
+    const keep=filterIsActive(lastActiveFilter)
+      ?lastActiveFilter
+      :activeFilterEntries()[0]?.key;
+    Object.keys(FILTER_DEFAULTS).forEach(key=>{
+      if(key!==keep)clearFilterByKey(key);
+    });
+  }
+  render();
+});
+
+els.filterTrigger.addEventListener('click',event=>{
+  event.stopPropagation();
+  els.queryCluster.classList.toggle('panel-open');
+  updateControls();
+});
+els.filterPanel.addEventListener('click',event=>event.stopPropagation());
+
+els.activeFilterChips.addEventListener('click',event=>{
+  const clearButton=event.target.closest('[data-filter-clear]');
+  if(clearButton){
+    event.stopPropagation();
+    clearFilterByKey(clearButton.dataset.filterClear);
+    render();
+    return;
+  }
+  const openButton=event.target.closest('[data-filter-open]');
+  if(openButton){
+    event.stopPropagation();
+    els.queryCluster.classList.add('panel-open');
+    updateControls();
+    focusFilterControl(openButton.dataset.filterOpen);
+  }
+});
+
+function resetFiltersOnly(){
+  clearAllFilters();
+  render();
+}
+function resetSearchAndFilters(){
+  els.search.value='';
+  clearAllFilters();
+  if(screenMode==='not-found'){
+    screenMode='normal';
+    document.querySelectorAll('[data-view]').forEach(btn=>btn.classList.toggle('active',btn.dataset.view==='normal'));
+  }
+  render();
+}
+els.reset.addEventListener('click',resetFiltersOnly);
+els.rows.addEventListener('click',e=>{
+  if(e.target.closest('.no-results-reset'))resetSearchAndFilters();
+});
+document.getElementById('sortTrigger').addEventListener('click',e=>{e.stopPropagation();els.sortHolder.classList.toggle('open')});
+document.querySelectorAll('.sort-menu button').forEach(btn=>btn.addEventListener('click',()=>{sortMode=btn.dataset.sort;els.sortTrigger.textContent=btn.textContent;els.sortHolder.classList.remove('open');renderRows()}));
+document.getElementById('addChev').addEventListener('click',e=>{e.stopPropagation();els.addHolder.classList.toggle('open')});els.addHolder.addEventListener('click',e=>e.stopPropagation());
+document.getElementById('expandAccounts').addEventListener('click',()=>{accountsExpanded=!accountsExpanded;renderAccounts();if(!accountsExpanded)document.getElementById('accounts').scrollIntoView({behavior:'smooth',block:'start'})});
+els.sidebarToggle.addEventListener('click',()=>{
+  document.body.classList.toggle('sidebar-expanded');
+  try{localStorage.setItem('familyFinanceSidebarExpanded',String(document.body.classList.contains('sidebar-expanded')))}catch(error){}
+  updateSidebarButton();
+});
+els.forecastToggle.addEventListener('click',()=>{
+  forecastMode=!forecastMode;
+  els.forecastToggle.classList.toggle('active',forecastMode);
+  els.forecastToggle.setAttribute('aria-pressed',String(forecastMode));
+  els.forecastCard.classList.toggle('hidden',!forecastMode);
+  els.compactForecast.classList.toggle('hidden',!forecastMode);
+  els.metricCards.classList.toggle('forecast-off',!forecastMode);
+  els.compactMetrics.classList.toggle('forecast-off',!forecastMode);
+  renderRows();
+});
+document.querySelectorAll('.nav-item').forEach(link=>link.addEventListener('click',e=>e.preventDefault()));
+document.addEventListener('click',e=>{if(e.target.classList.contains('dots')){e.stopPropagation();const a=e.target.closest('.actions');document.querySelectorAll('.actions.open').forEach(x=>x!==a&&x.classList.remove('open'));a.classList.toggle('open');return}els.sortHolder.classList.remove('open');els.addHolder.classList.remove('open');document.querySelectorAll('.actions.open').forEach(x=>x.classList.remove('open'))});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){els.queryCluster.classList.remove('panel-open');updateControls();els.sortHolder.classList.remove('open');els.addHolder.classList.remove('open')}});
+let compactHeaderFrame=0;
+
+function updateRightStickyMode(){
+  if(!els.rightStickyStack) return;
+
+  const top = parseFloat(getComputedStyle(els.rightStickyStack).top) || 0;
+  const bottomReserve = 12;
+  const requiredHeight = els.rightStickyStack.scrollHeight + top + bottomReserve;
+  const fitsViewport = requiredHeight <= window.innerHeight;
+
+  els.rightStickyStack.classList.toggle('sticky-disabled',!fitsViewport);
+}
+
+function updateCompactHeader(){
+  compactHeaderFrame=0;
+  const metricsHeight=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--metrics-h'))||56;
+  const toolsTop=els.stickyTools.getBoundingClientRect().top;
+  const showCompact=toolsTop<=metricsHeight+1;
+  document.body.classList.toggle('scrolled',showCompact);
+  els.compactMetrics.classList.toggle('show',showCompact);
+  updateRightStickyMode();
+}
+function scheduleCompactHeaderUpdate(){
+  if(compactHeaderFrame)return;
+  compactHeaderFrame=requestAnimationFrame(updateCompactHeader);
+}
+window.addEventListener('scroll',scheduleCompactHeaderUpdate,{passive:true});
+window.addEventListener('resize',()=>{scheduleCompactHeaderUpdate();updateRightStickyMode()});
+const CATEGORY_DATA=[{"name": "B (must-pay)", "value": 3010.76, "pct": 37.77331693975359, "color": "#6E8FB5", "start": 0.0, "end": 0.37773316939753593}, {"name": "LS (home)", "value": 1581.86, "pct": 19.846184728878626, "color": "#8AA27A", "start": 0.37773316939753593, "end": 0.5761950166863222}, {"name": "food (продукты)", "value": 1071.63, "pct": 13.444784583343788, "color": "#C8927D", "start": 0.5761950166863222, "end": 0.71064286251976}, {"name": "займ", "value": 600.0, "pct": 7.527664165809349, "color": "#A68BC1", "start": 0.71064286251976, "end": 0.7859195041778535}, {"name": "health (basic)", "value": 464.97, "pct": 5.833563345293955, "color": "#D4A65A", "start": 0.7859195041778535, "end": 0.8442551376307931}, {"name": "LS (personal)", "value": 231.41, "pct": 2.9032946076832356, "color": "#7FB2A8", "start": 0.8442551376307931, "end": 0.8732880837076255}, {"name": "B (одежда)", "value": 200.96, "pct": 2.5212656512684113, "color": "#B87C96", "start": 0.8732880837076255, "end": 0.8985007402203096}, {"name": "B (baby)", "value": 153.37, "pct": 1.9241964218502998, "color": "#7D8EA3", "start": 0.8985007402203096, "end": 0.9177427044388126}, {"name": "fun (хобби)", "value": 110.63, "pct": 1.3879758111058138, "color": "#A1A86B", "start": 0.9177427044388126, "end": 0.9316224625498707}, {"name": "transport (бензин)", "value": 103.98, "pct": 1.3045441999347602, "color": "#C17E61", "start": 0.9316224625498707, "end": 0.9446679045492183}, {"name": "food (рестики)", "value": 99.84, "pct": 1.2526033171906756, "color": "#829AD1", "start": 0.9446679045492183, "end": 0.957193937721125}, {"name": "LS (apps)", "value": 99.26, "pct": 1.2453265751637268, "color": "#9D8A76", "start": 0.957193937721125, "end": 0.9696472034727623}, {"name": "LS (gifts)", "value": 79.59, "pct": 0.9985446515946103, "color": "#8FB8CC", "start": 0.9696472034727623, "end": 0.9796326499887085}, {"name": "health (skincare)", "value": 75.43, "pct": 0.9463528467116655, "color": "#C2A07A", "start": 0.9796326499887085, "end": 0.9890961784558251}, {"name": "fun (games)", "value": 60.32, "pct": 0.7567811708026999, "color": "#9DB287", "start": 0.9890961784558251, "end": 0.9966639901638521}, {"name": "transport (обслуживание)", "value": 26.59, "pct": 0.33360098361478435, "color": "#B1A1CF", "start": 0.9966639901638521, "end": 0.9999999999999999}];
+
+renderAccounts();render();applyScreenMode('normal');updateCompactHeader();updateRightStickyMode();
+
+const prototypePanel=document.getElementById('prototypeStatePanel');
+const prototypeStateShell=document.getElementById('prototypeStateShell');
+const prototypeStateToggle=document.getElementById('prototypeStateToggle');
+const stateButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-state]')]:[];
+const viewButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-view]')]:[];
+const errorButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-error]')]:[];
+const headerModeButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-header-mode]')]:[];
+const operationFormButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-operation-form]')]:[];
+const transferButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-open-transfer]')]:[];
+const importReviewButtons=prototypePanel?[...prototypePanel.querySelectorAll('button[data-import-review]')]:[];
+const screenErrorRetry=document.getElementById('screenErrorRetry');
+
+const importOverlay=document.getElementById('importOverlay');
+const importDialog=document.getElementById('importDialog');
+const importOperationsButton=document.getElementById('importOperationsButton');
+const importClose=document.getElementById('importClose');
+const importChooseFile=document.getElementById('importChooseFile');
+const importReplaceFile=document.getElementById('importReplaceFile');
+const importDropzone=document.getElementById('importDropzone');
+const importPreUpload=document.getElementById('importPreUpload');
+const importPostUpload=document.getElementById('importPostUpload');
+const importBack=document.getElementById('importBack');
+const importCancel=document.getElementById('importCancel');
+const importNext=document.getElementById('importNext');
+const importFilePill=document.getElementById('importFilePill');
+const importSteps=[...document.querySelectorAll('[data-import-step]')];
+const importScreens=[...document.querySelectorAll('[data-import-screen]')];
+const importMapEditButtons=[...document.querySelectorAll('[data-map-edit]')];
+const importMapDoneButtons=[...document.querySelectorAll('[data-map-done]')];
+const importMapSelects=[...document.querySelectorAll('[data-map-select]')];
+const importFileName=document.getElementById('importFileName');
+const importFileMeta=document.getElementById('importFileMeta');
+const importTypeStats=document.getElementById('importTypeStats');
+const importFeeNote=document.getElementById('importFeeNote');
+const importReviewTitle=document.getElementById('importReviewTitle');
+const importReviewText=document.getElementById('importReviewText');
+const importReviewAlert=document.getElementById('importReviewAlert');
+const importReviewRows=document.getElementById('importReviewRows');
+const importOpenFullList=document.getElementById('importOpenFullList');
+const importSummaryNote=document.getElementById('importSummaryNote');
+const importFullOverlay=document.getElementById('importFullOverlay');
+const importFullDialog=document.getElementById('importFullDialog');
+const importFullTitle=document.getElementById('importFullTitle');
+const importFullClose=document.getElementById('importFullClose');
+const importFullDone=document.getElementById('importFullDone');
+const importFullSearch=document.getElementById('importFullSearch');
+const importFullFilter=document.getElementById('importFullFilter');
+const importFullRows=document.getElementById('importFullRows');
+const importFullCount=document.getElementById('importFullCount');
+
+const operationOverlay=document.getElementById('operationOverlay');
+const operationDialog=document.getElementById('operationDialog');
+const operationForm=document.getElementById('operationForm');
+const operationTitle=document.getElementById('operationTitle');
+const operationClose=document.getElementById('operationClose');
+const operationType=document.getElementById('operationType');
+const operationDate=document.getElementById('operationDate');
+const operationAccount=document.getElementById('operationAccount');
+const accountGroup=document.getElementById('accountGroup');
+const operationAmount=document.getElementById('operationAmount');
+const operationDescription=document.getElementById('operationDescription');
+const descriptionCount=document.getElementById('descriptionCount');
+const descriptionSuggestions=document.getElementById('descriptionSuggestions');
+const categoryGroup=document.getElementById('categoryGroup');
+const operationCategory=document.getElementById('operationCategory');
+const autoCategoryBadge=document.getElementById('autoCategoryBadge');
+const additionalToggle=document.getElementById('additionalToggle');
+const additionalFields=document.getElementById('additionalFields');
+const operationNote=document.getElementById('operationNote');
+const noteCount=document.getElementById('noteCount');
+const operationAttention=document.getElementById('operationAttention');
+const deleteOperation=document.getElementById('deleteOperation');
+const deleteConfirmOverlay=document.getElementById('deleteConfirmOverlay');
+const cancelDelete=document.getElementById('cancelDelete');
+const confirmDelete=document.getElementById('confirmDelete');
+const deleteConfirmAccount=document.getElementById('deleteConfirmAccount');
+const deleteConfirmMeta=document.getElementById('deleteConfirmMeta');
+const deleteConfirmAmount=document.getElementById('deleteConfirmAmount');
+const operationToast=document.getElementById('operationToast');
+const addOperationButton=document.getElementById('addOperationButton');
+const transferOverlay=document.getElementById('transferOverlay');
+const transferDialog=document.getElementById('transferDialog');
+const transferTitle=document.getElementById('transferTitle');
+const transferBody=document.getElementById('transferBody');
+const transferFooter=document.getElementById('transferFooter');
+const transferClose=document.getElementById('transferClose');
+const unlinkConfirmOverlay=document.getElementById('unlinkConfirmOverlay');
+const cancelUnlink=document.getElementById('cancelUnlink');
+const confirmUnlink=document.getElementById('confirmUnlink');
+const unlinkSourceAccount=document.getElementById('unlinkSourceAccount');
+const unlinkSourceMeta=document.getElementById('unlinkSourceMeta');
+const unlinkSourceAmount=document.getElementById('unlinkSourceAmount');
+const unlinkPartnerAccount=document.getElementById('unlinkPartnerAccount');
+const unlinkPartnerMeta=document.getElementById('unlinkPartnerMeta');
+const unlinkPartnerAmount=document.getElementById('unlinkPartnerAmount');
+const summaryRow=document.getElementById('metricCards');
+const accountBlock=document.getElementById('accounts');
+const categoryChart=document.getElementById('categoryChart');
+
+
+const IMPORT_SMALL_ROWS=[
+  {date:'01.06.2026',description:'Tren De Palau',amount:'9,00 €',type:'expense'},
+  {date:'01.06.2026',description:'Serveis Ambientals de Castelldefels - SAC',amount:'5,30 €',type:'expense'},
+  {date:'07.06.2026',description:'Izquierdo Prieto Inversio',amount:'8,15 €',type:'expense'},
+  {date:'09.06.2026',description:'Premium plan fee',amount:'8,99 €',type:'expense'},
+  {date:'09.06.2026',description:'Tecnorino',amount:'150,00 €',type:'expense'},
+  {date:'09.06.2026',description:'Parking Teknon',amount:'3,95 €',type:'expense'},
+  {date:'10.06.2026',description:'YouTube',amount:'7,99 €',type:'expense'},
+  {date:'10.06.2026',description:'Vimusa',amount:'0,50 €',type:'expense'},
+  {date:'11.06.2026',description:'Vimusa',amount:'1,50 €',type:'expense'},
+  {date:'12.06.2026',description:'Payment from EXPATPA',amount:'+150,00 €',type:'income'},
+  {date:'15.06.2026',description:'Transfer to MAKSIM POGOZHII',amount:'600,00 €',type:'expense'},
+  {date:'16.06.2026',description:'Transfer to ANASTASIIA KOSTYRINA',amount:'750,00 €',type:'expense'},
+  {date:'20.06.2026',description:'Turo Park Medical Cent',amount:'219,00 €',type:'expense'},
+  {date:'20.06.2026',description:'EasyPark',amount:'4,69 €',type:'expense'}
+];
+
+const IMPORT_LARGE_SAMPLE=[
+  {date:'01.06.2026',description:'Mercadona',amount:'54,73 €',type:'expense'},
+  {date:'01.06.2026',description:'Amazon Marketplace',amount:'36,90 €',type:'expense'},
+  {date:'02.06.2026',description:'Payment from EXPATPA',amount:'+2 450,00 €',type:'income'},
+  {date:'02.06.2026',description:'Simyo',amount:'19,99 €',type:'expense'},
+  {date:'03.06.2026',description:'Fruites Martínez',amount:'21,65 €',type:'expense'},
+  {date:'03.06.2026',description:'Repsol',amount:'62,40 €',type:'expense'},
+  {date:'04.06.2026',description:'Carrefour',amount:'87,16 €',type:'expense'},
+  {date:'05.06.2026',description:'YouTube Premium',amount:'13,99 €',type:'expense'},
+  {date:'05.06.2026',description:'Transfer from VITALII DEN',amount:'+600,00 €',type:'income'},
+  {date:'06.06.2026',description:'EasyPark',amount:'4,69 €',type:'expense'}
+];
+
+const IMPORT_ISSUES=[
+  {
+    id:'duplicate',date:'15.06.2026',description:'Transfer to MAKSIM POGOZHII',
+    amount:'600,00 €',type:'expense',title:'Возможный дубль',
+    detail:'Похожая операция уже есть в счёте REVOLUT (VD EUR).'
+  },
+  {
+    id:'date',date:'—',description:'Premium plan fee',
+    amount:'8,99 €',type:'expense',title:'Не удалось определить дату',
+    detail:'Выберите дату операции или исключите её из импорта.'
+  },
+  {
+    id:'amount',date:'20.06.2026',description:'Turo Park Medical Cent',
+    amount:'219,00 €',type:'expense',title:'Нужно подтвердить сумму',
+    detail:'Сумма в колонке Amount не совпадает с изменением баланса.'
+  }
+];
+
+const IMPORT_CONFIG={
+  small:{
+    total:14,fileName:'account-statement_2026-06…tsv',
+    fileTitle:'account-statement_2026-06-01_2026-06-20_en_e4ec72.tsv',
+    meta:'14 операций · 1–20 июня 2026 · EUR',
+    stats:'Распознано: 13 расходов и 1 поступление.',
+    fee:'<strong>Найдена 1 комиссия на сумму 8,99 €.</strong> Она будет импортирована как отдельный расход.'
+  },
+  large:{
+    total:327,fileName:'statement_june_2026.csv',fileTitle:'statement_june_2026.csv',
+    meta:'327 операций · 1–30 июня 2026 · EUR',
+    stats:'Распознано: 315 расходов и 12 поступлений.',
+    fee:'<strong>Найдены 3 комиссии на общую сумму 18,47 €.</strong> Они будут импортированы как отдельные расходы.'
+  },
+  attention:{
+    total:327,fileName:'statement_june_2026.csv',fileTitle:'statement_june_2026.csv',
+    meta:'327 операций · 1–30 июня 2026 · EUR',
+    stats:'Распознано: 315 расходов и 12 поступлений.',
+    fee:'<strong>Найдены 3 комиссии на общую сумму 18,47 €.</strong> Они будут импортированы как отдельные расходы.'
+  }
+};
+
+const IMPORT_STATE={
+  step:1,
+  fileLoaded:false,
+  reviewMode:'small',
+  issueDecisions:{}
+};
+
+function reviewRowHTML(row){
+  return `<div class="im-preview-row">
+    <div>${row.date}</div>
+    <div class="im-preview-description">${row.description}</div>
+    <div class="im-preview-amount ${row.type==='income'?'income':''}">${row.amount}</div>
+  </div>`;
+}
+
+function issueDecisionText(issue,decision){
+  if(!decision)return '';
+  if(decision.action==='exclude')return 'Исключена из импорта.';
+  if(issue.id==='duplicate')return 'Будет импортирована несмотря на возможное совпадение.';
+  if(issue.id==='date')return `Дата выбрана: ${decision.value}.`;
+  if(issue.id==='amount')return `Будет импортирована сумма ${decision.value}.`;
+  return 'Проверено.';
+}
+
+function issueRowHTML(issue){
+  const decision=IMPORT_STATE.issueDecisions[issue.id];
+  const stateClass=decision
+    ?(decision.action==='exclude'?' resolved excluded':' resolved')
+    :'';
+  const resolvedText=issueDecisionText(issue,decision);
+  const shownDate=issue.id==='date'&&decision?.action==='fix'
+    ?decision.value
+    :issue.date;
+  const shownAmount=issue.id==='amount'&&decision?.action==='fix'
+    ?decision.value
+    :issue.amount;
+
+  let controls='';
+  if(decision){
+    controls=`<button class="im-link-button" type="button" data-issue-action="undo" data-issue-id="${issue.id}">Изменить</button>`;
+  }else if(issue.id==='duplicate'){
+    controls=`
+      <button class="op-button" type="button" data-issue-action="keep" data-issue-id="${issue.id}">Импортировать</button>
+      <button class="im-link-button im-issue-exclude" type="button" data-issue-action="exclude" data-issue-id="${issue.id}">Исключить</button>`;
+  }else if(issue.id==='date'){
+    controls=`
+      <select class="op-control im-issue-select" data-issue-choice="${issue.id}" aria-label="Дата операции">
+        <option value="" selected disabled>Выберите дату</option>
+        <option value="09.06.2026">09.06.2026</option>
+        <option value="10.06.2026">10.06.2026</option>
+      </select>
+      <button class="im-link-button im-issue-exclude" type="button" data-issue-action="exclude" data-issue-id="${issue.id}">Исключить</button>`;
+  }else{
+    controls=`
+      <select class="op-control im-issue-select" data-issue-choice="${issue.id}" aria-label="Сумма операции">
+        <option value="" selected disabled>Выберите сумму</option>
+        <option value="219,00 €">219,00 € · Amount</option>
+        <option value="210,00 €">210,00 € · баланс</option>
+      </select>
+      <button class="im-link-button im-issue-exclude" type="button" data-issue-action="exclude" data-issue-id="${issue.id}">Исключить</button>`;
+  }
+
+  const compactReason=decision
+    ?resolvedText
+    :issue.id==='duplicate'
+      ?'Похожая операция уже есть в выбранном счёте.'
+      :issue.id==='date'
+        ?'Не удалось определить дату операции.'
+        :'Сумма не совпадает с изменением баланса.';
+
+  return `<div class="im-issue-block${stateClass}" data-issue-block="${issue.id}">
+    <div class="im-preview-row">
+      <div>${shownDate}</div>
+      <div class="im-preview-description">
+        ${issue.description}
+        <span class="im-review-badge${decision?' resolved':''}">${decision?'Решено':'Проверить'}</span>
+      </div>
+      <div class="im-preview-amount">${shownAmount}</div>
+    </div>
+    <div class="im-issue-strip">
+      <div class="im-issue-message"><strong>${decision?'Готово':'Причина:'}</strong> ${compactReason}</div>
+      <div class="im-issue-actions">${controls}</div>
+    </div>
+  </div>`;
+}
+
+function unresolvedImportIssues(){
+  if(IMPORT_STATE.reviewMode!=='attention')return 0;
+  return IMPORT_ISSUES.filter(issue=>!IMPORT_STATE.issueDecisions[issue.id]).length;
+}
+
+function excludedImportIssues(){
+  return Object.values(IMPORT_STATE.issueDecisions)
+    .filter(decision=>decision.action==='exclude').length;
+}
+
+function currentImportTotal(){
+  return IMPORT_CONFIG[IMPORT_STATE.reviewMode].total-excludedImportIssues();
+}
+
+function updateImportSourceSummary(){
+  const config=IMPORT_CONFIG[IMPORT_STATE.reviewMode];
+  importFileName.textContent=config.fileName;
+  importFileName.title=config.fileTitle;
+  importFileMeta.textContent=config.meta;
+  importTypeStats.textContent=config.stats;
+  importFeeNote.innerHTML=config.fee;
+  importFilePill.innerHTML=IMPORT_STATE.fileLoaded
+    ?`Файл: <strong>${config.fileName}</strong>`
+    :'';
+}
+
+function renderImportReview(){
+  const mode=IMPORT_STATE.reviewMode;
+  const config=IMPORT_CONFIG[mode];
+  const unresolved=unresolvedImportIssues();
+
+  importReviewTitle.textContent='Проверьте операции перед импортом';
+  importReviewAlert.hidden=true;
+
+  if(mode==='small'){
+    importReviewText.textContent='Все найденные операции показаны ниже.';
+    importReviewRows.innerHTML=IMPORT_SMALL_ROWS.map(reviewRowHTML).join('');
+  }else if(mode==='large'){
+    importReviewText.textContent='Показаны первые 10 из 327 операций.';
+    importReviewRows.innerHTML=IMPORT_LARGE_SAMPLE.map(reviewRowHTML).join('');
+  }else{
+    importReviewText.textContent='Ниже показаны все проблемные операции и первые 10 остальных.';
+    importReviewAlert.hidden=false;
+    if(unresolved){
+      importReviewAlert.innerHTML=`<strong>${unresolved} ${unresolved===1?'операция требует':'операции требуют'} проверки.</strong> Решите отмеченные вопросы перед импортом.`;
+    }else{
+      importReviewAlert.innerHTML='<strong>Все вопросы решены.</strong> Операции готовы к импорту.';
+    }
+    importReviewRows.innerHTML=[
+      ...IMPORT_ISSUES.map(issueRowHTML),
+      ...IMPORT_LARGE_SAMPLE.map(reviewRowHTML)
+    ].join('');
+  }
+
+  const total=currentImportTotal();
+  importSummaryNote.innerHTML=`Будут созданы ${total} операций в счёте <strong>REVOLUT (VD EUR)</strong>.`;
+}
+
+function updateImportReviewButton(){
+  const blocked=IMPORT_STATE.step===3&&unresolvedImportIssues()>0;
+  importNext.disabled=(IMPORT_STATE.step===1&&!IMPORT_STATE.fileLoaded)||blocked;
+  importNext.title=blocked?'Сначала решите все вопросы по операциям':'';
+}
+
+function setImportReviewMode(mode){
+  IMPORT_STATE.reviewMode=IMPORT_CONFIG[mode]?mode:'small';
+  IMPORT_STATE.issueDecisions={};
+  importReviewButtons.forEach(button=>{
+    button.classList.toggle('active',button.dataset.importReview===IMPORT_STATE.reviewMode);
+  });
+  updateImportSourceSummary();
+  renderImportReview();
+  updateImportReviewButton();
+}
+
+function buildFullImportRows(){
+  const total=IMPORT_CONFIG[IMPORT_STATE.reviewMode].total;
+  const merchantNames=[
+    'Mercadona','Carrefour','Amazon Marketplace','Fruites Martínez','Simyo',
+    'Repsol','YouTube Premium','EasyPark','IKEA Sabadell','Turo Park Medical Center',
+    'Transfer to VITALII DEN','Payment from EXPATPA','Parking Sabadell','Glovo','Renfe'
+  ];
+  const rows=[];
+  for(let index=0;index<total;index+=1){
+    const day=String((index%30)+1).padStart(2,'0');
+    const income=index%29===0;
+    rows.push({
+      date:`${day}.06.2026`,
+      description:merchantNames[index%merchantNames.length],
+      amount:income?`+${(150+(index%7)*100).toFixed(2).replace('.',',')} €`:`${(4.5+(index%41)*3.17).toFixed(2).replace('.',',')} €`,
+      type:income?'income':'expense',
+      attention:false
+    });
+  }
+
+  if(IMPORT_STATE.reviewMode==='attention'){
+    IMPORT_ISSUES.forEach((issue,index)=>{
+      rows[index]={
+        date:issue.id==='date'?'—':issue.date,
+        description:issue.description,
+        amount:issue.amount,
+        type:'expense',
+        attention:true
+      };
+    });
+  }
+  return rows;
+}
+
+let importFullData=[];
+
+function renderImportFullList(){
+  const query=importFullSearch.value.trim().toLowerCase();
+  const filter=importFullFilter.value;
+  const filtered=importFullData.filter(row=>{
+    const matchesQuery=!query||row.description.toLowerCase().includes(query);
+    const matchesFilter=
+      filter==='all'||
+      (filter==='attention'&&row.attention)||
+      (filter==='expense'&&row.type==='expense')||
+      (filter==='income'&&row.type==='income');
+    return matchesQuery&&matchesFilter;
+  });
+
+  importFullRows.innerHTML=filtered.map(row=>`
+    <div class="im-full-row${row.attention?' attention':''}">
+      <div>${row.date}</div>
+      <div>${row.description}</div>
+      <div class="amount ${row.type==='income'?'income':''}">${row.amount}</div>
+      <div class="im-full-status${row.attention?' attention':''}">${row.attention?'Требует проверки':'Готово'}</div>
+    </div>`).join('');
+  importFullCount.textContent=`Показано ${filtered.length} из ${importFullData.length}`;
+}
+
+function openImportFullList(){
+  importFullData=buildFullImportRows();
+  importFullTitle.textContent=`Все операции к импорту · ${importFullData.length}`;
+  importFullSearch.value='';
+  importFullFilter.value='all';
+  renderImportFullList();
+  importFullOverlay.classList.add('open');
+  importFullOverlay.setAttribute('aria-hidden','false');
+  document.body.classList.add('import-full-open');
+}
+
+function closeImportFullList(){
+  importFullOverlay.classList.remove('open');
+  importFullOverlay.setAttribute('aria-hidden','true');
+  document.body.classList.remove('import-full-open');
+}
+
+function openImportReviewState(mode){
+  IMPORT_STATE.step=3;
+  IMPORT_STATE.fileLoaded=true;
+  closeImportMappingEditors();
+  setImportReviewMode(mode);
+  renderImportModal();
+  els.addHolder.classList.remove('open');
+  importOverlay.classList.add('open');
+  importOverlay.setAttribute('aria-hidden','false');
+  document.body.classList.add('import-modal-open');
+}
+
+
+function closeImportMappingEditors(exceptKey=''){
+  document.querySelectorAll('[data-map-editor]').forEach(editor=>{
+    editor.hidden=editor.dataset.mapEditor!==exceptKey;
+  });
+}
+
+function updateImportMappingRow(key){
+  const select=document.querySelector(`[data-map-select="${key}"]`);
+  const source=document.querySelector(`[data-map-source="${key}"]`);
+  const example=document.querySelector(`[data-map-example="${key}"]`);
+  if(!select||!source||!example)return;
+
+  const option=select.selectedOptions[0];
+  source.textContent=option.value;
+  example.textContent=option.dataset.example||'';
+}
+
+function renderImportModal(){
+  const useFixedReviewHeight=
+    IMPORT_STATE.step===3&&
+    (IMPORT_STATE.reviewMode==='small'||IMPORT_STATE.reviewMode==='attention');
+
+  importDialog.classList.toggle('review-step',IMPORT_STATE.step===3);
+  importDialog.classList.toggle('review-fixed',useFixedReviewHeight);
+  importSteps.forEach((node,index)=>{
+    const step=index+1;
+    node.classList.toggle('active',step===IMPORT_STATE.step);
+    node.classList.toggle('done',step<IMPORT_STATE.step);
+  });
+  importScreens.forEach((node,index)=>{node.hidden=index+1!==IMPORT_STATE.step});
+  importPreUpload.hidden=IMPORT_STATE.fileLoaded;
+  importPostUpload.hidden=!IMPORT_STATE.fileLoaded;
+  importBack.style.visibility=IMPORT_STATE.step===1?'hidden':'visible';
+  importNext.textContent=IMPORT_STATE.step===3?'Импортировать':'Далее';
+  updateImportSourceSummary();
+  if(IMPORT_STATE.step===3)renderImportReview();
+
+  const canOpenFullList=
+    IMPORT_STATE.step===3&&IMPORT_CONFIG[IMPORT_STATE.reviewMode].total>25;
+  importOpenFullList.hidden=!canOpenFullList;
+  importFilePill.hidden=IMPORT_STATE.step===3;
+
+  updateImportReviewButton();
+}
+
+function openImportModal(){
+  IMPORT_STATE.step=1;
+  IMPORT_STATE.fileLoaded=false;
+  setImportReviewMode('small');
+  closeImportMappingEditors();
+  renderImportModal();
+  els.addHolder.classList.remove('open');
+  importOverlay.classList.add('open');
+  importOverlay.setAttribute('aria-hidden','false');
+  document.body.classList.add('import-modal-open');
+}
+
+function closeImportModal(){
+  closeImportFullList();
+  importOverlay.classList.remove('open');
+  importOverlay.setAttribute('aria-hidden','true');
+  document.body.classList.remove('import-modal-open');
+}
+
+function simulateImportFileSelection(){
+  IMPORT_STATE.fileLoaded=true;
+  renderImportModal();
+}
+
+function setPrototypeState(state){
+  stateButtons.forEach(btn=>btn.classList.toggle('active',btn.dataset.state===state));
+  summaryRow.classList.remove('loading-summary');
+  els.table.classList.remove('loading-table','reloading');
+  accountBlock.classList.remove('accounts-loading');
+  categoryChart.classList.remove('chart-loading');
+
+  if(state==='initial'){
+    summaryRow.classList.add('loading-summary');
+    els.table.classList.add('loading-table');
+    accountBlock.classList.add('accounts-loading');
+    categoryChart.classList.add('chart-loading');
+  }else if(state==='period'){
+    summaryRow.classList.add('loading-summary');
+    els.table.classList.add('loading-table');
+    accountBlock.classList.add('accounts-loading');
+    categoryChart.classList.add('chart-loading');
+  }else if(state==='table'){
+    els.table.classList.add('reloading');
+  }
+}
+
+
+let activeOperationFormState='add';
+
+const OPERATION_FORM_STATES={
+  add:{
+    title:'Новая операция',mode:'add',type:'expense',date:'13.07.2026',account:'BBVA',
+    amount:'',description:'',category:'',note:'',attention:false,additional:false,
+    suggestions:false,autoCategory:false,invalidAccount:false
+  },
+  suggestions:{
+    title:'Новая операция',mode:'add',type:'expense',date:'13.07.2026',account:'BBVA',
+    amount:'',description:'Me',category:'',note:'',attention:false,additional:false,
+    suggestions:true,autoCategory:false,invalidAccount:false
+  },
+  autocategory:{
+    title:'Новая операция',mode:'add',type:'expense',date:'13.07.2026',account:'BBVA',
+    amount:'75,30',description:'Mercadona',category:'Food',note:'',attention:false,additional:false,
+    suggestions:false,autoCategory:true,invalidAccount:false
+  },
+  'invalid-account':{
+    title:'Новая операция',mode:'add',type:'expense',date:'01.07.2026',account:'CASH THB',
+    amount:'24,00',description:'Покупка наличными',category:'Other',note:'',attention:false,additional:false,
+    suggestions:false,autoCategory:false,invalidAccount:true
+  },
+  'edit-expense':{
+    title:'Редактировать расход',mode:'edit',type:'expense',date:'12.07.2026',account:'BBVA',
+    amount:'54,73',description:'Mercadona',category:'Food',note:'Покупки на неделю',
+    attention:true,additional:true,suggestions:false,autoCategory:false,invalidAccount:false
+  },
+  'edit-income':{
+    title:'Редактировать поступление',mode:'edit',type:'income',date:'10.07.2026',
+    account:'REVOLUT (VD EUR)',amount:'3 600,00',description:'Зачисление зарплаты',
+    category:'',note:'Поступление за июль',attention:false,additional:true,
+    suggestions:false,autoCategory:false,invalidAccount:false
+  }
+};
+
+function decodeBase64Utf8(encoded){
+  const binary=atob(encoded);
+  const bytes=Uint8Array.from(binary,char=>char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function setOperationType(type){
+  operationType.querySelectorAll('[data-operation-type]').forEach(button=>{
+    button.classList.toggle('active',button.dataset.operationType===type);
+  });
+  categoryGroup.style.display=type==='expense'?'block':'none';
+}
+
+function setAdditionalOpen(open){
+  additionalToggle.setAttribute('aria-expanded',String(open));
+  additionalFields.classList.toggle('open',open);
+}
+
+function updateOperationCounters(){
+  descriptionCount.textContent=operationDescription.value.length;
+  noteCount.textContent=operationNote.value.length;
+}
+
+function showOperationToast(message){
+  operationToast.textContent=message;
+  operationToast.classList.add('show');
+  clearTimeout(showOperationToast.timer);
+  showOperationToast.timer=setTimeout(()=>operationToast.classList.remove('show'),1800);
+}
+
+function operationFromRow(row){
+  try{
+    return JSON.parse(decodeURIComponent(row.dataset.op||''));
+  }catch(error){
+    return null;
+  }
+}
+
+function visualOperationAmount(operation){
+  if(!operation)return '—';
+  return operation.type==='Расход'
+    ?operation.main.replace(/^[−-]\s*/,'')
+    :operation.main;
+}
+
+function showDeleteConfirm(operation){
+  const fallback={
+    account:operationAccount.value||'Операция',
+    date:operationDate.value||'',
+    desc:operationDescription.value||'Без описания',
+    main:`${operationAmount.value||'0,00'} ${operationCurrency.textContent||'EUR'}`,
+    type:operationType.querySelector('.active')?.dataset.operationType==='income'?'Поступление':'Расход'
+  };
+  const selected=operation||fallback;
+  deleteConfirmAccount.textContent=selected.account||'Операция';
+  deleteConfirmMeta.textContent=[selected.date,selected.desc].filter(Boolean).join(' · ');
+  deleteConfirmAmount.textContent=visualOperationAmount(selected);
+  deleteConfirmOverlay.classList.add('open');
+  deleteConfirmOverlay.setAttribute('aria-hidden','false');
+}
+
+function closeDeleteConfirm(){
+  deleteConfirmOverlay.classList.remove('open');
+  deleteConfirmOverlay.setAttribute('aria-hidden','true');
+}
+
+function closeOperationModal(){
+  closeDeleteConfirm();
+  operationOverlay.classList.remove('open');
+  operationOverlay.setAttribute('aria-hidden','true');
+  document.body.classList.remove('operation-modal-open');
+  descriptionSuggestions.classList.remove('open');
+  operationFormButtons.forEach(button=>button.classList.remove('active'));
+}
+
+function openOperationForm(stateKey='add'){
+  const state=OPERATION_FORM_STATES[stateKey]||OPERATION_FORM_STATES.add;
+  activeOperationFormState=stateKey;
+  setPrototypeState('normal');
+  setErrorMode('none');
+  closeTransferWorkspace();
+
+  operationFormButtons.forEach(button=>{
+    button.classList.toggle('active',button.dataset.operationForm===stateKey);
+  });
+
+  operationDialog.classList.toggle('editing',state.mode==='edit');
+  operationTitle.textContent=state.title;
+  setOperationType(state.type);
+  operationDate.value=state.date;
+  operationAccount.value=state.account;
+  operationAmount.value=state.amount;
+  operationDescription.value=state.description;
+  operationCategory.value=state.category;
+  operationNote.value=state.note;
+  operationAttention.checked=state.attention;
+  accountGroup.classList.toggle('invalid',state.invalidAccount);
+  autoCategoryBadge.classList.toggle('show',state.autoCategory);
+  setAdditionalOpen(state.additional);
+  descriptionSuggestions.classList.toggle('open',state.suggestions);
+  updateOperationCounters();
+
+  operationOverlay.classList.add('open');
+  operationOverlay.setAttribute('aria-hidden','false');
+  document.body.classList.add('operation-modal-open');
+  setPrototypePanelCollapsed(true);
+  setTimeout(()=>operationDescription.focus(),0);
+}
+
+function resetAddOperationForm(){
+  const state=OPERATION_FORM_STATES.add;
+  setOperationType(state.type);
+  operationDate.value=state.date;
+  operationAccount.value=state.account;
+  operationAmount.value='';
+  operationDescription.value='';
+  operationCategory.value='';
+  operationNote.value='';
+  operationAttention.checked=false;
+  accountGroup.classList.remove('invalid');
+  autoCategoryBadge.classList.remove('show');
+  descriptionSuggestions.classList.remove('open');
+  setAdditionalOpen(false);
+  updateOperationCounters();
+  operationDescription.focus();
+}
+
+
+const TRANSFER_STATE={target:'01-new-transfer-same-currency',candidate:'Kast AK'};
+
+function transferStateTitle(target){
+  return {
+    '01-new-transfer-same-currency':'Новый перевод',
+    '02-new-transfer-different-currencies':'Новый перевод',
+    '03-link-existing-candidates':'Создать перевод',
+    '04-create-partner-operation':'Создать перевод',
+    '05-edit-linked-transfer':'Редактировать перевод'
+  }[target]||'Новый перевод';
+}
+
+function transferAccountOptions(selected){
+  const options=[
+    ['BBVA','EUR'],['REVOLUT (VD EUR)','EUR'],['REVOLUT (AK)','EUR'],
+    ['KAST AK','USD'],['TINKOFF (AK)','RUB'],['Krungsri','THB'],['CASH EUR','EUR']
+  ];
+  return options.map(([name,currency])=>
+    `<option value="${name}" data-currency="${currency}" ${name===selected?'selected':''}>${name} · ${currency}</option>`
+  ).join('');
+}
+
+function transferAdditionalHtml(open=false){
+  return `<button class="tr-additional-toggle" id="trAdditionalToggle" type="button" aria-expanded="${open}">
+    <span>›</span><span>Дополнительно</span>
+  </button>
+  <div class="tr-additional ${open?'open':''}" id="trAdditional">
+    <div class="tr-field">
+      <label for="trNote">Заметка</label>
+      <textarea class="tr-control" id="trNote" maxlength="500" placeholder="Введите заметку (необязательно)"></textarea>
+      <div class="tr-counter"><span id="trNoteCount">0</span> / 500</div>
+    </div>
+    <label class="tr-checkbox"><input type="checkbox" id="trAttention"><span>Требует внимания</span></label>
+  </div>`;
+}
+
+function transferAmountHtml(different){
+  if(!different){
+    return `<div class="tr-field">
+      <label for="trAmountSingle">Сумма</label>
+      <div class="tr-amount"><input id="trAmountSingle" value="500,00"><span>EUR</span></div>
+    </div>`;
+  }
+  return `<div class="tr-amounts-different">
+    <div class="tr-field">
+      <label for="trAmountFrom">Списано</label>
+      <div class="tr-amount"><input id="trAmountFrom" value="500,00"><span id="trFromCurrency">USD</span></div>
+    </div>
+    <div class="tr-arrow">→</div>
+    <div class="tr-field">
+      <label for="trAmountTo">Зачислено</label>
+      <div class="tr-amount"><input id="trAmountTo" value="468,70"><span id="trToCurrency">EUR</span></div>
+    </div>
+  </div>`;
+}
+
+function newTransferHtml(different=false){
+  return `<div class="tr-grid">
+      <div class="tr-field">
+        <label>Тип операции</label>
+        <div class="tr-segments" id="trOperationType">
+          <button type="button" data-type="expense">Расход</button>
+          <button type="button" data-type="income">Поступление</button>
+          <button type="button" data-type="transfer" class="active">Перевод</button>
+        </div>
+      </div>
+      <div class="tr-field">
+        <label for="trDate">Дата</label>
+        <input class="tr-control" id="trDate" value="10.07.2026">
+        <div class="tr-help">Дата влияет на список доступных счетов</div>
+      </div>
+    </div>
+
+    <div class="tr-grid tr-gap">
+      <div class="tr-field">
+        <label for="trFromAccount">Со счёта</label>
+        <select class="tr-control" id="trFromAccount">${transferAccountOptions(different?'KAST AK':'BBVA')}</select>
+      </div>
+      <div class="tr-field">
+        <label for="trToAccount">На счёт</label>
+        <select class="tr-control" id="trToAccount">${transferAccountOptions('REVOLUT (VD EUR)')}</select>
+      </div>
+    </div>
+
+    <div class="tr-gap" id="trAmountArea">${transferAmountHtml(different)}</div>
+
+    <div class="tr-field tr-gap">
+      <label for="trDescription">Описание перевода</label>
+      <input class="tr-control" id="trDescription" maxlength="120" value="На Revolut">
+      <div class="tr-help">Будет применено к обеим операциям</div>
+      <div class="tr-counter"><span id="trDescriptionCount">10</span> / 120</div>
+    </div>
+
+    ${transferAdditionalHtml(false)}`;
+}
+
+function sourceOperationHtml(){
+  return `<div class="tr-source">
+    <div class="tr-source-head">Исходная операция</div>
+    <div class="tr-source-row">
+      <div><strong>Ledger</strong><small>01.07.2026 · На Kast AK</small></div>
+      <b>−2 628,72 €</b>
+    </div>
+  </div>`;
+}
+
+function transferTabsHtml(active){
+  return `<div class="tr-tabs">
+    <button type="button" data-transfer-tab="candidates" class="${active==='candidates'?'active':''}">Подходящие операции</button>
+    <button type="button" data-transfer-tab="partner" class="${active==='partner'?'active':''}">Создать операцию-напарника</button>
+  </div>`;
+}
+
+function linkCandidatesHtml(){
+  const candidates=[
+    ['Kast AK','01.07.2026 · Перевод от Ledger','2 628,72 €','точное совпадение'],
+    ['Crypto Wallet','01.07.2026 · Перевод от Ledger','2 628,72 €',''],
+    ['Bank Revolut','01.07.2026 · Пополнение от Ledger','2 628,72 €',''],
+    ['Savings Account','30.06.2026 · Перевод от Ledger','2 628,72 €',''],
+    ['Wallet EUR','01.07.2026 · Получено от Ledger','2 628,72 €','']
+  ];
+  return `${sourceOperationHtml()}
+    ${transferTabsHtml('candidates')}
+    <div class="tr-section-intro">
+      <h3>Выберите подходящую операцию для связывания</h3>
+      <p>Мы нашли возможные совпадения по дате, сумме и описанию.</p>
+    </div>
+    <div class="tr-candidates">
+      ${candidates.map(([name,meta,amount,label],index)=>`
+        <button type="button" class="tr-candidate ${index===0?'selected':''}" data-candidate="${name}">
+          <div>
+            <div class="tr-candidate-meta"><strong>${name}</strong>${label?`<em>${label}</em>`:''}</div>
+            <small>${meta}</small>
+          </div>
+          <b>${amount}</b>
+        </button>`).join('')}
+    </div>
+    <div class="tr-info">Не нашли подходящую операцию? Переключитесь на вкладку «Создать операцию-напарника».</div>
+    ${transferAdditionalHtml(false)}`;
+}
+
+function createPartnerHtml(){
+  return `${sourceOperationHtml()}
+    ${transferTabsHtml('partner')}
+    <div class="tr-grid tr-gap">
+      <div class="tr-field">
+        <label for="trPartnerDate">Дата операции</label>
+        <input class="tr-control" id="trPartnerDate" value="01.07.2026">
+        <div class="tr-help" id="trPartnerDateHelp">Дата подставлена из исходной операции</div>
+      </div>
+      <div class="tr-field">
+        <label for="trPartnerAccount">На счёт</label>
+        <select class="tr-control" id="trPartnerAccount">${transferAccountOptions('REVOLUT (VD EUR)')}</select>
+      </div>
+    </div>
+    <div class="tr-grid tr-gap">
+      <div class="tr-field">
+        <label for="trPartnerAmount">Сумма зачисления</label>
+        <div class="tr-amount">
+          <input id="trPartnerAmount" value="2 628,72">
+          <span id="trPartnerCurrency">EUR</span>
+        </div>
+        <div class="tr-help" id="trPartnerAmountHelp">Сумма подставлена из исходной операции</div>
+      </div>
+      <div class="tr-field">
+        <label for="trPartnerDescription">Описание</label>
+        <input class="tr-control" id="trPartnerDescription" value="На Revolut">
+      </div>
+    </div>
+    ${transferAdditionalHtml(false)}`;
+}
+
+function editTransferHtml(){
+  return `<div class="tr-linked-banner">
+      <svg class="tr-linked-banner-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9.5 14.5l5-5M7.5 16.5l-1 1a3 3 0 0 1-4-4l3-3a3 3 0 0 1 4 0M16.5 7.5l1-1a3 3 0 0 1 4 4l-3 3a3 3 0 0 1-4 0"/>
+      </svg>
+      <span><strong>Связанные операции</strong> · изменения сохраняются для обеих сторон</span>
+    </div>
+
+    <div class="tr-edit-date-row">
+      <div class="tr-field">
+        <label for="trEditDate">Дата</label>
+        <input class="tr-control" id="trEditDate" value="01.07.2026">
+        <div class="tr-help tr-edit-date-help">Дата влияет на список доступных счетов</div>
+      </div>
+    </div>
+
+    <div class="tr-edit-grid">
+      <section class="tr-edit-side">
+        <div class="tr-side-title">Списано</div>
+        <div class="tr-field">
+          <label for="trEditFromAccount">Со счёта</label>
+          <select class="tr-control" id="trEditFromAccount">${transferAccountOptions('BBVA')}</select>
+        </div>
+        <div class="tr-field">
+          <label for="trEditFromAmount">Сумма</label>
+          <div class="tr-amount">
+            <input id="trEditFromAmount" value="2 628,72">
+            <span id="trEditFromCurrency">EUR</span>
+          </div>
+          <div class="tr-edit-amount-help">&nbsp;</div>
+        </div>
+        <div class="tr-field">
+          <label for="trEditFromDescription">Описание</label>
+          <input class="tr-control" id="trEditFromDescription" value="На Revolut">
+        </div>
+      </section>
+
+      <section class="tr-edit-side">
+        <div class="tr-side-title">Зачислено</div>
+        <div class="tr-field">
+          <label for="trEditToAccount">На счёт</label>
+          <select class="tr-control" id="trEditToAccount">${transferAccountOptions('REVOLUT (VD EUR)')}</select>
+        </div>
+        <div class="tr-field">
+          <label for="trEditToAmount">Сумма</label>
+          <div class="tr-amount is-synced" id="trEditToAmountWrap">
+            <svg class="tr-amount-sync-icon" id="trEditSyncIcon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9.5 14.5l5-5M7.5 16.5l-1 1a3 3 0 0 1-4-4l3-3a3 3 0 0 1 4 0M16.5 7.5l1-1a3 3 0 0 1 4 4l-3 3a3 3 0 0 1-4 0"/>
+            </svg>
+            <input id="trEditToAmount" value="2 628,72" readonly aria-label="Сумма зачисления">
+            <span id="trEditToCurrency">EUR</span>
+          </div>
+          <div class="tr-edit-amount-help" id="trEditToAmountHelp">Синхронизировано со списанием</div>
+        </div>
+        <div class="tr-field">
+          <label for="trEditToDescription">Описание</label>
+          <input class="tr-control" id="trEditToDescription" value="Перевод от BBVA">
+        </div>
+      </section>
+    </div>
+
+    ${transferAdditionalHtml(false)}`;
+}
+
+function renderTransferState(target){
+  TRANSFER_STATE.target=target==='06-confirm-unlink'?'05-edit-linked-transfer':target;
+  transferTitle.textContent=transferStateTitle(TRANSFER_STATE.target);
+
+  if(TRANSFER_STATE.target==='01-new-transfer-same-currency'){
+    transferBody.innerHTML=newTransferHtml(false);
+    transferFooter.innerHTML=`<div></div><div class="tr-footer-right">
+      <button class="op-button" data-close-transfer type="button">Отмена</button>
+      <button class="op-button primary" data-transfer-action="add" type="button">Добавить перевод</button>
+    </div>`;
+  }else if(TRANSFER_STATE.target==='02-new-transfer-different-currencies'){
+    transferBody.innerHTML=newTransferHtml(true);
+    transferFooter.innerHTML=`<div></div><div class="tr-footer-right">
+      <button class="op-button" data-close-transfer type="button">Отмена</button>
+      <button class="op-button primary" data-transfer-action="add" type="button">Добавить перевод</button>
+    </div>`;
+  }else if(TRANSFER_STATE.target==='03-link-existing-candidates'){
+    transferBody.innerHTML=linkCandidatesHtml();
+    transferFooter.innerHTML=`<div></div><div class="tr-footer-right">
+      <button class="op-button" data-close-transfer type="button">Отмена</button>
+      <button class="op-button primary" data-transfer-action="link" type="button">Связать</button>
+    </div>`;
+  }else if(TRANSFER_STATE.target==='04-create-partner-operation'){
+    transferBody.innerHTML=createPartnerHtml();
+    transferFooter.innerHTML=`<div></div><div class="tr-footer-right">
+      <button class="op-button" data-close-transfer type="button">Отмена</button>
+      <button class="op-button primary" data-transfer-action="create-link" type="button">Создать и связать</button>
+    </div>`;
+  }else{
+    transferBody.innerHTML=editTransferHtml();
+    transferFooter.innerHTML=`<div class="tr-footer-left">
+      <button class="op-button destructive-outline" data-transfer-action="unlink" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9.5 14.5l5-5M7.5 16.5l-1 1a3 3 0 0 1-4-4l3-3a3 3 0 0 1 4 0M16.5 7.5l1-1a3 3 0 0 1 4 4l-3 3a3 3 0 0 1-4 0M4 4l16 16"/>
+        </svg>
+        <span>Разъединить операции</span>
+      </button>
+    </div><div class="tr-footer-right">
+      <button class="op-button" data-close-transfer type="button">Отмена</button>
+      <button class="op-button primary" data-transfer-action="save" type="button">Сохранить</button>
+    </div>`;
+  }
+
+  bindTransferStateControls();
+  if(target==='06-confirm-unlink')openUnlinkConfirm();
+}
+
+function selectedCurrency(select){
+  const option=select.options[select.selectedIndex];
+  return option?option.dataset.currency||'EUR':'EUR';
+}
+
+function refreshTransferAmountMode(){
+  const from=document.getElementById('trFromAccount');
+  const to=document.getElementById('trToAccount');
+  const area=document.getElementById('trAmountArea');
+  if(!from||!to||!area)return;
+
+  const fromCurrency=selectedCurrency(from);
+  const toCurrency=selectedCurrency(to);
+  const different=fromCurrency!==toCurrency;
+  area.innerHTML=transferAmountHtml(different);
+
+  if(different){
+    document.getElementById('trFromCurrency').textContent=fromCurrency;
+    document.getElementById('trToCurrency').textContent=toCurrency;
+    TRANSFER_STATE.target='02-new-transfer-different-currencies';
+  }else{
+    const currency=area.querySelector('.tr-amount span');
+    if(currency)currency.textContent=fromCurrency;
+    TRANSFER_STATE.target='01-new-transfer-same-currency';
+  }
+}
+
+function bindEditTransferAmountMode(){
+  const fromAccount=document.getElementById('trEditFromAccount');
+  const toAccount=document.getElementById('trEditToAccount');
+  const fromAmount=document.getElementById('trEditFromAmount');
+  const toAmount=document.getElementById('trEditToAmount');
+  const fromCurrency=document.getElementById('trEditFromCurrency');
+  const toCurrency=document.getElementById('trEditToCurrency');
+  const toAmountWrap=document.getElementById('trEditToAmountWrap');
+  const syncIcon=document.getElementById('trEditSyncIcon');
+  const help=document.getElementById('trEditToAmountHelp');
+
+  if(!fromAccount||!toAccount||!fromAmount||!toAmount||!fromCurrency||!toCurrency||!toAmountWrap||!help)return;
+
+  let manualToAmount='';
+  let sameCurrency=true;
+
+  const updateMode=()=>{
+    const nextFromCurrency=selectedCurrency(fromAccount);
+    const nextToCurrency=selectedCurrency(toAccount);
+    const nextSameCurrency=nextFromCurrency===nextToCurrency;
+
+    fromCurrency.textContent=nextFromCurrency;
+    toCurrency.textContent=nextToCurrency;
+
+    if(nextSameCurrency){
+      if(!sameCurrency)manualToAmount=toAmount.value;
+      toAmount.readOnly=true;
+      toAmount.value=fromAmount.value;
+      toAmountWrap.classList.add('is-synced');
+      if(syncIcon)syncIcon.hidden=false;
+      help.textContent='Синхронизировано со списанием';
+    }else{
+      toAmount.readOnly=false;
+      toAmount.value=manualToAmount;
+      toAmountWrap.classList.remove('is-synced');
+      if(syncIcon)syncIcon.hidden=true;
+      help.textContent='Укажите сумму зачисления в валюте счёта';
+    }
+
+    sameCurrency=nextSameCurrency;
+  };
+
+  fromAmount.addEventListener('input',()=>{
+    if(sameCurrency)toAmount.value=fromAmount.value;
+  });
+
+  toAmount.addEventListener('input',()=>{
+    if(!sameCurrency)manualToAmount=toAmount.value;
+  });
+
+  fromAccount.addEventListener('change',updateMode);
+  toAccount.addEventListener('change',updateMode);
+  updateMode();
+}
+
+function bindTransferStateControls(){
+  const additionalToggle=document.getElementById('trAdditionalToggle');
+  const additional=document.getElementById('trAdditional');
+  const note=document.getElementById('trNote');
+  const noteCount=document.getElementById('trNoteCount');
+
+  if(additionalToggle&&additional){
+    additionalToggle.addEventListener('click',()=>{
+      const open=!additional.classList.contains('open');
+      additional.classList.toggle('open',open);
+      additionalToggle.setAttribute('aria-expanded',String(open));
+    });
+  }
+  if(note&&noteCount)note.addEventListener('input',()=>noteCount.textContent=note.value.length);
+
+  const from=document.getElementById('trFromAccount');
+  const to=document.getElementById('trToAccount');
+  if(from&&to){
+    from.addEventListener('change',refreshTransferAmountMode);
+    to.addEventListener('change',refreshTransferAmountMode);
+  }
+
+  bindEditTransferAmountMode();
+
+  const description=document.getElementById('trDescription');
+  const descriptionCount=document.getElementById('trDescriptionCount');
+  if(description&&descriptionCount){
+    description.addEventListener('input',()=>descriptionCount.textContent=description.value.length);
+  }
+
+  const partnerDate=document.getElementById('trPartnerDate');
+  const partnerDateHelp=document.getElementById('trPartnerDateHelp');
+  const partnerAccount=document.getElementById('trPartnerAccount');
+  const partnerAmount=document.getElementById('trPartnerAmount');
+  const partnerCurrency=document.getElementById('trPartnerCurrency');
+  const partnerAmountHelp=document.getElementById('trPartnerAmountHelp');
+
+  if(partnerDate&&partnerDateHelp){
+    partnerDate.addEventListener('input',()=>{
+      partnerDateHelp.textContent='Дата изменена вручную';
+    });
+  }
+
+  if(partnerAccount&&partnerAmount&&partnerCurrency&&partnerAmountHelp){
+    const sourceCurrency='EUR';
+    const sourceAmount='2 628,72';
+    let amountChangedManually=false;
+
+    const updatePartnerAmount=()=>{
+      const currency=selectedCurrency(partnerAccount);
+      partnerCurrency.textContent=currency;
+
+      if(amountChangedManually){
+        partnerAmountHelp.textContent='Сумма изменена вручную';
+        return;
+      }
+
+      if(currency===sourceCurrency){
+        partnerAmount.value=sourceAmount;
+        partnerAmountHelp.textContent='Сумма подставлена из исходной операции';
+      }else{
+        partnerAmount.value='';
+        partnerAmountHelp.textContent='Укажите сумму зачисления в валюте счёта';
+      }
+    };
+
+    partnerAmount.addEventListener('input',()=>{
+      amountChangedManually=true;
+      partnerAmountHelp.textContent='Сумма изменена вручную';
+    });
+    partnerAccount.addEventListener('change',updatePartnerAmount);
+    updatePartnerAmount();
+  }
+
+  transferBody.querySelectorAll('[data-transfer-tab]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      renderTransferState(button.dataset.transferTab==='candidates'
+        ?'03-link-existing-candidates'
+        :'04-create-partner-operation');
+    });
+  });
+
+  transferBody.querySelectorAll('[data-candidate]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      transferBody.querySelectorAll('[data-candidate]').forEach(item=>item.classList.remove('selected'));
+      button.classList.add('selected');
+      TRANSFER_STATE.candidate=button.dataset.candidate;
+    });
+  });
+
+  const operationType=document.getElementById('trOperationType');
+  if(operationType){
+    operationType.addEventListener('click',event=>{
+      const button=event.target.closest('[data-type]');
+      if(!button)return;
+      if(button.dataset.type==='expense')openOperationForm('add');
+      if(button.dataset.type==='income')openOperationForm('edit-income');
+    });
+  }
+}
+
+function openTransferWorkspace(target){
+  closeOperationModal();
+  setPrototypeState('normal');
+  setErrorMode('none');
+  renderTransferState(target);
+  transferOverlay.classList.add('open');
+  transferOverlay.setAttribute('aria-hidden','false');
+  document.body.classList.add('transfer-modal-open');
+  transferButtons.forEach(button=>{
+    button.classList.toggle('active',button.dataset.openTransfer===target);
+  });
+  setPrototypePanelCollapsed(true);
+}
+
+function closeTransferWorkspace(){
+  closeUnlinkConfirm();
+  transferOverlay.classList.remove('open');
+  transferOverlay.setAttribute('aria-hidden','true');
+  document.body.classList.remove('transfer-modal-open');
+  transferButtons.forEach(button=>button.classList.remove('active'));
+}
+
+function openUnlinkConfirm(operation=null){
+  const defaults={
+    account:'Ledger → Kast AK',
+    date:'01.07.2026',
+    desc:'На Kast AK',
+    main:'2 628,72 €',
+    local:'−2 628,72 €',
+    to:'2 628,72 €'
+  };
+  const selected=operation||defaults;
+  const accounts=(selected.account||'Ledger → Kast AK').split('→').map(value=>value.trim());
+  const sourceAccount=accounts[0]||'Исходный счёт';
+  const partnerAccount=accounts[1]||'Счёт назначения';
+  const sourceAmount=selected.local||selected.main||'—';
+  const partnerAmount=selected.to||selected.main||'—';
+
+  unlinkSourceAccount.textContent=sourceAccount;
+  unlinkSourceMeta.textContent=[selected.date,selected.desc].filter(Boolean).join(' · ');
+  unlinkSourceAmount.textContent=sourceAmount;
+  unlinkPartnerAccount.textContent=partnerAccount;
+  unlinkPartnerMeta.textContent=[selected.date,`Перевод от ${sourceAccount}`].filter(Boolean).join(' · ');
+  unlinkPartnerAmount.textContent=partnerAmount;
+
+  unlinkConfirmOverlay.classList.add('open');
+  unlinkConfirmOverlay.setAttribute('aria-hidden','false');
+}
+
+function closeUnlinkConfirm(){
+  unlinkConfirmOverlay.classList.remove('open');
+  unlinkConfirmOverlay.setAttribute('aria-hidden','true');
+}
+
+function setPrototypePanelCollapsed(collapsed){
+  prototypeStateShell.classList.toggle('collapsed',collapsed);
+  prototypeStateToggle.setAttribute('aria-expanded',String(!collapsed));
+  try{
+    localStorage.setItem('familyFinancePrototypePanelCollapsed',String(collapsed));
+  }catch(error){}
+}
+
+prototypeStateToggle.addEventListener('click',()=>{
+  setPrototypePanelCollapsed(!prototypeStateShell.classList.contains('collapsed'));
+});
+
+let prototypePanelCollapsed=true;
+try{
+  const storedPanelState=localStorage.getItem('familyFinancePrototypePanelCollapsed');
+  if(storedPanelState!==null)prototypePanelCollapsed=storedPanelState==='true';
+}catch(error){}
+setPrototypePanelCollapsed(prototypePanelCollapsed);
+
+
+function setCompactHeaderMode(mode){
+  const resolved=mode==='cards'?'cards':'context';
+  els.compactMetrics.classList.toggle('header-context',resolved==='context');
+  els.compactMetrics.classList.toggle('header-cards',resolved==='cards');
+  headerModeButtons.forEach(button=>{
+    button.classList.toggle('active',button.dataset.headerMode===resolved);
+  });
+  try{
+    localStorage.setItem('familyFinanceCompactHeaderMode',resolved);
+  }catch(error){}
+}
+
+let compactHeaderMode='context';
+try{
+  const storedHeaderMode=localStorage.getItem('familyFinanceCompactHeaderMode');
+  if(storedHeaderMode==='cards'||storedHeaderMode==='context'){
+    compactHeaderMode=storedHeaderMode;
+  }
+}catch(error){}
+setCompactHeaderMode(compactHeaderMode);
+
+function setErrorMode(mode){
+  errorMode=mode;
+  errorButtons.forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.error===mode);
+  });
+  document.body.classList.toggle('screen-error-mode',mode==='screen');
+  if(mode!=='screen'){
+    renderForecastState();
+    renderChartState();
+    renderAccounts();
+    render();
+  }
+}
+
+viewButtons.forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    closeOperationModal();
+    closeTransferWorkspace();
+    setPrototypeState('normal');
+    setErrorMode('none');
+
+    const requestedView=btn.dataset.view;
+    const showTableB=requestedView==='table-b';
+    els.table.classList.toggle('combined',showTableB);
+    applyScreenMode(showTableB?'normal':requestedView);
+
+    document.querySelectorAll('[data-view]').forEach(viewButton=>{
+      viewButton.classList.toggle('active',viewButton.dataset.view===requestedView);
+    });
+  });
+});
+
+stateButtons.forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    closeOperationModal();
+    closeTransferWorkspace();
+    setErrorMode('none');
+    setPrototypeState(btn.dataset.state);
+  });
+});
+
+errorButtons.forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    closeOperationModal();
+    closeTransferWorkspace();
+    setPrototypeState('normal');
+    setErrorMode(btn.dataset.error);
+  });
+});
+
+headerModeButtons.forEach(button=>{
+  button.addEventListener('click',()=>{
+    setCompactHeaderMode(button.dataset.headerMode);
+  });
+});
+
+operationFormButtons.forEach(btn=>{
+  btn.addEventListener('click',()=>openOperationForm(btn.dataset.operationForm));
+});
+
+transferButtons.forEach(btn=>{
+  btn.addEventListener('click',()=>openTransferWorkspace(btn.dataset.openTransfer));
+});
+
+importReviewButtons.forEach(button=>{
+  button.addEventListener('click',()=>{
+    openImportReviewState(button.dataset.importReview);
+  });
+});
+
+
+addOperationButton.addEventListener('click',()=>openOperationForm('add'));
+
+importOperationsButton.addEventListener('click',event=>{
+  event.stopPropagation();
+  openImportModal();
+});
+importClose.addEventListener('click',closeImportModal);
+importCancel.addEventListener('click',closeImportModal);
+importOverlay.addEventListener('click',event=>{
+  if(event.target===importOverlay)closeImportModal();
+});
+importDialog.addEventListener('click',event=>event.stopPropagation());
+importChooseFile.addEventListener('click',simulateImportFileSelection);
+importDropzone.addEventListener('click',event=>{
+  if(event.target.closest('button'))return;
+  simulateImportFileSelection();
+});
+importReplaceFile.addEventListener('click',()=>{
+  IMPORT_STATE.fileLoaded=false;
+  IMPORT_STATE.step=1;
+  renderImportModal();
+});
+importBack.addEventListener('click',()=>{
+  if(IMPORT_STATE.step>1){
+    IMPORT_STATE.step-=1;
+    renderImportModal();
+  }
+});
+importNext.addEventListener('click',()=>{
+  if(IMPORT_STATE.step===1&&!IMPORT_STATE.fileLoaded)return;
+  if(IMPORT_STATE.step<3){
+    IMPORT_STATE.step+=1;
+    renderImportModal();
+    return;
+  }
+  closeImportModal();
+  showOperationToast(`Импортировано ${currentImportTotal()} операций`);
+});
+importMapEditButtons.forEach(button=>{
+  button.addEventListener('click',()=>{
+    const key=button.dataset.mapEdit;
+    const editor=document.querySelector(`[data-map-editor="${key}"]`);
+    closeImportMappingEditors(editor?.hidden?key:'');
+  });
+});
+
+importMapDoneButtons.forEach(button=>{
+  button.addEventListener('click',()=>{
+    updateImportMappingRow(button.dataset.mapDone);
+    closeImportMappingEditors();
+  });
+});
+
+importMapSelects.forEach(select=>{
+  select.addEventListener('change',()=>{
+    updateImportMappingRow(select.dataset.mapSelect);
+  });
+});
+
+importReviewRows.addEventListener('click',event=>{
+  const button=event.target.closest('[data-issue-action]');
+  if(!button)return;
+
+  const issueId=button.dataset.issueId;
+  const action=button.dataset.issueAction;
+
+  if(action==='undo'){
+    delete IMPORT_STATE.issueDecisions[issueId];
+  }else if(action==='exclude'){
+    IMPORT_STATE.issueDecisions[issueId]={action:'exclude'};
+  }else if(action==='keep'){
+    IMPORT_STATE.issueDecisions[issueId]={action:'keep'};
+  }
+
+  renderImportReview();
+  updateImportReviewButton();
+});
+
+importReviewRows.addEventListener('change',event=>{
+  const select=event.target.closest('[data-issue-choice]');
+  if(!select||!select.value)return;
+
+  const issueId=select.dataset.issueChoice;
+  IMPORT_STATE.issueDecisions[issueId]={action:'fix',value:select.value};
+  renderImportReview();
+  updateImportReviewButton();
+});
+
+importOpenFullList.addEventListener('click',openImportFullList);
+importFullClose.addEventListener('click',closeImportFullList);
+importFullDone.addEventListener('click',closeImportFullList);
+importFullOverlay.addEventListener('click',event=>{
+  if(event.target===importFullOverlay)closeImportFullList();
+});
+importFullDialog.addEventListener('click',event=>event.stopPropagation());
+importFullSearch.addEventListener('input',renderImportFullList);
+importFullFilter.addEventListener('change',renderImportFullList);
+
+document.addEventListener('click',event=>{
+  const transferTrigger=event.target.closest('[data-open-transfer]');
+  if(transferTrigger){
+    event.preventDefault();
+    els.addHolder.classList.remove('open');
+    openTransferWorkspace(transferTrigger.dataset.openTransfer);
+    return;
+  }
+
+  if(event.target.closest('.empty-action')){
+    openOperationForm('add');
+    return;
+  }
+
+  const row=event.target.closest('.row[data-op-type]');
+  if(!row)return;
+  const menuButton=event.target.closest('.row-menu button');
+  const editClicked=Boolean(menuButton&&menuButton.textContent.trim()==='Править');
+
+  if(editClicked){
+    const type=row.dataset.opType;
+    if(type==='Перевод')openTransferWorkspace('05-edit-linked-transfer');
+    else openOperationForm(type==='Поступление'?'edit-income':'edit-expense');
+    return;
+  }
+
+  if(menuButton&&menuButton.textContent.trim()==='Разъединить'){
+    openUnlinkConfirm(operationFromRow(row));
+    return;
+  }
+
+  if(menuButton&&menuButton.textContent.trim()==='Удалить'){
+    showDeleteConfirm(operationFromRow(row));
+  }
+});
+
+operationType.addEventListener('click',event=>{
+  const button=event.target.closest('[data-operation-type]');
+  if(!button)return;
+  const type=button.dataset.operationType;
+  if(type==='transfer'){
+    openTransferWorkspace('01-new-transfer-same-currency');
+    return;
+  }
+  setOperationType(type);
+});
+
+operationDescription.addEventListener('input',()=>{
+  updateOperationCounters();
+  const query=operationDescription.value.trim().toLowerCase();
+  descriptionSuggestions.classList.toggle('open',query.length>=2&&query.startsWith('me'));
+});
+
+descriptionSuggestions.addEventListener('click',event=>{
+  const suggestion=event.target.closest('[data-description]');
+  if(!suggestion)return;
+  operationDescription.value=suggestion.dataset.description;
+  operationCategory.value=suggestion.dataset.category;
+  autoCategoryBadge.classList.add('show');
+  descriptionSuggestions.classList.remove('open');
+  updateOperationCounters();
+});
+
+operationCategory.addEventListener('change',()=>{
+  autoCategoryBadge.classList.remove('show');
+});
+
+operationAccount.addEventListener('change',()=>{
+  accountGroup.classList.remove('invalid');
+});
+
+operationDate.addEventListener('input',()=>{
+  if(operationAccount.value!=='CASH THB')accountGroup.classList.remove('invalid');
+});
+
+operationNote.addEventListener('input',updateOperationCounters);
+
+additionalToggle.addEventListener('click',()=>{
+  setAdditionalOpen(!additionalFields.classList.contains('open'));
+});
+
+operationClose.addEventListener('click',closeOperationModal);
+operationOverlay.addEventListener('click',event=>{
+  if(event.target===operationOverlay)closeOperationModal();
+});
+document.querySelectorAll('[data-close-operation]').forEach(button=>{
+  button.addEventListener('click',closeOperationModal);
+});
+
+document.getElementById('addAndClose').addEventListener('click',()=>{
+  closeOperationModal();
+  showOperationToast('Операция добавлена');
+});
+document.getElementById('addMore').addEventListener('click',()=>{
+  showOperationToast('Операция добавлена');
+  resetAddOperationForm();
+});
+document.getElementById('saveOperation').addEventListener('click',()=>{
+  closeOperationModal();
+  showOperationToast('Изменения сохранены');
+});
+
+deleteOperation.addEventListener('click',()=>{
+  showDeleteConfirm();
+});
+cancelDelete.addEventListener('click',closeDeleteConfirm);
+deleteConfirmOverlay.addEventListener('click',event=>{
+  if(event.target===deleteConfirmOverlay)closeDeleteConfirm();
+});
+confirmDelete.addEventListener('click',()=>{
+  closeDeleteConfirm();
+  closeOperationModal();
+  showOperationToast('Операция удалена');
+});
+
+transferClose.addEventListener('click',closeTransferWorkspace);
+transferOverlay.addEventListener('click',event=>{
+  if(event.target===transferOverlay)closeTransferWorkspace();
+});
+transferDialog.addEventListener('click',event=>event.stopPropagation());
+
+transferFooter.addEventListener('click',event=>{
+  if(event.target.closest('[data-close-transfer]')){
+    closeTransferWorkspace();
+    return;
+  }
+  const action=event.target.closest('[data-transfer-action]');
+  if(!action)return;
+
+  if(action.dataset.transferAction==='unlink'){
+    openUnlinkConfirm();
+    return;
+  }
+
+  const messages={
+    add:'Перевод добавлен',
+    link:'Операции связаны',
+    'create-link':'Операция создана и связана',
+    save:'Изменения сохранены'
+  };
+  closeTransferWorkspace();
+  showOperationToast(messages[action.dataset.transferAction]||'Готово');
+});
+
+cancelUnlink.addEventListener('click',closeUnlinkConfirm);
+unlinkConfirmOverlay.addEventListener('click',event=>{
+  if(event.target===unlinkConfirmOverlay)closeUnlinkConfirm();
+});
+confirmUnlink.addEventListener('click',()=>{
+  closeUnlinkConfirm();
+  closeTransferWorkspace();
+  showOperationToast('Операции разъединены');
+});
+
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape')return;
+  if(unlinkConfirmOverlay.classList.contains('open'))closeUnlinkConfirm();
+  else if(deleteConfirmOverlay.classList.contains('open'))closeDeleteConfirm();
+  else if(importOverlay.classList.contains('open'))closeImportModal();
+  else if(operationOverlay.classList.contains('open'))closeOperationModal();
+  else if(transferOverlay.classList.contains('open'))closeTransferWorkspace();
+});
+
+screenErrorRetry.addEventListener('click',()=>{
+  screenErrorRetry.disabled=true;
+  screenErrorRetry.textContent='Загрузка…';
+  setTimeout(()=>{
+    screenErrorRetry.disabled=false;
+    screenErrorRetry.textContent='Повторить';
+    setErrorMode('none');
+    applyScreenMode('normal');
+  },1200);
+});
+
+document.addEventListener('click',e=>{
+  const retry=e.target.closest('[data-retry-error]');
+  if(!retry)return;
+  retry.disabled=true;
+  const original=retry.textContent;
+  retry.textContent='Загрузка…';
+  setTimeout(()=>{
+    retry.disabled=false;
+    retry.textContent=original;
+    setErrorMode('none');
+  },900);
+});
+
+setErrorMode('none');
+
+</script>
+
+
+</body>
+</html>

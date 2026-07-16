@@ -312,10 +312,9 @@ export function formatMoney(cents: number, currency: string) {
     .join("");
 }
 
-// Header for a day-group in the operations list, e.g. "пн, 24 июня".
+// Phase 1 day-group header, e.g. "24 июня".
 export function formatDayHeader(date: string) {
   return new Intl.DateTimeFormat("ru-RU", {
-    weekday: "short",
     day: "numeric",
     month: "long",
   }).format(new Date(`${date}T00:00:00`));
