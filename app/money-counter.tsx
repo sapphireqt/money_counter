@@ -19,6 +19,7 @@ import {
   formatMoneyParts,
   parseMoneyInputToCents,
 } from "../lib/finance";
+import { selectAccountPanelItems } from "../lib/accounts-panel";
 import {
   analyzeImport,
   buildRows,
@@ -74,8 +75,7 @@ type Account = {
   openingBalanceCents: number;
   color: string;
   // Lifetime bounds (null = «всегда»): the opening balance counts from
-  // openedAt, and the «Счета» panel hides the account outside the range
-  // unless a non-zero balance says otherwise.
+  // openedAt, and the «Счета» panel hides the account outside the range.
   openedAt: string | null;
   closedAt: string | null;
   balanceCents: number;
@@ -101,6 +101,18 @@ type Transaction = {
   // «Требует внимания» marker; the explanation usually lives in `notes`.
   flagged: boolean;
 };
+
+const ACCOUNT_PANEL_SKELETON_WIDTHS = [
+  ["72%", "62%", "78%"],
+  ["88%", "55%", "66%"],
+  ["80%", "69%", "74%"],
+  ["61%", "48%", "81%"],
+  ["76%", "63%", "70%"],
+  ["84%", "51%", "75%"],
+  ["65%", "58%", "68%"],
+  ["90%", "44%", "82%"],
+  ["73%", "60%", "72%"],
+] as const;
 
 // A row of the operations table: an ordinary transaction, or two loaded legs
 // of one transfer collapsed into a single «A → B» line.
@@ -858,6 +870,12 @@ export default function MoneyCounter() {
   const [operationSort, setOperationSort] = useState<OperationSort>("date");
   const [rightStackSticky, setRightStackSticky] = useState(true);
   const rightStackRef = useRef<HTMLDivElement>(null);
+  const accountsPanelRef = useRef<HTMLElement>(null);
+  const [accountsExpanded, setAccountsExpanded] = useState(false);
+  const [viewedOverflowAccountIds, setViewedOverflowAccountIds] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [accountsPanelSessionReady, setAccountsPanelSessionReady] = useState(false);
 
   const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   // The add/edit form + statement import now live in a single modal dialog,
@@ -1332,6 +1350,40 @@ export default function MoneyCounter() {
   }, [activeTab]);
 
   useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        setAccountsExpanded(window.sessionStorage.getItem("mc.accountsExpanded") === "true");
+        const storedIds = JSON.parse(
+          window.sessionStorage.getItem("mc.viewedOverflowAccountIds") ?? "[]"
+        ) as unknown;
+        if (Array.isArray(storedIds)) {
+          setViewedOverflowAccountIds(
+            new Set(storedIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))
+          );
+        }
+      } catch {
+        // Session storage is an enhancement; the panel still works without it.
+      } finally {
+        setAccountsPanelSessionReady(true);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!accountsPanelSessionReady) return;
+    try {
+      window.sessionStorage.setItem("mc.accountsExpanded", String(accountsExpanded));
+      window.sessionStorage.setItem(
+        "mc.viewedOverflowAccountIds",
+        JSON.stringify([...viewedOverflowAccountIds])
+      );
+    } catch {
+      // Keep the in-memory session state when storage is unavailable.
+    }
+  }, [accountsExpanded, viewedOverflowAccountIds, accountsPanelSessionReady]);
+
+  useEffect(() => {
     if (activeTab !== "main") return;
     const element = rightStackRef.current;
     if (!element) return;
@@ -1687,10 +1739,14 @@ export default function MoneyCounter() {
   // already 0 before opened_at, so a not-yet-opened account is naturally empty.
   const panelAccounts = useMemo(() => {
     const source = pastPeriod ? endAccounts ?? [] : accounts;
-    const viewStart = pastPeriod ? `${mainPeriod}-01` : today();
-    const viewEnd = pastPeriod ? monthEnd(mainPeriod) : today();
+    const viewStart = `${mainPeriod}-01`;
+    const viewEnd = monthEnd(mainPeriod);
     return source.filter((account) => accountInPeriod(account, viewStart, viewEnd));
   }, [pastPeriod, endAccounts, accounts, mainPeriod]);
+  const panelAccountSelection = useMemo(
+    () => selectAccountPanelItems(panelAccounts, accountsExpanded, viewedOverflowAccountIds),
+    [panelAccounts, accountsExpanded, viewedOverflowAccountIds]
+  );
   const panelRates = periodRates;
   const panelRateDate = periodRateDate;
   const panelTotals = useMemo(() => {
@@ -3981,9 +4037,11 @@ export default function MoneyCounter() {
             <aside className="rightRail">
               <div
                 ref={rightStackRef}
-                className={`rightStickyStack ${rightStackSticky ? "" : "stickyDisabled"}`}
+                className={`rightStickyStack ${compactMetricsVisible ? "scrolled" : ""} ${
+                  rightStackSticky ? "" : "stickyDisabled"
+                }`}
               >
-                <section className="accountsPanel" aria-label="Баланс по счетам">
+                <section ref={accountsPanelRef} className="accountsPanel" aria-label="Баланс по счетам">
                   <div className="accountPanelGrid accountPanelHead" aria-hidden="true">
                     <span>Счёт</span>
                     <span>Расходы</span>
@@ -3991,34 +4049,69 @@ export default function MoneyCounter() {
                   </div>
                   {loading || (pastPeriod && endAccounts === null) ? (
                     <div className="accountPanelSkeleton" aria-hidden="true">
-                      {Array.from({ length: 6 }, (_, index) => (
-                        <div className="accountPanelGrid" key={index}><span /><span /><span /></div>
+                      {ACCOUNT_PANEL_SKELETON_WIDTHS.map((widths, index) => (
+                        <div className="accountPanelGrid" key={index}>
+                          {widths.map((width, column) => (
+                            <span key={column} style={{ width }} />
+                          ))}
+                        </div>
                       ))}
                     </div>
                   ) : panelAccounts.length === 0 ? (
                     <div className="rightPanelState">Нет счетов</div>
                   ) : (
                     <div className="accountPanelRows">
-                      {panelAccounts.map((account) => (
-                        <div className="accountPanelGrid accountPanelRow" key={account.id}>
-                          <span className="accountPanelName">
-                            <strong>{account.name}</strong>
-                            <small>{account.currency}</small>
-                          </span>
-                          <span className="accountPanelSpend">{renderFlowCell(accountSpend.get(account.id))}</span>
-                          <span className={account.balanceCents < 0 ? "accountPanelBalance negative" : "accountPanelBalance"}>
-                            <span className="ratesPeek">
-                              <strong>{renderAccountBalance(account)}</strong>
-                              {displayCurrency && account.currency !== displayCurrency && rateInfo(account.currency) ? (
-                                <span className="ratesPop">{rateInfo(account.currency)}</span>
+                      {panelAccountSelection.visible.map((account) => {
+                        const balanceTone =
+                          account.balanceCents < 0
+                            ? "negative"
+                            : account.balanceCents === 0
+                              ? "zero"
+                              : "";
+                        return (
+                          <div className="accountPanelGrid accountPanelRow" key={account.id}>
+                            <span className="accountPanelName" title={account.name}>
+                              <strong>{account.name}</strong>
+                            </span>
+                            <span className="accountPanelSpend">{renderFlowCell(accountSpend.get(account.id))}</span>
+                            <span className={`accountPanelBalance ${balanceTone}`}>
+                              <span className="ratesPeek">
+                                <strong>{renderAccountBalance(account)}</strong>
+                                {displayCurrency && account.currency !== displayCurrency && rateInfo(account.currency) ? (
+                                  <span className="ratesPop">{rateInfo(account.currency)}</span>
+                                ) : null}
+                              </span>
+                              {displayCurrency && account.currency !== displayCurrency ? (
+                                <small><Money cents={account.balanceCents} currency={account.currency} /></small>
                               ) : null}
                             </span>
-                            {displayCurrency && account.currency !== displayCurrency ? (
-                              <small><Money cents={account.balanceCents} currency={account.currency} /></small>
-                            ) : null}
-                          </span>
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
+                      {panelAccounts.length > 9 ? (
+                        <button
+                          type="button"
+                          className="accountPanelExpand"
+                          aria-expanded={accountsExpanded}
+                          onClick={() => {
+                            if (!accountsExpanded) {
+                              setViewedOverflowAccountIds((current) => {
+                                const next = new Set(current);
+                                for (const account of panelAccounts.slice(9)) next.add(account.id);
+                                return next;
+                              });
+                              setAccountsExpanded(true);
+                              return;
+                            }
+                            setAccountsExpanded(false);
+                            window.requestAnimationFrame(() =>
+                              accountsPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                            );
+                          }}
+                        >
+                          {accountsExpanded ? "Свернуть" : `Показать ещё ${panelAccounts.length - 9}`}
+                        </button>
+                      ) : null}
                       <div className="accountPanelTotal">
                         <strong>Итого</strong>
                         <strong>{renderConverted(panelConverted, panelRates, panelRateDate)}</strong>

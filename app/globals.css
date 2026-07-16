@@ -3047,6 +3047,10 @@ textarea:focus-visible,
   display: grid;
   gap: 14px;
   position: sticky;
+  top: 10px;
+}
+
+.rightStickyStack.scrolled {
   top: 68px;
 }
 
@@ -3060,6 +3064,11 @@ textarea:focus-visible,
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 15px;
+}
+
+.accountsPanel {
+  position: relative;
+  z-index: 1;
 }
 
 .accountsPanelTitle {
@@ -3086,7 +3095,7 @@ textarea:focus-visible,
 }
 
 .accountPanelGrid {
-  align-items: center;
+  align-items: stretch;
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(0, 1fr) 84px 110px;
@@ -3115,45 +3124,91 @@ textarea:focus-visible,
 
 .accountPanelName strong {
   color: #555560;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.accountPanelName small,
 .accountPanelBalance small {
-  color: var(--muted);
-  font-size: 11px;
+  color: #7b7b86;
+  font-size: 12px;
+  font-weight: 400;
 }
 
-.accountPanelSpend,
+.accountPanelSpend {
+  color: #666671;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: right;
+}
+
+.accountPanelSpend .currencySymbol,
+.accountPanelBalance .currencySymbol,
+.accountPanelTotal .currencySymbol {
+  color: inherit;
+  font: inherit;
+}
+
+.accountPanelSpend .flowZero {
+  color: inherit;
+}
+
 .accountPanelBalance {
-  font-size: 12px;
+  color: #222229;
+  font-size: 14px;
+  font-weight: 700;
   justify-items: end;
   text-align: right;
 }
 
 .accountPanelBalance strong {
-  font-size: 13px;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.accountPanelBalance.negative strong {
-  color: var(--danger);
+.accountPanelBalance.negative,
+.accountPanelBalance.negative small {
+  color: #d55353;
+}
+
+.accountPanelBalance.zero,
+.accountPanelBalance.zero small {
+  color: #aaaaaa;
+}
+
+.accountPanelExpand {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  display: block;
+  padding: 4px 0;
 }
 
 .accountPanelTotal {
   border-top: 1px solid var(--line);
   display: flex;
+  font-weight: 800;
   justify-content: space-between;
   margin-top: 10px;
   padding-top: 12px;
 }
 
+.accountPanelTotal strong {
+  font-weight: 800;
+}
+
 .accountPanelSkeleton {
   display: grid;
-  gap: 17px;
-  padding-block: 12px;
+  gap: 10px;
+  padding-block: 10px;
+}
+
+.accountPanelSkeleton .accountPanelGrid {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 86px 110px;
 }
 
 .accountPanelSkeleton .accountPanelGrid span:nth-child(n + 2) {
