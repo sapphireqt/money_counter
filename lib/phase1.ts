@@ -94,3 +94,17 @@ export function groupOperationItemsByDate<T>(
   }
   return groups;
 }
+
+export function groupOperationItemsByYear<T>(
+  items: readonly T[],
+  getDate: (item: T) => string
+): Array<{ year: string; items: T[] }> {
+  const groups: Array<{ year: string; items: T[] }> = [];
+  for (const item of items) {
+    const year = getDate(item).slice(0, 4);
+    const last = groups[groups.length - 1];
+    if (last?.year === year) last.items.push(item);
+    else groups.push({ year, items: [item] });
+  }
+  return groups;
+}

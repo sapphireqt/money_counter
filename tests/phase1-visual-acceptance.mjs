@@ -367,6 +367,16 @@ const scenarios = [
         record("expense row has no leading minus", !/^[−-]/.test(expenseText.trim()), expenseText);
         record("income row has plus", incomeText.trim().startsWith("+"), incomeText);
         record("income row is green", incomeColor === "rgb(46, 155, 104)", incomeColor);
+
+        await productionPage.evaluate(() => window.scrollTo(0, 300));
+        await productionPage.waitForTimeout(220);
+        const tableHead = await rect(productionPage, ".p1OpsTable thead");
+        const rightStack = await rect(productionPage, ".rightStickyStack");
+        record("table heading stays below sticky toolbar", Math.abs(tableHead.y - 132) <= 1, `${tableHead.y}px`);
+        record("accounts and expenses rail stays sticky", Math.abs(rightStack.y - 68) <= 1, `${rightStack.y}px`);
+        record("table heading uses sticky positioning", (await computed(productionPage, ".p1OpsTable thead")).position === "sticky");
+        record("right rail uses sticky positioning", (await computed(productionPage, ".rightStickyStack")).position === "sticky");
+        await productionPage.evaluate(() => window.scrollTo(0, 0));
       }
     },
   },
@@ -436,15 +446,19 @@ const scenarios = [
     productionSetup: async (page) => {
       await page.locator(".operationScope").selectOption("history");
       await page.getByLabel("Поиск по операциям").fill("Carrefour");
-      await page.locator("tr.dayGroup").filter({ hasText: "2025" }).waitFor({ state: "visible" });
+      await page.locator("tr.yearGroup").filter({ hasText: "2025" }).waitFor({ state: "visible" });
     },
     check: async ({ productionPage }) => {
       record("history scope stays selected", await productionPage.locator(".operationScope").inputValue() === "history");
       record(
-        "history search returns an operation outside the selected period",
-        (await productionPage.locator("tr.dayGroup").filter({ hasText: "2025" }).count()) === 1
+        "history search is grouped by year",
+        (await productionPage.locator("tr.yearGroup").filter({ hasText: "2025" }).count()) === 1
       );
       record("history result row is visible", await productionPage.locator("tr.operationRow").filter({ hasText: "Carrefour" }).isVisible());
+      record("history table exposes the date heading", (await productionPage.locator(".p1OpsTable th").first().innerText()) === "Дата");
+      record("history result exposes its operation date", (await productionPage.locator(".operationDate").first().innerText()).includes("8 мар"));
+      record("history mode has no daily summary groups", (await productionPage.locator("tr.dayGroup").count()) === 0);
+      record("history layout class is active", await productionPage.locator(".p1OpsTable").evaluate((table) => table.classList.contains("historyMode")));
     },
   },
   {

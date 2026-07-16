@@ -2430,7 +2430,7 @@ textarea:focus-visible,
 }
 
 .p1Layout {
-  align-items: start;
+  align-items: stretch;
   display: grid;
   gap: var(--content-gap);
   grid-template-columns: var(--left-col) var(--right-col);
@@ -2937,6 +2937,12 @@ textarea:focus-visible,
   width: 100%;
 }
 
+.p1OpsTable thead {
+  position: sticky;
+  top: 74px;
+  z-index: 20;
+}
+
 .p1OpsTable tr {
   column-gap: 10px;
   display: grid;
@@ -2949,12 +2955,9 @@ textarea:focus-visible,
   background: rgba(255, 255, 255, 0.97);
   border-bottom: 1px solid var(--line);
   min-height: 42px;
-  position: sticky;
-  top: 74px;
-  z-index: 20;
 }
 
-.p1OpsTable.compactHeader thead tr {
+.p1OpsTable.compactHeader thead {
   top: 132px;
 }
 
@@ -2972,7 +2975,7 @@ textarea:focus-visible,
   letter-spacing: 0.005em;
 }
 
-.p1OpsTable tbody > tr:not(.dayGroup):not(.operationSkeleton) {
+.p1OpsTable tbody > tr:not(.dayGroup):not(.yearGroup):not(.operationSkeleton) {
   align-items: center;
   border-top: 1px solid #f3f4f7;
   min-height: 44px;
@@ -2980,7 +2983,7 @@ textarea:focus-visible,
   transition: background 0.15s ease;
 }
 
-.p1OpsTable tbody > tr:not(.dayGroup):not(.operationSkeleton):hover {
+.p1OpsTable tbody > tr:not(.dayGroup):not(.yearGroup):not(.operationSkeleton):hover {
   background: #faf9fc;
 }
 
@@ -3209,6 +3212,25 @@ textarea:focus-visible,
 
 .p1OpsTable.flatMode tr {
   grid-template-columns: 74px 122px 300px 214px 94px 42px;
+}
+
+.p1OpsTable.historyMode tr {
+  grid-template-columns: 62px 132px 282px 224px 104px 42px;
+}
+
+.p1OpsTable .yearGroup {
+  padding-block: 18px 8px;
+}
+
+.p1OpsTable .yearGroup > td {
+  font-size: 16px;
+  font-weight: 800;
+  grid-column: 1 / -1;
+}
+
+.p1OpsTable.historyMode .operationDate {
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
 .operationDate {

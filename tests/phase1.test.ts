@@ -5,6 +5,7 @@ import {
   accountIsActiveOn,
   buildCategoryPresentation,
   groupOperationItemsByDate,
+  groupOperationItemsByYear,
   hasOperationListFilters,
   selectActiveAccountsOn,
   shouldLoadOperationHistory,
@@ -87,6 +88,27 @@ test("amount sorting is absolute and date sorting restores day order", () => {
     [
       { date: "2026-07-12", ids: [3, 1] },
       { date: "2026-07-11", ids: [2] },
+    ]
+  );
+});
+
+test("history date mode groups descending operations by year", () => {
+  const rows = [
+    { id: 4, date: "2026-07-12" },
+    { id: 3, date: "2026-01-02" },
+    { id: 2, date: "2025-12-31" },
+    { id: 1, date: "2024-03-08" },
+  ];
+
+  assert.deepEqual(
+    groupOperationItemsByYear(rows, (row) => row.date).map((group) => ({
+      year: group.year,
+      ids: group.items.map((row) => row.id),
+    })),
+    [
+      { year: "2026", ids: [4, 3] },
+      { year: "2025", ids: [2] },
+      { year: "2024", ids: [1] },
     ]
   );
 });

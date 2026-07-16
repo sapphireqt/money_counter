@@ -40,6 +40,35 @@ test("operations toolbar includes the prototype period/history scope", () => {
   assert.match(css, /grid-template-columns:\s*auto minmax\(190px, 1fr\) auto/);
 });
 
+test("table header and right rail use viewport sticky containers", () => {
+  assert.match(
+    css,
+    /\.p1Layout\s*\{[^}]*align-items:\s*stretch/
+  );
+  assert.match(
+    css,
+    /\.p1OpsTable thead\s*\{[^}]*position:\s*sticky[^}]*top:\s*74px/
+  );
+  assert.match(
+    css,
+    /\.p1OpsTable\.compactHeader thead\s*\{[^}]*top:\s*132px/
+  );
+  assert.match(
+    css,
+    /\.rightStickyStack\s*\{[^}]*position:\s*sticky[^}]*top:\s*10px/
+  );
+});
+
+test("history date mode uses year groups and a per-row date column", () => {
+  assert.match(component, /const historyDateMode = historyScopeActive && operationSort === "date"/);
+  assert.match(component, /<tr className="yearGroup">/);
+  assert.match(component, /groupOperationItemsByYear/);
+  assert.match(component, /historyDateMode \? <th>Дата<\/th>/);
+  assert.match(component, /group\.items\.map\(\(row\) => renderOperationRow\(row, true\)\)/);
+  assert.match(css, /\.p1OpsTable\.historyMode tr\s*\{/);
+  assert.match(css, /\.p1OpsTable \.yearGroup > td\s*\{[^}]*font-size:\s*16px[^}]*font-weight:\s*800/);
+});
+
 test("forecast-off summary uses the full content column", () => {
   assert.match(
     css,

@@ -23,6 +23,7 @@ import { selectAccountPanelItems } from "../lib/accounts-panel";
 import {
   buildCategoryPresentation,
   groupOperationItemsByDate,
+  groupOperationItemsByYear,
   hasOperationListFilters,
   selectActiveAccountsOn,
   shouldLoadOperationHistory,
@@ -495,10 +496,10 @@ const TABLE_MONTH_SHORT = [
   "июл", "авг", "сен", "окт", "ноя", "дек",
 ];
 
-function shortOperationDate(isoDate: string) {
+function shortOperationDate(isoDate: string, withYear = false) {
   const [year, month, day] = isoDate.split("-").map(Number);
   if (!year || !month || !day) return isoDate;
-  return `${day} ${TABLE_MONTH_SHORT[month - 1]}`;
+  return `${day} ${TABLE_MONTH_SHORT[month - 1]}${withYear ? ` ${year}` : ""}`;
 }
 
 // Donut segment path (outer radius r, inner radius ir, angles in radians).
@@ -2327,6 +2328,13 @@ export default function MoneyCounter() {
     );
   }, [displayRows]);
 
+  const historyYearGroups = useMemo(() => {
+    return groupOperationItemsByYear(
+      displayRows,
+      (row) => (row.kind === "transfer" ? row.out : row.tx).date
+    );
+  }, [displayRows]);
+
   const amountForSort = useCallback(
     (row: DisplayRow) => {
       const transaction = row.kind === "transfer" ? row.out : row.tx;
@@ -3452,6 +3460,7 @@ export default function MoneyCounter() {
       : operationSort === "amount-desc"
         ? "Сумма ↓"
         : "Сумма ↑";
+  const historyDateMode = historyScopeActive && operationSort === "date";
 
   const operationModalTitle =
     transactionForm.direction === "transfer"
@@ -3466,7 +3475,11 @@ export default function MoneyCounter() {
           : "Редактировать расход"
         : "Новая операция";
 
-  function renderOperationRow(row: DisplayRow, showDate: boolean) {
+  function renderOperationRow(
+    row: DisplayRow,
+    showDate: boolean,
+    showDateYear = false
+  ) {
     const transaction = row.kind === "transfer" ? row.out : row.tx;
     const menuKey =
       row.kind === "transfer"
@@ -3492,7 +3505,7 @@ export default function MoneyCounter() {
       >
         {showDate ? (
           <td className="operationDate">
-            {shortOperationDate(transaction.date)}
+            {shortOperationDate(transaction.date, showDateYear)}
             {flagged ? <span className="p1MarkFlag" data-p1-tip={flagReason}>⚠</span> : null}
           </td>
         ) : (
@@ -3986,12 +3999,12 @@ export default function MoneyCounter() {
 
                 <div className="p1TableFrame">
                   <table className={`p1OpsTable ${operationSort !== "date" ? "flatMode" : ""} ${
-                    compactMetricsVisible ? "compactHeader" : ""
-                  }`}>
+                    historyDateMode ? "historyMode" : ""
+                  } ${compactMetricsVisible ? "compactHeader" : ""}`}>
                     <thead>
                       {operationSort === "date" ? (
                         <tr>
-                          <th aria-label="Пометки" />
+                          {historyDateMode ? <th>Дата</th> : <th aria-label="Пометки" />}
                           <th>Счёт</th>
                           <th>Назначение</th>
                           <th className="p1AmountHeading">Сумма</th>
@@ -4039,7 +4052,25 @@ export default function MoneyCounter() {
                             />
                           </tr>
                         ) : (
-                          sortedOperationRows.map((row) => renderOperationRow(row, true))
+                          sortedOperationRows.map((row) => renderOperationRow(row, true, true))
+                        )
+                      ) : historyDateMode ? (
+                        historyYearGroups.length === 0 ? (
+                          <tr>
+                            <OperationTableState
+                              kind={hasActiveListFilters && periodTransactions.length > 0 ? "no-results" : "empty"}
+                              onAction={hasActiveListFilters && periodTransactions.length > 0 ? resetListFilters : openAddTransaction}
+                            />
+                          </tr>
+                        ) : (
+                          historyYearGroups.map((group) => (
+                            <Fragment key={group.year}>
+                              <tr className="yearGroup">
+                                <td colSpan={6}>{group.year}</td>
+                              </tr>
+                              {group.items.map((row) => renderOperationRow(row, true))}
+                            </Fragment>
+                          ))
                         )
                       ) : dayGroups.length === 0 ? (
                         <tr>
