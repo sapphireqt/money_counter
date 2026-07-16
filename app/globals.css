@@ -2105,6 +2105,23 @@ textarea:focus-visible,
   border-radius: 10px;
 }
 
+/* Phase 1 follows the prototype's single period capsule. Month navigation
+   remains available in the picker panel instead of adding side controls that
+   are absent from the reference. */
+.phase1Top .monthPickerCapsule {
+  min-height: 38px;
+}
+
+.phase1Top .monthPickerArrow {
+  display: none;
+}
+
+.phase1Top .monthPickerTrigger {
+  border: 0;
+  min-width: 0;
+  padding: 0 11px;
+}
+
 .currencySelect {
   min-height: 38px;
   padding: 0 11px;
@@ -2191,7 +2208,7 @@ textarea:focus-visible,
 
 .phase1Top .metric > strong {
   font-size: 21px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.015em;
   line-height: 1.15;
   white-space: nowrap;
@@ -2220,6 +2237,7 @@ textarea:focus-visible,
 
 .forecastColumns {
   align-items: center;
+  column-gap: 18px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -2384,6 +2402,23 @@ textarea:focus-visible,
 .compactForecast b {
   color: #536356;
   font-size: 11px;
+}
+
+.compactMini {
+  align-items: baseline;
+  display: flex;
+  gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.compactMini > span {
+  color: #718074;
+  font-size: 9px;
+}
+
+.compactMini > b {
+  font-size: 10.5px;
 }
 
 @media (max-width: 1417px) {
@@ -2802,6 +2837,25 @@ textarea:focus-visible,
   text-align: right;
 }
 
+.phase1OpsTable .dayTotalInner {
+  bottom: auto;
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  position: static;
+  right: auto;
+  text-align: right;
+  width: 112px;
+}
+
+.phase1OpsTable .dayTarget {
+  color: #8a8c95;
+  display: block;
+  font-size: 10.5px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
 .phase1OpsTable .dayGroup > :nth-child(3) {
   display: none;
 }
@@ -2864,6 +2918,13 @@ textarea:focus-visible,
   font-size: 12px;
   text-align: right;
   white-space: nowrap;
+}
+
+/* The prototype's 244px amount column contains 112px + 92px subcolumns and
+   leaves 30px before the category. Keep that optical alignment while the
+   semantic table uses two cells for the two currency values. */
+.phase1OpsTable:not(.flatMode) tbody td:nth-child(6) {
+  padding-right: 30px;
 }
 
 .phase1OpsTable .transferRow,
@@ -3015,6 +3076,10 @@ textarea:focus-visible,
   margin: 0;
 }
 
+.categoryPanel > h2 {
+  font-size: 14px;
+}
+
 .accountsPanelTitle span {
   color: var(--muted);
   font-size: 10px;
@@ -3113,8 +3178,9 @@ textarea:focus-visible,
 .categoryDonutVisual {
   align-items: center;
   display: flex;
+  flex-direction: column;
   justify-content: center;
-  min-height: 280px;
+  min-height: 382px;
   position: relative;
 }
 
@@ -3133,8 +3199,10 @@ textarea:focus-visible,
 }
 
 .categoryDonutLabel {
-  fill: #767b86;
-  font-size: 10px;
+  fill: #505562;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 .categoryDonutTotal {
@@ -3147,7 +3215,7 @@ textarea:focus-visible,
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  bottom: 14px;
+  bottom: 68px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
   display: grid;
   font-size: 11px;
@@ -3169,6 +3237,7 @@ textarea:focus-visible,
   gap: 8px 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 18px;
+  width: 100%;
 }
 
 .categoryLegend button {
@@ -3184,7 +3253,8 @@ textarea:focus-visible,
 }
 
 .categoryLegend button:hover,
-.categoryLegend button:focus-visible {
+.categoryLegend button:focus-visible,
+.categoryLegend button.active {
   background: #f1edf8;
 }
 

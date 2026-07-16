@@ -549,15 +549,25 @@ function CategoryDonut({
 
   const cx = 140;
   const cy = 140;
-  const r = 118;
-  const ir = 76;
+  // Prototype v34 uses a 56px ring centred on radius 100. Expressing the
+  // same geometry as a filled path gives an outer radius of 128 and an inner
+  // radius of 72.
+  const r = 128;
+  const ir = 72;
   const start = -Math.PI / 2;
   const slices = visible.map((item, index) => {
     const prior = visible.slice(0, index).reduce((sum, row) => sum + row.cents, 0);
     const share = item.cents / total;
     const a0 = start + (prior / total) * Math.PI * 2;
     const a1 = a0 + Math.min(share, 0.9999) * Math.PI * 2;
-    return { ...item, share, d: donutPath(cx, cy, r, ir, a0, a1) };
+    const mid = (a0 + a1) / 2;
+    return {
+      ...item,
+      share,
+      d: donutPath(cx, cy, r, ir, a0, a1),
+      labelX: cx + Math.cos(mid) * 104,
+      labelY: cy + Math.sin(mid) * 104,
+    };
   });
   const active = activeIndex === null ? null : slices[activeIndex];
 
@@ -575,10 +585,21 @@ function CategoryDonut({
               onMouseLeave={() => setActiveIndex(null)}
             />
           ))}
-          <text x="140" y="137" textAnchor="middle" className="categoryDonutLabel">
-            Расходы
-          </text>
-          <text x="140" y="156" textAnchor="middle" className="categoryDonutTotal">
+          {slices
+            .filter((slice) => slice.share >= 0.075)
+            .map((slice) => (
+              <text
+                key={`${slice.label}-label`}
+                x={slice.labelX}
+                y={slice.labelY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="categoryDonutLabel"
+              >
+                {Math.round(slice.share * 100)}%
+              </text>
+            ))}
+          <text x="140" y="144" textAnchor="middle" className="categoryDonutTotal">
             {formatMoney(total, currency)}
           </text>
         </svg>
@@ -588,22 +609,23 @@ function CategoryDonut({
             <span><Money cents={active.cents} currency={currency} /> · {Math.round(active.share * 100)}%</span>
           </div>
         ) : null}
-      </div>
-      <div className="categoryLegend">
-        {slices.map((slice, index) => (
-          <button
-            type="button"
-            key={slice.label}
-            onFocus={() => setActiveIndex(index)}
-            onBlur={() => setActiveIndex(null)}
-            onMouseEnter={() => setActiveIndex(index)}
-            onMouseLeave={() => setActiveIndex(null)}
-          >
-            <span className="categoryLegendDot" style={{ background: slice.color }} />
-            <span className="categoryLegendName">{slice.label}</span>
-            <span className="categoryLegendValue"><Money cents={slice.cents} currency={currency} /></span>
-          </button>
-        ))}
+        <div className="categoryLegend">
+          {slices.map((slice, index) => (
+            <button
+              type="button"
+              key={slice.label}
+              className={activeIndex === index ? "active" : ""}
+              onFocus={() => setActiveIndex(index)}
+              onBlur={() => setActiveIndex(null)}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+            >
+              <span className="categoryLegendDot" style={{ background: slice.color }} />
+              <span className="categoryLegendName">{slice.label}</span>
+              <span className="categoryLegendValue"><Money cents={slice.cents} currency={currency} /></span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -3383,7 +3405,9 @@ export default function MoneyCounter() {
             {forecastOverlay ? (
               <div className="compactForecast">
                 <span>Прогноз на {formatMonthLabel(mainPeriod).replace(/^./, (value) => value.toLowerCase())}</span>
-                <b><Money cents={forecastOverlay.availableCents} currency={displayCurrency} /></b>
+                <span className="compactMini"><span>Цель</span><b><Money cents={forecastOverlay.goalCents} currency={displayCurrency} /></b></span>
+                <span className="compactMini"><span>Траты в день</span><b><Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} /></b></span>
+                <span className="compactMini"><span>Доступно</span><b><Money cents={forecastOverlay.availableCents} currency={displayCurrency} /></b></span>
               </div>
             ) : null}
           </div>
@@ -3741,7 +3765,7 @@ export default function MoneyCounter() {
                                     <Money cents={perDayExpenseCents[group.date] ?? 0} currency={displayCurrency} />
                                     {forecastOverlay && group.date === today() ? (
                                       <span className="dayTarget">
-                                        {" / ⊕ "}
+                                        Цель{" "}
                                         <Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} />
                                       </span>
                                     ) : null}
@@ -3960,10 +3984,6 @@ export default function MoneyCounter() {
                 className={`rightStickyStack ${rightStackSticky ? "" : "stickyDisabled"}`}
               >
                 <section className="accountsPanel" aria-label="Баланс по счетам">
-                  <div className="accountsPanelTitle">
-                    <h2>Счета</h2>
-                    {pastPeriod ? <span>на {dmy(monthEnd(mainPeriod))}</span> : null}
-                  </div>
                   <div className="accountPanelGrid accountPanelHead" aria-hidden="true">
                     <span>Счёт</span>
                     <span>Расходы</span>
