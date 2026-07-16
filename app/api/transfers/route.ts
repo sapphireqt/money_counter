@@ -31,7 +31,48 @@ type CreatePayload = {
   amount?: unknown;
   amountIn?: unknown;
   description?: unknown;
+  notes?: unknown;
+  flagged?: unknown;
 };
+
+type TransferRow = {
+  id: number;
+  account_id: number;
+  account_name: string;
+  account_currency: string;
+  date: string;
+  description: string;
+  category: string;
+  payee: string;
+  amount_cents: number;
+  status: string;
+  notes: string;
+  transfer_group: string | null;
+  flagged: number;
+};
+
+function mapTransferRow(row: TransferRow) {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    accountName: row.account_name,
+    accountCurrency: row.account_currency,
+    date: row.date,
+    description: row.description,
+    category: row.category,
+    payee: row.payee,
+    amountCents: row.amount_cents,
+    status: row.status,
+    notes: row.notes,
+    transferGroup: row.transfer_group,
+    flagged: row.flagged === 1,
+  };
+}
+
+function mergeNotes(first: string, second: string) {
+  const notes = [first.trim(), second.trim()].filter(Boolean);
+  return [...new Set(notes)].join("\n");
+}
 
 // Create a brand-new transfer: both legs inserted already linked, in ONE D1
 // batch (atomic), so a manual «перекинул деньги» is a single action instead
@@ -86,10 +127,10 @@ async function createTransfer(create: CreatePayload) {
   // invent an exchange rate for real money.
   const sameCurrency = from.currency === to.currency;
   const hasAmountIn = create.amountIn != null && String(create.amountIn).trim() !== "";
-  const inCents = hasAmountIn
-    ? Math.abs(parseMoneyInputToCents(create.amountIn) ?? 0)
-    : sameCurrency
-      ? outCents
+  const inCents = sameCurrency
+    ? outCents
+    : hasAmountIn
+      ? Math.abs(parseMoneyInputToCents(create.amountIn) ?? 0)
       : 0;
   if (inCents === 0) {
     return Response.json(
@@ -100,14 +141,58 @@ async function createTransfer(create: CreatePayload) {
 
   const description =
     String(create.description ?? "").trim() || `Перевод: ${from.name} → ${to.name}`;
+  const notes = String(create.notes ?? "").trim();
+  const flagged = create.flagged ? 1 : 0;
   const group = crypto.randomUUID();
-  const insert = `INSERT INTO transactions (account_id, date, description, category, payee, amount_cents, notes, transfer_group)
-                  VALUES (?, ?, ?, '', '', ?, '', ?)`;
+  const insert = `INSERT INTO transactions (account_id, date, description, category, payee, amount_cents, notes, transfer_group, flagged)
+                  VALUES (?, ?, ?, '', '', ?, ?, ?, ?)`;
   await d1.batch([
-    d1.prepare(insert).bind(fromId, date, description, -outCents, group),
-    d1.prepare(insert).bind(toId, date, description, inCents, group),
+    d1.prepare(insert).bind(fromId, date, description, -outCents, notes, group, flagged),
+    d1.prepare(insert).bind(toId, date, description, inCents, notes, group, flagged),
   ]);
   return Response.json({ created: 2, group }, { status: 201 });
+}
+
+async function readTransfer(group: string) {
+  const rows = await getD1()
+    .prepare(
+      `SELECT
+         t.id,
+         t.account_id,
+         a.name AS account_name,
+         a.currency AS account_currency,
+         t.date,
+         t.description,
+         t.category,
+         t.payee,
+         t.amount_cents,
+         t.status,
+         t.notes,
+         t.transfer_group,
+         t.flagged
+       FROM transactions t
+       JOIN accounts a ON a.id = t.account_id
+       WHERE t.transfer_group = ?
+       ORDER BY t.amount_cents ASC, t.id ASC`
+    )
+    .bind(group)
+    .all<TransferRow>();
+  return rows.results ?? [];
+}
+
+export async function GET(request: Request) {
+  try {
+    await ensureSchema();
+    const group = new URL(request.url).searchParams.get("group")?.trim() ?? "";
+    if (!group) return Response.json({ error: "Некорректный перевод" }, { status: 400 });
+    const rows = await readTransfer(group);
+    if (rows.length !== 2) {
+      return Response.json({ error: "Связанные операции не найдены" }, { status: 404 });
+    }
+    return Response.json({ transactions: rows.map(mapTransferRow) });
+  } catch (error) {
+    return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });
+  }
 }
 
 /**
@@ -211,6 +296,106 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PATCH(request: Request) {
+  try {
+    await ensureSchema();
+    const payload = (await request.json().catch(() => ({}))) as {
+      group?: unknown;
+      date?: unknown;
+      fromAccountId?: unknown;
+      toAccountId?: unknown;
+      amount?: unknown;
+      amountIn?: unknown;
+      description?: unknown;
+      descriptionIn?: unknown;
+      notes?: unknown;
+      flagged?: unknown;
+    };
+    const group = String(payload.group ?? "").trim();
+    if (!group) return Response.json({ error: "Некорректный перевод" }, { status: 400 });
+
+    const rows = await readTransfer(group);
+    const out = rows.find((row) => row.amount_cents < 0);
+    const incoming = rows.find((row) => row.amount_cents > 0);
+    if (!out || !incoming || rows.length !== 2) {
+      return Response.json({ error: "Связанные операции не найдены" }, { status: 404 });
+    }
+
+    const fromId = parseId(payload.fromAccountId) ?? out.account_id;
+    const toId = parseId(payload.toAccountId) ?? incoming.account_id;
+    if (fromId === toId) {
+      return Response.json({ error: "Счета должны быть разными" }, { status: 400 });
+    }
+    const date = normalizeDateInput(payload.date ?? out.date);
+    if (!date) return Response.json({ error: "Некорректная дата" }, { status: 400 });
+
+    const outCents =
+      payload.amount == null
+        ? Math.abs(out.amount_cents)
+        : Math.abs(parseMoneyInputToCents(payload.amount) ?? 0);
+    if (outCents === 0) return Response.json({ error: "Некорректная сумма" }, { status: 400 });
+
+    const accountRows = await getD1()
+      .prepare(
+        "SELECT id, name, currency, opened_at, closed_at FROM accounts WHERE id IN (?, ?) AND archived_at IS NULL"
+      )
+      .bind(fromId, toId)
+      .all<{ id: number; name: string; currency: string; opened_at: string | null; closed_at: string | null }>();
+    const from = (accountRows.results ?? []).find((account) => account.id === fromId);
+    const to = (accountRows.results ?? []).find((account) => account.id === toId);
+    if (!from || !to) return Response.json({ error: "Счёт не найден" }, { status: 404 });
+    for (const account of [from, to]) {
+      if (account.opened_at && date < account.opened_at) {
+        return Response.json(
+          { error: `Счёт «${account.name}» открыт ${account.opened_at.split("-").reverse().join(".")} — дата перевода раньше` },
+          { status: 400 }
+        );
+      }
+      if (account.closed_at && date > account.closed_at) {
+        return Response.json(
+          { error: `Счёт «${account.name}» закрыт ${account.closed_at.split("-").reverse().join(".")} — дата перевода позже` },
+          { status: 400 }
+        );
+      }
+    }
+
+    const sameCurrency = from.currency === to.currency;
+    const inCents = sameCurrency
+      ? outCents
+      : payload.amountIn == null
+        ? Math.abs(incoming.amount_cents)
+        : Math.abs(parseMoneyInputToCents(payload.amountIn) ?? 0);
+    if (inCents === 0) {
+      return Response.json({ error: `Укажите сумму зачисления в ${to.currency}` }, { status: 400 });
+    }
+
+    const descriptionOut =
+      String(payload.description ?? out.description).trim() ||
+      `Перевод: ${from.name} → ${to.name}`;
+    const descriptionIn =
+      String(payload.descriptionIn ?? incoming.description).trim() || descriptionOut;
+    const notes =
+      "notes" in payload
+        ? String(payload.notes ?? "").trim()
+        : mergeNotes(out.notes, incoming.notes);
+    const flagged =
+      "flagged" in payload ? (payload.flagged ? 1 : 0) : out.flagged || incoming.flagged ? 1 : 0;
+    const sql = `UPDATE transactions
+                 SET account_id = ?, date = ?, description = ?, category = '', amount_cents = ?,
+                     notes = ?, flagged = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ? AND transfer_group = ?`;
+    await getD1().batch([
+      getD1().prepare(sql).bind(fromId, date, descriptionOut, -outCents, notes, flagged, out.id, group),
+      getD1().prepare(sql).bind(toId, date, descriptionIn, inCents, notes, flagged, incoming.id, group),
+    ]);
+
+    const updated = await readTransfer(group);
+    return Response.json({ transactions: updated.map(mapTransferRow) });
+  } catch (error) {
+    return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });
+  }
+}
+
 // DELETE /api/transfers?group=<id> — split a transfer back into two ordinary
 // operations (categories stay empty; re-categorize by hand or rules).
 export async function DELETE(request: Request) {
@@ -220,11 +405,27 @@ export async function DELETE(request: Request) {
     if (!group) {
       return Response.json({ error: "Некорректное перемещение" }, { status: 400 });
     }
-    const result = await getD1()
-      .prepare("UPDATE transactions SET transfer_group = NULL, updated_at = CURRENT_TIMESTAMP WHERE transfer_group = ?")
-      .bind(group)
-      .run();
-    return Response.json({ unlinked: result.meta.changes ?? 0 });
+    const rows = await readTransfer(group);
+    const out = rows.find((row) => row.amount_cents < 0);
+    const incoming = rows.find((row) => row.amount_cents > 0);
+    if (!out || !incoming || rows.length !== 2) {
+      return Response.json({ error: "Связанные операции не найдены" }, { status: 404 });
+    }
+    const notes = mergeNotes(out.notes, incoming.notes);
+    const flagged = out.flagged || incoming.flagged ? 1 : 0;
+    await getD1().batch([
+      getD1()
+        .prepare(
+          "UPDATE transactions SET transfer_group = NULL, notes = ?, flagged = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+        .bind(notes, flagged, out.id),
+      getD1()
+        .prepare(
+          "UPDATE transactions SET transfer_group = NULL, notes = '', flagged = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+        .bind(incoming.id),
+    ]);
+    return Response.json({ unlinked: 2 });
   } catch (error) {
     return Response.json({ error: toRouteErrorMessage(error) }, { status: 500 });
   }

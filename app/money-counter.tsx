@@ -3,6 +3,7 @@
 import {
   Fragment,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -29,6 +30,7 @@ import {
   type ParsedRow,
 } from "../lib/import";
 import { analyzePdf, type PdfPage } from "../lib/pdf";
+import type { DescriptionSuggestion } from "../lib/operations";
 import {
   forecastMonth,
   type ForecastResult,
@@ -106,6 +108,8 @@ type DisplayRow =
   | { kind: "tx"; tx: Transaction }
   | { kind: "transfer"; out: Transaction; incoming: Transaction };
 
+type OperationSort = "date" | "amount-desc" | "amount-asc";
+
 // One side of a detected transfer pair as /api/transfers/detect returns it.
 type DetectLeg = {
   id: number;
@@ -146,6 +150,7 @@ type TransactionForm = {
   direction: "expense" | "income" | "transfer";
   amount: string;
   description: string;
+  descriptionIn: string;
   category: string;
   // Transfer-only fields: the receiving account and (for cross-currency
   // transfers) the amount that actually arrived, in its currency.
@@ -168,6 +173,8 @@ type ImportPayloadRow = {
 };
 
 type Tab = "main" | "settings" | "charts" | "forecast" | "pending";
+
+type PrimaryNavTab = Exclude<Tab, "pending">;
 
 const DELIMITER_LABELS: Record<string, string> = {
   ",": "запятая",
@@ -383,6 +390,37 @@ function EditIcon() {
   );
 }
 
+function NavIcon({ tab }: { tab: PrimaryNavTab }) {
+  if (tab === "main") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h10" />
+      </svg>
+    );
+  }
+  if (tab === "forecast") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m3 17 5-5 4 3 7-8" />
+        <path d="M14 7h5v5" />
+      </svg>
+    );
+  }
+  if (tab === "charts") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3A1.7 1.7 0 0 0 14 21v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14h-.2v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9A1.7 1.7 0 0 0 21 10h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+    </svg>
+  );
+}
+
 // Convert a per-currency map of cents into a single target currency using a
 // USD-based rate map (1 USD = rates[c] units of c). Amounts already in the
 // target need no rate. Currencies with no available rate are summed-out and
@@ -486,58 +524,87 @@ function CategoryPie({
   );
 }
 
-// Horizontal category bars under the «Счета» panel: the selected period's
-// expenses by category, largest first. Bars scale to the largest category (so
-// the ranking is readable), the number after each bar is the category's share
-// of the period's expenses. No axes on purpose — it's a ranking, not a chart
-// to read values off. The 44px term reserves room for the share label, so the
-// longest bar's label lands at the panel's right edge.
-function CategoryBars({
+function CategoryDonut({
   items,
-  uncategorized,
   currency,
 }: {
-  items: Array<{ label: string; cents: number; share: number; color: string }>;
-  uncategorized: { label: string; cents: number; share: number; color: string } | null;
+  items: Array<{ label: string; cents: number; color: string }>;
   currency: string;
 }) {
-  const all = uncategorized ? [...items, uncategorized] : items;
-  if (all.length === 0) {
-    return <div className="emptyBars">Нет расходов за период</div>;
-  }
-  // Bars scale to the single largest value — including «Без категории», so
-  // lengths stay comparable across the divider.
-  const largest = Math.max(...all.map((item) => item.cents));
-  const renderRow = (item: (typeof all)[number]) => (
-    <div
-      key={item.label}
-      className="catBarRow"
-      title={`${item.label} — ${formatMoney(item.cents, currency)}`}
-    >
-      <span className="catBarLabel">{item.label}</span>
-      <span className="catBarTrack">
-        <span
-          className="catBarFill"
-          style={{
-            width: `calc((100% - 44px) * ${Math.max(item.cents / largest, 0.02).toFixed(4)})`,
-            background: item.color,
-          }}
-        />
-        <span className="catBarPct">
-          {item.share < 0.5 ? "<1%" : `${Math.round(item.share)}%`}
-        </span>
-      </span>
-    </div>
-  );
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const positive = items.filter((item) => item.cents > 0);
+  const visible =
+    positive.length <= 4
+      ? positive
+      : [
+          ...positive.slice(0, 3),
+          {
+            label: "Остальное",
+            cents: positive.slice(3).reduce((sum, item) => sum + item.cents, 0),
+            color: "#c9c5d1",
+          },
+        ];
+  const total = visible.reduce((sum, item) => sum + item.cents, 0);
+  if (total <= 0) return <div className="categoryEmpty">Нет расходов за период</div>;
+
+  const cx = 140;
+  const cy = 140;
+  const r = 118;
+  const ir = 76;
+  const start = -Math.PI / 2;
+  const slices = visible.map((item, index) => {
+    const prior = visible.slice(0, index).reduce((sum, row) => sum + row.cents, 0);
+    const share = item.cents / total;
+    const a0 = start + (prior / total) * Math.PI * 2;
+    const a1 = a0 + Math.min(share, 0.9999) * Math.PI * 2;
+    return { ...item, share, d: donutPath(cx, cy, r, ir, a0, a1) };
+  });
+  const active = activeIndex === null ? null : slices[activeIndex];
+
   return (
-    <div className="catBars">
-      {items.map(renderRow)}
-      {uncategorized ? (
-        <>
-          {items.length > 0 ? <div className="catBarsDivider" /> : null}
-          {renderRow(uncategorized)}
-        </>
-      ) : null}
+    <div className="categoryDonut">
+      <div className="categoryDonutVisual">
+        <svg viewBox="0 0 280 280" role="img" aria-label="Расходы по категориям">
+          {slices.map((slice, index) => (
+            <path
+              key={slice.label}
+              d={slice.d}
+              fill={slice.color}
+              className={activeIndex !== null && activeIndex !== index ? "dimmed" : ""}
+              onMouseEnter={() => setActiveIndex(index)}
+              onMouseLeave={() => setActiveIndex(null)}
+            />
+          ))}
+          <text x="140" y="137" textAnchor="middle" className="categoryDonutLabel">
+            Расходы
+          </text>
+          <text x="140" y="156" textAnchor="middle" className="categoryDonutTotal">
+            {formatMoney(total, currency)}
+          </text>
+        </svg>
+        {active ? (
+          <div className="categoryTooltip" role="status">
+            <strong>{active.label}</strong>
+            <span><Money cents={active.cents} currency={currency} /> · {Math.round(active.share * 100)}%</span>
+          </div>
+        ) : null}
+      </div>
+      <div className="categoryLegend">
+        {slices.map((slice, index) => (
+          <button
+            type="button"
+            key={slice.label}
+            onFocus={() => setActiveIndex(index)}
+            onBlur={() => setActiveIndex(null)}
+            onMouseEnter={() => setActiveIndex(index)}
+            onMouseLeave={() => setActiveIndex(null)}
+          >
+            <span className="categoryLegendDot" style={{ background: slice.color }} />
+            <span className="categoryLegendName">{slice.label}</span>
+            <span className="categoryLegendValue"><Money cents={slice.cents} currency={currency} /></span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -758,8 +825,17 @@ export default function MoneyCounter() {
   // Show only rows marked «Требует внимания».
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactionsError, setTransactionsError] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [compactMetricsVisible, setCompactMetricsVisible] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [operationSort, setOperationSort] = useState<OperationSort>("date");
+  const [rightStackSticky, setRightStackSticky] = useState(true);
+  const rightStackRef = useRef<HTMLDivElement>(null);
 
   const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   // The add/edit form + statement import now live in a single modal dialog,
@@ -771,22 +847,43 @@ export default function MoneyCounter() {
     direction: "expense",
     amount: "",
     description: "",
+    descriptionIn: "",
     category: "",
     toAccountId: "",
     amountIn: "",
     flagged: false,
     notes: "",
   });
+  const [additionalFieldsOpen, setAdditionalFieldsOpen] = useState(false);
+  const [descriptionSuggestions, setDescriptionSuggestions] = useState<DescriptionSuggestion[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [autoCategoryApplied, setAutoCategoryApplied] = useState(false);
+  const [submitMode, setSubmitMode] = useState<"close" | "more">("close");
+  const transactionDialogRef = useRef<HTMLDivElement>(null);
+  const [formReturnFocusKey, setFormReturnFocusKey] = useState("add-operation");
+  const transactionFormRef = useRef(transactionForm);
+  const [initialTransactionForm, setInitialTransactionForm] = useState(transactionForm);
+  const [deleteTransactionTarget, setDeleteTransactionTarget] = useState<Transaction | null>(null);
   // Pick-a-partner flow (edit modal, type «Перемещение»): opposite-sign
   // candidates around the edited operation's date, and the chosen partner.
   const [partnerCandidates, setPartnerCandidates] = useState<Transaction[] | null>(null);
   const [partnerId, setPartnerId] = useState("");
+  const [editingTransferPair, setEditingTransferPair] = useState<{
+    out: Transaction;
+    incoming: Transaction;
+  } | null>(null);
+  const [transferPairLoading, setTransferPairLoading] = useState(false);
+  const [unlinkTransferPair, setUnlinkTransferPair] = useState<{
+    out: Transaction;
+    incoming: Transaction;
+  } | null>(null);
   // Inline creation of a missing partner right inside the picker.
   const [partnerCreate, setPartnerCreate] = useState({
     open: false,
     accountId: "",
     amount: "",
     date: "",
+    description: "",
   });
   // Per-row «⋮» actions menu: the key of the open one (tx-<id> / transfer-<group>)
   // and whether it opens upward (when the row is near the viewport bottom).
@@ -969,6 +1066,8 @@ export default function MoneyCounter() {
   }, []);
 
   const loadTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
+    setTransactionsError("");
     try {
       const { from, to } = monthBounds(mainPeriod);
       const base = new URLSearchParams({ from, to, limit: "500" });
@@ -997,7 +1096,12 @@ export default function MoneyCounter() {
         setPeriodTransactions(data.transactions);
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Не удалось загрузить операции");
+      const message = error instanceof Error ? error.message : "Не удалось загрузить операции";
+      setTransactions([]);
+      setPeriodTransactions([]);
+      setTransactionsError(message);
+    } finally {
+      setTransactionsLoading(false);
     }
   }, [mainPeriod, selectedAccountId, typeFilter, categoryFilter, flaggedOnly]);
 
@@ -1081,23 +1185,145 @@ export default function MoneyCounter() {
     };
   }, [rowMenu]);
 
-  // While the modal is open: close on Escape and lock background scrolling.
+  useEffect(() => {
+    if (!filtersOpen && !sortOpen && !addMenuOpen) return;
+    const closeMenus = (event: MouseEvent) => {
+      if ((event.target as Element | null)?.closest(".phase1MenuRoot")) return;
+      setFiltersOpen(false);
+      setSortOpen(false);
+      setAddMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setFiltersOpen(false);
+      setSortOpen(false);
+      setAddMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeMenus);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeMenus);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen, sortOpen, addMenuOpen]);
+
+  useEffect(() => {
+    transactionFormRef.current = transactionForm;
+  }, [transactionForm]);
+
+  // While the modal is open: trap focus, lock background scrolling and only
+  // let Escape close a pristine form (so keyboard use never discards edits).
   useEffect(() => {
     if (!formOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setFormOpen(false);
-        setEditingTransactionId(null);
+        const unchanged =
+          JSON.stringify(transactionFormRef.current) ===
+          JSON.stringify(initialTransactionForm);
+        if (unchanged) {
+          setFormOpen(false);
+          setEditingTransactionId(null);
+        }
+        return;
+      }
+      if (event.key === "Tab") {
+        const focusable = [...(transactionDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? [])].filter((element) => element.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
     document.addEventListener("keydown", onKey);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const frame = window.requestAnimationFrame(() => {
+      transactionDialogRef.current
+        ?.querySelector<HTMLElement>("[data-autofocus], select, input, button")
+        ?.focus();
+    });
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
+      document
+        .querySelector<HTMLElement>(`[data-focus-key="${formReturnFocusKey}"]`)
+        ?.focus();
     };
-  }, [formOpen]);
+  }, [formOpen, formReturnFocusKey, initialTransactionForm]);
+
+  useEffect(() => {
+    if (!deleteTransactionTarget && !unlinkTransferPair) return;
+    const returnFocus = document.activeElement as HTMLElement | null;
+    const selector = deleteTransactionTarget
+      ? `[data-focus-key="tx-${deleteTransactionTarget.id}"]`
+      : unlinkTransferPair?.out.transferGroup
+        ? `[data-focus-key="transfer-${unlinkTransferPair.out.transferGroup}"]`
+        : "";
+    const dialog = document.querySelector<HTMLElement>(".confirmOverlay .confirmDialog");
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDeleteTransactionTarget(null);
+        setUnlinkTransferPair(null);
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled])")];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = window.requestAnimationFrame(() => dialog?.querySelector<HTMLElement>("button")?.focus());
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      if (returnFocus?.isConnected) returnFocus.focus();
+      else if (selector) document.querySelector<HTMLElement>(selector)?.focus();
+    };
+  }, [deleteTransactionTarget, unlinkTransferPair]);
+
+  useEffect(() => {
+    if (activeTab !== "main") return;
+    const update = () => setCompactMetricsVisible(window.scrollY >= 138);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "main") return;
+    const element = rightStackRef.current;
+    if (!element) return;
+    const update = () => setRightStackSticky(element.scrollHeight <= window.innerHeight - 78);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener("resize", update);
+    const frame = window.requestAnimationFrame(update);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [activeTab, accounts.length, periodTransactions.length, loading]);
 
   const refreshAfterMutation = useCallback(async () => {
     await Promise.all([reloadMeta(), loadTransactions()]);
@@ -1165,6 +1391,15 @@ export default function MoneyCounter() {
     };
   }, [periodTransactions, periodRates, displayCurrency, colorByCategory]);
 
+  const categoryDonutItems = useMemo(
+    () =>
+      [
+        ...categoryBars.items,
+        ...(categoryBars.uncategorized ? [categoryBars.uncategorized] : []),
+      ].map((item) => ({ label: item.label, cents: item.cents, color: item.color })),
+    [categoryBars]
+  );
+
   // The transaction currently being edited in the modal (null while adding).
   const editingTransaction = useMemo(
     () => transactions.find((tx) => tx.id === editingTransactionId) ?? null,
@@ -1180,7 +1415,7 @@ export default function MoneyCounter() {
     void (async () => {
       setPartnerCandidates(null);
       setPartnerId("");
-      setPartnerCreate({ open: false, accountId: "", amount: "", date: "" });
+      setPartnerCreate({ open: false, accountId: "", amount: "", date: "", description: "" });
       const tx = editingTransaction;
       if (!formOpen || !tx || transactionForm.direction !== "transfer" || tx.transferGroup) {
         return;
@@ -1232,6 +1467,88 @@ export default function MoneyCounter() {
       cancelled = true;
     };
   }, [formOpen, editingTransaction, transactionForm.direction]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const group = editingTransaction?.transferGroup;
+    if (!formOpen || transactionForm.direction !== "transfer" || !group) {
+      return;
+    }
+    void (async () => {
+      setTransferPairLoading(true);
+      try {
+        const data = await requestJson<{ transactions: Transaction[] }>(
+          `/api/transfers?group=${encodeURIComponent(group)}`
+        );
+        if (cancelled) return;
+        const out = data.transactions.find((transaction) => transaction.amountCents < 0);
+        const incoming = data.transactions.find((transaction) => transaction.amountCents > 0);
+        if (!out || !incoming) return;
+        const notes = [...new Set([out.notes.trim(), incoming.notes.trim()].filter(Boolean))].join("\n");
+        const nextForm: TransactionForm = {
+          accountId: String(out.accountId),
+          date: out.date,
+          direction: "transfer",
+          amount: centsToInputValue(Math.abs(out.amountCents)),
+          description: out.description,
+          descriptionIn: incoming.description,
+          category: "",
+          toAccountId: String(incoming.accountId),
+          amountIn: centsToInputValue(Math.abs(incoming.amountCents)),
+          flagged: out.flagged || incoming.flagged,
+          notes,
+        };
+        setEditingTransferPair({ out, incoming });
+        setTransactionForm(nextForm);
+        setInitialTransactionForm(nextForm);
+        setAdditionalFieldsOpen(Boolean(nextForm.flagged || nextForm.notes));
+      } catch (error) {
+        if (!cancelled) {
+          setNotice(error instanceof Error ? error.message : "Не удалось загрузить перевод");
+        }
+      } finally {
+        if (!cancelled) setTransferPairLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formOpen, editingTransaction, transactionForm.direction]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const query = transactionForm.description.trim();
+    const ordinary = transactionForm.direction !== "transfer";
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (!formOpen || !ordinary || [...query].length < 2) {
+          if (!cancelled) {
+            setDescriptionSuggestions([]);
+            setSuggestionsOpen(false);
+          }
+          return;
+        }
+        try {
+          const data = await requestJson<{ suggestions: DescriptionSuggestion[] }>(
+            `/api/transactions/suggestions?q=${encodeURIComponent(query)}`
+          );
+          if (!cancelled) {
+            setDescriptionSuggestions(data.suggestions);
+            setSuggestionsOpen(data.suggestions.length > 0);
+          }
+        } catch {
+          if (!cancelled) {
+            setDescriptionSuggestions([]);
+            setSuggestionsOpen(false);
+          }
+        }
+      })();
+    }, [...query].length >= 2 ? 250 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [formOpen, transactionForm.description, transactionForm.direction]);
 
   // --- currency conversion (summary cards) ----------------------------------
   const loadRates = useCallback(
@@ -1697,13 +2014,10 @@ export default function MoneyCounter() {
     );
   }, [transactions, query]);
 
-  // Operations grouped by day. The list is one month, sorted date DESC, so
-  // same-date rows are already consecutive; the date becomes a group header
-  // instead of a per-row column. When both legs of a transfer are loaded they
-  // collapse into a single «A → B» row at the newer leg's position; a leg
-  // whose partner is filtered out (other account/period) stays a lone row
-  // with a «перемещение» badge.
-  const dayGroups = useMemo(() => {
+  // Collapse the two loaded legs of a transfer into one production row. A leg
+  // whose partner is outside the active filters remains a regular-looking row
+  // with the transfer marker, so filters never make money disappear silently.
+  const displayRows = useMemo(() => {
     const legsByGroup = new Map<string, Transaction[]>();
     for (const tx of searchedTransactions) {
       if (!tx.transferGroup) continue;
@@ -1712,7 +2026,7 @@ export default function MoneyCounter() {
       legsByGroup.set(tx.transferGroup, legs);
     }
     const placed = new Set<string>();
-    const groups: { date: string; items: DisplayRow[] }[] = [];
+    const rows: DisplayRow[] = [];
     for (const tx of searchedTransactions) {
       let row: DisplayRow | null = null;
       if (tx.transferGroup) {
@@ -1728,12 +2042,49 @@ export default function MoneyCounter() {
         }
       }
       if (!row) row = { kind: "tx", tx };
+      rows.push(row);
+    }
+    return rows.sort((a, b) => {
+      const aTx = a.kind === "transfer" ? a.out : a.tx;
+      const bTx = b.kind === "transfer" ? b.out : b.tx;
+      return bTx.date.localeCompare(aTx.date) || bTx.id - aTx.id;
+    });
+  }, [searchedTransactions]);
+
+  const dayGroups = useMemo(() => {
+    const groups: { date: string; items: DisplayRow[] }[] = [];
+    for (const row of displayRows) {
+      const transaction = row.kind === "transfer" ? row.out : row.tx;
       const last = groups[groups.length - 1];
-      if (last && last.date === tx.date) last.items.push(row);
-      else groups.push({ date: tx.date, items: [row] });
+      if (last && last.date === transaction.date) last.items.push(row);
+      else groups.push({ date: transaction.date, items: [row] });
     }
     return groups;
-  }, [searchedTransactions]);
+  }, [displayRows]);
+
+  const amountForSort = useCallback(
+    (row: DisplayRow) => {
+      const transaction = row.kind === "transfer" ? row.out : row.tx;
+      const cents = Math.abs(transaction.amountCents);
+      if (!displayCurrency || transaction.accountCurrency === displayCurrency) return cents;
+      const rateTo = periodRates?.[displayCurrency];
+      const rateFrom = periodRates?.[transaction.accountCurrency];
+      return rateTo != null && rateFrom != null ? Math.round((cents * rateTo) / rateFrom) : cents;
+    },
+    [displayCurrency, periodRates]
+  );
+
+  const sortedOperationRows = useMemo(() => {
+    if (operationSort === "date") return displayRows;
+    const direction = operationSort === "amount-desc" ? -1 : 1;
+    return [...displayRows].sort((a, b) => {
+      const amountOrder = (amountForSort(a) - amountForSort(b)) * direction;
+      if (amountOrder !== 0) return amountOrder;
+      const aTx = a.kind === "transfer" ? a.out : a.tx;
+      const bTx = b.kind === "transfer" ? b.out : b.tx;
+      return bTx.date.localeCompare(aTx.date) || bTx.id - aTx.id;
+    });
+  }, [displayRows, operationSort, amountForSort]);
 
   // The account-currency amount in its own column, next to the display-currency
   // "Сумма". Empty (—) when the account currency already equals the display
@@ -1806,6 +2157,30 @@ export default function MoneyCounter() {
       (a) => (!a.openedAt || a.openedAt <= d) && (!a.closedAt || a.closedAt >= d)
     );
   };
+
+  const transactionAccountInvalid = Boolean(
+    transactionForm.accountId &&
+      !accountsActiveOn(transactionForm.date).some(
+        (account) => String(account.id) === transactionForm.accountId
+      )
+  );
+  const transferToAccountInvalid = Boolean(
+    transactionForm.toAccountId &&
+      !accountsActiveOn(transactionForm.date).some(
+        (account) => String(account.id) === transactionForm.toAccountId
+      )
+  );
+  const transferFromAccount = accounts.find(
+    (account) => String(account.id) === transactionForm.accountId
+  );
+  const transferToAccount = accounts.find(
+    (account) => String(account.id) === transactionForm.toAccountId
+  );
+  const transferCrossCurrency = Boolean(
+    transferFromAccount &&
+      transferToAccount &&
+      transferFromAccount.currency !== transferToAccount.currency
+  );
 
   // Per-account SPENDING over the loaded period, per currency. Transfer legs
   // are excluded — the «Траты» column tracks real spending only, so its total
@@ -2053,6 +2428,10 @@ export default function MoneyCounter() {
     event.preventDefault();
     setSaving(true);
     try {
+      if (transactionAccountInvalid || transferToAccountInvalid) {
+        setNotice("Этот счёт недоступен на выбранную дату. Выберите другой счёт.");
+        return;
+      }
       if (!editingTransactionId && transactionForm.direction === "transfer") {
         // Add mode: create both linked legs in one atomic server call.
         await requestJson("/api/transfers", {
@@ -2065,10 +2444,34 @@ export default function MoneyCounter() {
               amount: transactionForm.amount,
               amountIn: transactionForm.amountIn,
               description: transactionForm.description,
+              descriptionIn: transactionForm.descriptionIn,
+              notes: transactionForm.notes,
+              flagged: transactionForm.flagged,
             },
           }),
         });
         setNotice("Перевод добавлен");
+      } else if (
+        editingTransactionId &&
+        transactionForm.direction === "transfer" &&
+        editingTransaction?.transferGroup
+      ) {
+        await requestJson("/api/transfers", {
+          method: "PATCH",
+          body: JSON.stringify({
+            group: editingTransaction.transferGroup,
+            date: transactionForm.date,
+            fromAccountId: transactionForm.accountId,
+            toAccountId: transactionForm.toAccountId,
+            amount: transactionForm.amount,
+            amountIn: transactionForm.amountIn,
+            description: transactionForm.description,
+            descriptionIn: transactionForm.descriptionIn,
+            notes: transactionForm.notes,
+            flagged: transactionForm.flagged,
+          }),
+        });
+        setNotice("Перевод обновлён");
       } else if (
         editingTransactionId &&
         transactionForm.direction === "transfer" &&
@@ -2123,20 +2526,42 @@ export default function MoneyCounter() {
         }
         setNotice(editingTransactionId ? "Операция обновлена" : "Операция добавлена");
       }
+      const keepOpen =
+        !editingTransactionId &&
+        transactionForm.direction !== "transfer" &&
+        submitMode === "more";
+      const nextForm: TransactionForm = keepOpen
+        ? {
+            ...transactionForm,
+            amount: "",
+            description: "",
+            descriptionIn: "",
+            category: "",
+            flagged: false,
+            notes: "",
+          }
+        : {
+            accountId: "",
+            date: today(),
+            direction: "expense",
+            amount: "",
+            description: "",
+            descriptionIn: "",
+            category: "",
+            toAccountId: "",
+            amountIn: "",
+            flagged: false,
+            notes: "",
+          };
       setEditingTransactionId(null);
-      setFormOpen(false);
-      setTransactionForm({
-        accountId: "",
-        date: today(),
-        direction: "expense",
-        amount: "",
-        description: "",
-        category: "",
-        toAccountId: "",
-        amountIn: "",
-        flagged: false,
-        notes: "",
-      });
+      setFormOpen(keepOpen);
+      setTransactionForm(nextForm);
+      setInitialTransactionForm(nextForm);
+      setAdditionalFieldsOpen(false);
+      setAutoCategoryApplied(false);
+      setDescriptionSuggestions([]);
+      setSuggestionsOpen(false);
+      setSubmitMode("close");
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не сохранена");
@@ -2149,19 +2574,27 @@ export default function MoneyCounter() {
   }
 
   function openAddTransaction() {
+    setFormReturnFocusKey("add-operation");
     setEditingTransactionId(null);
-    setTransactionForm({
+    const nextForm: TransactionForm = {
       accountId: "",
       date: today(),
       direction: "expense",
       amount: "",
       description: "",
+      descriptionIn: "",
       category: "",
       toAccountId: "",
       amountIn: "",
       flagged: false,
       notes: "",
-    });
+    };
+    setTransactionForm(nextForm);
+    setInitialTransactionForm(nextForm);
+    setAdditionalFieldsOpen(false);
+    setEditingTransferPair(null);
+    setAutoCategoryApplied(false);
+    setSubmitMode("close");
     setFormOpen(true);
   }
 
@@ -2174,17 +2607,24 @@ export default function MoneyCounter() {
       direction: "expense",
       amount: "",
       description: "",
+      descriptionIn: "",
       category: "",
       toAccountId: "",
       amountIn: "",
       flagged: false,
       notes: "",
     });
+    setAdditionalFieldsOpen(false);
+    setAutoCategoryApplied(false);
+    setDescriptionSuggestions([]);
+    setSuggestionsOpen(false);
+    setEditingTransferPair(null);
   }
 
-  function startEditTransaction(transaction: Transaction) {
+  function startEditTransaction(transaction: Transaction, focusKey = `tx-${transaction.id}`) {
+    setFormReturnFocusKey(focusKey);
     setEditingTransactionId(transaction.id);
-    setTransactionForm({
+    const nextForm: TransactionForm = {
       accountId: String(transaction.accountId),
       date: transaction.date,
       direction: transaction.transferGroup
@@ -2194,39 +2634,74 @@ export default function MoneyCounter() {
           : "income",
       amount: centsToInputValue(Math.abs(transaction.amountCents)),
       description: transaction.description,
+      descriptionIn: transaction.description,
       category: transaction.category,
       toAccountId: "",
       amountIn: "",
       flagged: transaction.flagged,
       notes: transaction.notes,
-    });
+    };
+    setTransactionForm(nextForm);
+    setInitialTransactionForm(nextForm);
+    setAdditionalFieldsOpen(Boolean(transaction.flagged || transaction.notes));
+    setEditingTransferPair(null);
+    setAutoCategoryApplied(false);
+    setSubmitMode("close");
     setActiveTab("main");
     setFormOpen(true);
   }
 
   async function removeTransaction(transaction: Transaction) {
-    if (!window.confirm("Удалить операцию?")) return;
+    setSaving(true);
     try {
       await requestJson(`/api/transactions?id=${transaction.id}`, { method: "DELETE" });
       setNotice("Операция удалена");
+      setDeleteTransactionTarget(null);
+      closeForm();
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Операция не удалена");
+    } finally {
+      setSaving(false);
     }
   }
 
-  // Split a «Перемещение» back into two ordinary operations (their categories
-  // stay empty — re-categorize by hand or with rules).
+  async function openUnlinkTransfer(
+    group: string,
+    pair?: { out: Transaction; incoming: Transaction }
+  ) {
+    if (pair) {
+      setUnlinkTransferPair(pair);
+      return;
+    }
+    try {
+      const data = await requestJson<{ transactions: Transaction[] }>(
+        `/api/transfers?group=${encodeURIComponent(group)}`
+      );
+      const out = data.transactions.find((transaction) => transaction.amountCents < 0);
+      const incoming = data.transactions.find((transaction) => transaction.amountCents > 0);
+      if (out && incoming) setUnlinkTransferPair({ out, incoming });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось загрузить перевод");
+    }
+  }
+
+  // Split a transfer back into two ordinary operations. Notes and attention
+  // from either side move to the debit leg in the API, so neither is lost.
   async function unlinkTransfer(group: string) {
-    if (!window.confirm("Разъединить перемещение на две обычные операции?")) return;
+    setSaving(true);
     try {
       await requestJson(`/api/transfers?group=${encodeURIComponent(group)}`, {
         method: "DELETE",
       });
       setNotice("Перемещение разъединено");
+      setUnlinkTransferPair(null);
+      closeForm();
       await refreshAfterMutation();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Не удалось разъединить");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -2244,7 +2719,7 @@ export default function MoneyCounter() {
           date: partnerCreate.date,
           amount: partnerCreate.amount,
           direction: tx.amountCents < 0 ? "income" : "expense",
-          description: tx.description || "Перевод",
+          description: partnerCreate.description || tx.description || "Перевод",
         }),
       });
       const partner = created.transaction;
@@ -2645,17 +3120,208 @@ export default function MoneyCounter() {
     }
   }
 
+  const hasActiveListFilters =
+    Boolean(query.trim()) ||
+    selectedAccountId !== "all" ||
+    typeFilter !== "all" ||
+    Boolean(categoryFilter) ||
+    flaggedOnly;
+
+  function resetListFilters() {
+    setQuery("");
+    setSelectedAccountId("all");
+    setTypeFilter("all");
+    setCategoryFilter("");
+    setFlaggedOnly(false);
+    setFiltersOpen(false);
+  }
+
+  function toggleRowMenu(event: ReactMouseEvent<HTMLButtonElement>, key: string) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setRowMenuUp(window.innerHeight - rect.bottom < 140);
+    setRowMenuPos({
+      right: Math.max(8, window.innerWidth - rect.right),
+      top: rect.bottom + 4,
+      bottom: window.innerHeight - rect.top + 4,
+    });
+    setRowMenu((current) => (current === key ? null : key));
+  }
+
+  const operationSortLabel =
+    operationSort === "date"
+      ? "Дата ↓"
+      : operationSort === "amount-desc"
+        ? "Сумма ↓"
+        : "Сумма ↑";
+
+  const operationModalTitle =
+    transactionForm.direction === "transfer"
+      ? editingTransaction?.transferGroup
+        ? "Редактировать перевод"
+        : editingTransactionId
+          ? "Связать перевод"
+          : "Новый перевод"
+      : editingTransactionId
+        ? transactionForm.direction === "income"
+          ? "Редактировать поступление"
+          : "Редактировать расход"
+        : "Новая операция";
+
+  function renderOperationRow(row: DisplayRow, showDate: boolean) {
+    const transaction = row.kind === "transfer" ? row.out : row.tx;
+    const menuKey =
+      row.kind === "transfer"
+        ? `transfer-${row.out.transferGroup}`
+        : `tx-${row.tx.id}`;
+    const transferGroup =
+      row.kind === "transfer" ? row.out.transferGroup : row.tx.transferGroup;
+    const flagged =
+      row.kind === "transfer"
+        ? row.out.flagged || row.incoming.flagged
+        : row.tx.flagged;
+    const flagReason =
+      row.kind === "transfer"
+        ? row.out.notes || row.incoming.notes || "Требует внимания"
+        : row.tx.notes || "Требует внимания";
+
+    return (
+      <tr
+        className={`operationRow ${showDate ? "flat" : ""} ${
+          row.kind === "transfer" ? "transfer" : ""
+        }`}
+        key={menuKey}
+      >
+        {showDate ? (
+          <td className="operationDate">
+            {dmy(transaction.date)}
+            {flagged ? <span className="markFlag" data-tip={flagReason}>⚠</span> : null}
+          </td>
+        ) : (
+          <td className="operationStatus">
+            {row.kind === "transfer" || transaction.transferGroup ? (
+              <span className="markTransfer" data-tip="Перевод между своими счетами">⇄</span>
+            ) : null}
+            {flagged ? <span className="markFlag" data-tip={flagReason}>⚠</span> : null}
+          </td>
+        )}
+
+        <td className="operationAccount">
+          <ClampedName text={transaction.accountName} />
+        </td>
+        <td className="operationDescription">
+          {transaction.description || "—"}
+        </td>
+        <td className="operationAmounts">
+          <span
+            className={`operationMainAmount ${
+              row.kind === "tx" && transaction.amountCents > 0 && !transaction.transferGroup
+                ? "income"
+                : ""
+            }`}
+          >
+            {row.kind === "tx" && transaction.amountCents > 0 && !transaction.transferGroup
+              ? "+"
+              : null}
+            {renderDisplayAmount(transaction)}
+          </span>
+          {row.kind === "transfer" ? (
+            <span className="transferDestination">
+              → {row.incoming.accountName}
+              {row.out.accountCurrency !== row.incoming.accountCurrency ? (
+                <>
+                  {" · "}
+                  <Money
+                    cents={Math.abs(row.incoming.amountCents)}
+                    currency={row.incoming.accountCurrency}
+                  />
+                </>
+              ) : null}
+            </span>
+          ) : (
+            <span className="operationLocalAmount">{renderAccountAmount(transaction)}</span>
+          )}
+        </td>
+        <td className="operationCategory">
+          {row.kind === "transfer" ? "—" : transaction.category || "—"}
+        </td>
+        <td className="operationActions">
+          <span className="rowMenuWrap">
+            <button
+              className="operationMenuButton"
+              type="button"
+              aria-label="Действия"
+              aria-haspopup="menu"
+              aria-expanded={rowMenu === menuKey}
+              data-focus-key={menuKey}
+              onClick={(event) => toggleRowMenu(event, menuKey)}
+            >
+              ⋮
+            </button>
+            {rowMenu === menuKey ? (
+              <span
+                className={`rowMenu ${rowMenuUp ? "up" : ""}`}
+                role="menu"
+                style={
+                  rowMenuUp
+                    ? { right: rowMenuPos?.right, bottom: rowMenuPos?.bottom }
+                    : { right: rowMenuPos?.right, top: rowMenuPos?.top }
+                }
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setRowMenu(null);
+                    startEditTransaction(transaction, menuKey);
+                  }}
+                >
+                  Править
+                </button>
+                {transferGroup ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setRowMenu(null);
+                      void openUnlinkTransfer(
+                        transferGroup,
+                        row.kind === "transfer" ? { out: row.out, incoming: row.incoming } : undefined
+                      );
+                    }}
+                  >
+                    Разъединить
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="danger"
+                    onClick={() => {
+                      setRowMenu(null);
+                      setDeleteTransactionTarget(transaction);
+                    }}
+                  >
+                    Удалить
+                  </button>
+                )}
+              </span>
+            ) : null}
+          </span>
+        </td>
+      </tr>
+    );
+  }
+
   // --- render ---------------------------------------------------------------
-  const tabs: Array<{ id: Tab; label: string }> = [
+  const tabs: Array<{ id: PrimaryNavTab; label: string }> = [
     { id: "main", label: "Операции" },
+    { id: "forecast", label: "Прогнозы" },
+    { id: "charts", label: "Отчёты" },
     { id: "settings", label: "Настройки" },
-    { id: "charts", label: "Визуализация" },
-    { id: "forecast", label: "Прогнозирование" },
-    { id: "pending", label: "Займы" },
   ];
 
   return (
-    <main className="appShell">
+    <main className={`appShell ${activeTab === "main" ? "phase1Shell" : ""}`}>
       <aside className="sidebar">
         <nav className="sidebarNav" aria-label="Разделы">
           {tabs.map((tab) => (
@@ -2664,8 +3330,13 @@ export default function MoneyCounter() {
               type="button"
               className={`navButton ${activeTab === tab.id ? "active" : ""}`}
               onClick={() => setActiveTab(tab.id)}
+              aria-label={tab.label}
+              data-label={tab.label}
             >
-              {tab.label}
+              <span className="navIcon">
+                <NavIcon tab={tab.id} />
+              </span>
+              <span className="navLabel">{tab.label}</span>
             </button>
           ))}
         </nav>
@@ -2682,210 +3353,381 @@ export default function MoneyCounter() {
 
       {activeTab === "main" ? (
         <>
-          {currencyOptions.length > 0 ? (
-            <div className="summaryBar">
-              <label className="currencyPick">
-                В валюте
-                <select
-                  aria-label="Валюта сводки"
-                  value={displayCurrency}
-                  onChange={(event) => setDisplayCurrency(event.target.value)}
-                >
-                  {currencyOptions.map((currency) => (
-                    <option key={currency} value={currency}>
-                      {currency}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className={`forecastToggle ${forecastOn ? "on" : ""}`}
-                role="switch"
-                aria-checked={forecastOn}
-                disabled={!forecastAvailable}
-                onClick={() => setForecastOn((v) => !v)}
-                title={
-                  forecastAvailable
-                    ? "Прогнозы: доступный остаток, daily goal и аннотация сегодняшнего дня"
-                    : "Прогнозы доступны для текущего месяца с выбранной валютой"
-                }
-              >
-                Прогнозы
-                <span className="toggleTrack" aria-hidden="true">
-                  <span className="toggleThumb" />
-                </span>
-              </button>
+          <div
+            className={`compactMetrics ${compactMetricsVisible ? "show" : ""} ${
+              forecastOverlay ? "" : "forecastOff"
+            }`}
+            aria-hidden={!compactMetricsVisible}
+          >
+            <button className="compactPeriod" type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+              {formatMonthLabel(mainPeriod)}
+            </button>
+            <div className="compactFacts">
+              <span className="compactFact">
+                <span>Начало</span>
+                <strong>{startTotals === null ? "…" : renderConverted(startConverted, periodRates, periodRateDate)}</strong>
+              </span>
+              <span className="compactFact compactIncome">
+                <span>Поступления</span>
+                <strong>+{renderConverted(incomeConverted, periodRates, periodRateDate)}</strong>
+              </span>
+              <span className="compactFact">
+                <span>Расходы</span>
+                <strong>{renderConverted(expenseConverted, periodRates, periodRateDate)}</strong>
+              </span>
+              <span className="compactFact">
+                <span>Сейчас</span>
+                <strong>{pastPeriod && endAccounts === null ? "…" : renderConverted(panelConverted, panelRates, panelRateDate)}</strong>
+              </span>
             </div>
-          ) : null}
-
-          <section className={`summaryGrid ${forecastOverlay ? "withForecast" : ""}`} aria-label="Сводка">
-            <article className="metric">
-              <span>Баланс на начало периода</span>
-              <strong>
-                {startTotals === null
-                  ? "…"
-                  : renderConverted(startConverted, periodRates, periodRateDate)}
-              </strong>
-            </article>
-            <article className="metric">
-              <span>Поступления периода</span>
-              <strong>{renderConverted(incomeConverted, periodRates, periodRateDate)}</strong>
-            </article>
-            <article className="metric">
-              <span>Расходы периода</span>
-              <strong>{renderConverted(expenseConverted, periodRates, periodRateDate)}</strong>
-            </article>
-            <article className="metric">
-              {/* Past months: total as it stood at the period's end, at the
-                  period-end rate (same numbers as the «Счета» panel total).
-                  The current month simply shows the live total. */}
-              <span>{pastPeriod ? "Баланс на конец периода" : "Текущий баланс"}</span>
-              <strong>
-                {pastPeriod && endAccounts === null
-                  ? "…"
-                  : renderConverted(panelConverted, panelRates, panelRateDate)}
-              </strong>
-            </article>
             {forecastOverlay ? (
-              <article className="metric forecastMetric">
-                <span className="forecastRow">
-                  <span>Таргет</span>
-                  <b><Money cents={forecastOverlay.goalCents} currency={displayCurrency} /></b>
-                </span>
-                <span className="forecastRow">
-                  <span>Доступный остаток</span>
-                  <b className={forecastOverlay.availableCents < 0 ? "negative" : ""}>
-                    <Money cents={forecastOverlay.availableCents} currency={displayCurrency} />
-                  </b>
-                </span>
-                <span className="forecastRow">
-                  <span>Daily goal</span>
-                  <b className={forecastOverlay.dailyGoalCents < 0 ? "negative" : ""}>
-                    <Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} />
-                  </b>
-                </span>
-              </article>
+              <div className="compactForecast">
+                <span>Прогноз на {formatMonthLabel(mainPeriod).replace(/^./, (value) => value.toLowerCase())}</span>
+                <b><Money cents={forecastOverlay.availableCents} currency={displayCurrency} /></b>
+              </div>
             ) : null}
-          </section>
+          </div>
+
+          <div className="phase1Top">
+            <div className="topline">
+              <MonthPicker
+                ariaLabel="Период"
+                value={mainPeriod}
+                onChange={setMainPeriod}
+                max={currentMonth}
+              />
+              {currencyOptions.length > 0 ? (
+                <div className="rightGlobal">
+                  <select
+                    className="currencySelect"
+                    aria-label="Валюта сводки"
+                    value={displayCurrency}
+                    onChange={(event) => setDisplayCurrency(event.target.value)}
+                  >
+                    {currencyOptions.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={`forecastToggle ${forecastOn ? "on" : ""}`}
+                    aria-pressed={forecastOn}
+                    disabled={!forecastAvailable}
+                    onClick={() => setForecastOn((value) => !value)}
+                  >
+                    <span className="forecastDot" aria-hidden="true" />
+                    Прогнозы
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <section
+              className={`summaryGrid ${forecastOverlay ? "withForecast" : ""} ${
+                loading || transactionsLoading ? "summarySkeleton" : ""
+              }`}
+              aria-label="Сводка"
+            >
+              <div className="factsPanel">
+                <article className="metric">
+                  <span>Баланс на начало периода</span>
+                  <strong>{startTotals === null ? "…" : renderConverted(startConverted, periodRates, periodRateDate)}</strong>
+                </article>
+                <article className="metric incomeMetric">
+                  <span>Поступления за период</span>
+                  <strong>+{renderConverted(incomeConverted, periodRates, periodRateDate)}</strong>
+                </article>
+                <article className="metric">
+                  <span>Расходы за период</span>
+                  <strong>{renderConverted(expenseConverted, periodRates, periodRateDate)}</strong>
+                </article>
+                <article className="metric">
+                  <span>{pastPeriod ? "Баланс на конец периода" : "Текущий баланс"}</span>
+                  <strong>{pastPeriod && endAccounts === null ? "…" : renderConverted(panelConverted, panelRates, panelRateDate)}</strong>
+                </article>
+              </div>
+              {forecastOverlay ? (
+                <article className="forecastCard">
+                  <span className="forecastCardTitle">
+                    Прогноз на {formatMonthLabel(mainPeriod).replace(/^./, (value) => value.toLowerCase())}
+                  </span>
+                  <span className="forecastColumns">
+                    <span className="forecastColumn">
+                      <span>Цель</span>
+                      <strong><Money cents={forecastOverlay.goalCents} currency={displayCurrency} /></strong>
+                    </span>
+                    <span className="forecastColumn">
+                      <span>Траты в день</span>
+                      <strong><Money cents={forecastOverlay.dailyGoalCents} currency={displayCurrency} /></strong>
+                    </span>
+                    <span className="forecastColumn subtle">
+                      <span>Доступно</span>
+                      <strong><Money cents={forecastOverlay.availableCents} currency={displayCurrency} /></strong>
+                    </span>
+                  </span>
+                </article>
+              ) : null}
+            </section>
+          </div>
 
           <div className="workspace twoCol">
             <section className="mainColumn">
-              <section className="surface">
-                {/* Title lifted above the toolbar; the period picker takes the
-                    title's old spot (left), and the primary action sits where
-                    the picker used to be (top-right). */}
-                <h2 className="opsTitle">Операции</h2>
+              <section className="operationsSurface">
                 <div className="opsToolbar">
-                <div className="sectionHead">
-                  <MonthPicker
-                    ariaLabel="Период"
-                    value={mainPeriod}
-                    onChange={setMainPeriod}
-                    max={currentMonth}
-                  />
-                  <button
-                    className="primaryButton"
-                    type="button"
-                    onClick={openAddTransaction}
-                    disabled={saving}
-                  >
-                    <span>+</span> Добавить
-                  </button>
-                </div>
-                <div className="filters">
-                  <label className="filterField">
-                    Поиск
-                    <input
-                      placeholder="Описание, категория, счёт…"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                  </label>
-                  <label className="filterField">
-                    Счёт
-                    <select
-                      value={selectedAccountId}
-                      onChange={(event) => setSelectedAccountId(event.target.value)}
+                  <div className={`queryCluster phase1MenuRoot ${filtersOpen ? "open" : ""}`}>
+                    <label className="operationSearch">
+                      <span aria-hidden="true">⌕</span>
+                      <input
+                        aria-label="Поиск по операциям"
+                        placeholder="Поиск по операциям"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      className={`filterTrigger ${hasActiveListFilters ? "active" : ""}`}
+                      type="button"
+                      aria-expanded={filtersOpen}
+                      onClick={() => {
+                        setFiltersOpen((value) => !value);
+                        setSortOpen(false);
+                        setAddMenuOpen(false);
+                      }}
                     >
-                      <option value="all">Все счета</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="filterField">
-                    Категория
-                    <select
-                      value={categoryFilter}
-                      onChange={(event) => setCategoryFilter(event.target.value)}
+                      Фильтры{hasActiveListFilters ? " ·" : ""}
+                      <span aria-hidden="true">⌄</span>
+                    </button>
+                    {filtersOpen ? (
+                      <div className="filterPanel">
+                        <div className="filterGrid">
+                          <label>
+                            <span className="srOnly">Счёт</span>
+                            <select
+                              aria-label="Счёт"
+                              value={selectedAccountId}
+                              onChange={(event) => setSelectedAccountId(event.target.value)}
+                            >
+                              <option value="all">Все счета</option>
+                              {accounts.map((account) => (
+                                <option key={account.id} value={account.id}>{account.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span className="srOnly">Категория</span>
+                            <select
+                              aria-label="Категория"
+                              value={categoryFilter}
+                              onChange={(event) => setCategoryFilter(event.target.value)}
+                            >
+                              <option value="">Все категории</option>
+                              <option value="Без категории">Без категории</option>
+                              {categoryFilterOptions.map((name) => (
+                                <option key={name} value={name}>{name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span className="srOnly">Тип операции</span>
+                            <select
+                              aria-label="Тип операции"
+                              value={typeFilter}
+                              onChange={(event) => setTypeFilter(event.target.value)}
+                            >
+                              <option value="all">Все типы</option>
+                              <option value="expense">Расход</option>
+                              <option value="income">Поступление</option>
+                              <option value="transfer">Перевод</option>
+                            </select>
+                          </label>
+                          <label className="attentionFilter">
+                            <input
+                              type="checkbox"
+                              checked={flaggedOnly}
+                              onChange={(event) => setFlaggedOnly(event.target.checked)}
+                            />
+                            Внимание
+                          </label>
+                          <button
+                            className="findTransfersButton"
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void openDetectTransfers()}
+                          >
+                            Найти переводы
+                          </button>
+                          {hasActiveListFilters ? (
+                            <button className="resetFilters" type="button" onClick={resetListFilters}>
+                              Сбросить
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className={`sortHolder phase1MenuRoot ${sortOpen ? "open" : ""}`}>
+                    <button
+                      className="sortTrigger"
+                      type="button"
+                      aria-expanded={sortOpen}
+                      onClick={() => {
+                        setSortOpen((value) => !value);
+                        setFiltersOpen(false);
+                        setAddMenuOpen(false);
+                      }}
                     >
-                      <option value="">Все категории</option>
-                      <option value="Без категории">Без категории</option>
-                      {categoryFilterOptions.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="filterField">
-                    Тип операции
-                    <select
-                      value={typeFilter}
-                      onChange={(event) => setTypeFilter(event.target.value)}
-                    >
-                      <option value="all">Все</option>
-                      <option value="expense">Расходы</option>
-                      <option value="income">Поступления</option>
-                      <option value="transfer">Перемещения</option>
-                    </select>
-                  </label>
-                  <button
-                    className={`secondaryButton flagToggle ${flaggedOnly ? "on" : ""}`}
-                    type="button"
-                    aria-pressed={flaggedOnly}
-                    onClick={() => setFlaggedOnly((current) => !current)}
-                    title="Показать только операции с пометкой «Требует внимания»"
-                  >
-                    ⚠️
-                  </button>
-                  <button
-                    className="secondaryButton"
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void openDetectTransfers()}
-                    title="Найти пары расход+поступление, похожие на переводы между счетами"
-                  >
-                    Найти переводы
-                  </button>
-                </div>
+                      {operationSortLabel}
+                    </button>
+                    {sortOpen ? (
+                      <div className="sortMenu" role="menu">
+                        {([
+                          ["date", "Дата ↓"],
+                          ["amount-desc", "Сумма ↓"],
+                          ["amount-asc", "Сумма ↑"],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={operationSort === value}
+                            onClick={() => {
+                              setOperationSort(value);
+                              setSortOpen(false);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className={`addHolder phase1MenuRoot ${addMenuOpen ? "open" : ""}`}>
+                    <div className="addSplit">
+                      <button
+                        type="button"
+                        data-focus-key="add-operation"
+                        onClick={openAddTransaction}
+                        disabled={saving}
+                      >
+                        + Добавить
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Другие способы добавления"
+                        aria-expanded={addMenuOpen}
+                        onClick={() => {
+                          setAddMenuOpen((value) => !value);
+                          setFiltersOpen(false);
+                          setSortOpen(false);
+                        }}
+                      >
+                        ⌄
+                      </button>
+                    </div>
+                    {addMenuOpen ? (
+                      <div className="addMenu" role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setAddMenuOpen(false);
+                            openAddTransaction();
+                          }}
+                        >
+                          Импортировать операции
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="tableWrap">
-                  <table className="opsTable">
+                  <table className={`opsTable phase1OpsTable ${operationSort !== "date" ? "flatMode" : ""}`}>
                     <thead>
-                      <tr>
-                        <th className="markCol" aria-label="Пометки" />
-                        <th>Счет</th>
-                        <th>Описание</th>
-                        <th>Категория</th>
-                        <th className="amountCell">Сумма</th>
-                        <th className="amountCell">В валюте счёта</th>
-                        <th />
-                      </tr>
+                      {operationSort === "date" ? (
+                        <tr>
+                          <th className="markCol" aria-label="Пометки" />
+                          <th>Счёт</th>
+                          <th>Назначение</th>
+                          <th>Категория</th>
+                          <th className="amountCell">Сумма</th>
+                          <th className="amountCell" aria-label="В валюте счёта" />
+                          <th aria-label="Действия" />
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th>Дата</th>
+                          <th>Счёт</th>
+                          <th>Назначение</th>
+                          <th className="amountCell">Сумма</th>
+                          <th>Категория</th>
+                          <th aria-label="Действия" />
+                        </tr>
+                      )}
                     </thead>
                     <tbody>
-                      {dayGroups.length === 0 ? (
+                      {transactionsError ? (
                         <tr>
-                          <td colSpan={7} className="emptyTable">
-                            {loading
-                              ? "Загрузка"
-                              : query.trim()
-                                ? "Ничего не найдено"
-                                : "Нет операций за период"}
+                          <td colSpan={7} className="operationState">
+                            <strong>Не удалось загрузить операции</strong>
+                            <span>Попробуйте загрузить список ещё раз.</span>
+                            <button type="button" onClick={() => void loadTransactions()}>Повторить</button>
+                          </td>
+                        </tr>
+                      ) : transactionsLoading ? (
+                        Array.from({ length: 7 }, (_, index) => (
+                          <tr className="operationSkeleton" key={index} aria-hidden="true">
+                            <td><span /></td>
+                            <td><span /></td>
+                            <td><span /></td>
+                            <td><span /></td>
+                            <td><span /></td>
+                            <td><span /></td>
+                            {operationSort === "date" ? <td><span /></td> : null}
+                          </tr>
+                        ))
+                      ) : operationSort !== "date" ? (
+                        sortedOperationRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="operationState">
+                              {hasActiveListFilters && periodTransactions.length > 0 ? (
+                                <>
+                                  <strong>Ничего не найдено</strong>
+                                  <span>Попробуйте изменить поисковый запрос или выбранные фильтры.</span>
+                                  <button type="button" onClick={resetListFilters}>Сбросить поиск и фильтры</button>
+                                </>
+                              ) : (
+                                <>
+                                  <strong>В этом периоде пока нет операций</strong>
+                                  <span>Добавьте первую операцию, чтобы начать вести учёт за выбранный период.</span>
+                                  <button type="button" onClick={openAddTransaction}>+ Добавить операцию</button>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        ) : (
+                          sortedOperationRows.map((row) => renderOperationRow(row, true))
+                        )
+                      ) : dayGroups.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="operationState">
+                            {hasActiveListFilters && periodTransactions.length > 0 ? (
+                              <>
+                                <strong>Ничего не найдено</strong>
+                                <span>Попробуйте изменить поисковый запрос или выбранные фильтры.</span>
+                                <button type="button" onClick={resetListFilters}>Сбросить поиск и фильтры</button>
+                              </>
+                            ) : (
+                              <>
+                                <strong>В этом периоде пока нет операций</strong>
+                                <span>Добавьте первую операцию, чтобы начать вести учёт за выбранный период.</span>
+                                <button type="button" onClick={openAddTransaction}>+ Добавить операцию</button>
+                              </>
+                            )}
                           </td>
                         </tr>
                       ) : (
@@ -2923,30 +3765,17 @@ export default function MoneyCounter() {
                                     ) : null}
                                   </td>
                                   <td>
-                                    <ClampedName
-                                      text={`${row.out.accountName} → ${row.incoming.accountName}`}
-                                    />
+                                    <ClampedName text={row.out.accountName} />
                                   </td>
                                   <td>{row.out.description}</td>
                                   <td>—</td>
                                   <td className="amountCell">{renderDisplayAmount(row.out)}</td>
                                   <td className="amountCell">
                                     <span className="altAmount">
-                                      {row.out.accountCurrency === row.incoming.accountCurrency ? (
-                                        renderAccountAmount(row.out)
-                                      ) : (
-                                        <>
-                                          <Money
-                                            cents={Math.abs(row.out.amountCents)}
-                                            currency={row.out.accountCurrency}
-                                          />
-                                          {" → "}
-                                          <Money
-                                            cents={Math.abs(row.incoming.amountCents)}
-                                            currency={row.incoming.accountCurrency}
-                                          />
-                                        </>
-                                      )}
+                                      → {row.incoming.accountName}
+                                      {row.out.accountCurrency !== row.incoming.accountCurrency ? (
+                                        <> · <Money cents={Math.abs(row.incoming.amountCents)} currency={row.incoming.accountCurrency} /></>
+                                      ) : null}
                                     </span>
                                   </td>
                                   <td className="rowActions">
@@ -2957,6 +3786,7 @@ export default function MoneyCounter() {
                                         aria-label="Действия"
                                         aria-haspopup="menu"
                                         aria-expanded={rowMenu === `transfer-${row.out.transferGroup}`}
+                                        data-focus-key={`transfer-${row.out.transferGroup}`}
                                         onClick={(event) => {
                                           const rect = event.currentTarget.getBoundingClientRect();
                                           setRowMenuUp(window.innerHeight - rect.bottom < 140);
@@ -2988,7 +3818,10 @@ export default function MoneyCounter() {
                                             type="button"
                                             onClick={() => {
                                               setRowMenu(null);
-                                              startEditTransaction(row.out);
+                                              startEditTransaction(
+                                                row.out,
+                                                `transfer-${row.out.transferGroup}`
+                                              );
                                             }}
                                           >
                                             Править
@@ -2997,7 +3830,10 @@ export default function MoneyCounter() {
                                             type="button"
                                             onClick={() => {
                                               setRowMenu(null);
-                                              void unlinkTransfer(row.out.transferGroup ?? "");
+                                              void openUnlinkTransfer(
+                                                row.out.transferGroup ?? "",
+                                                { out: row.out, incoming: row.incoming }
+                                              );
                                             }}
                                           >
                                             Разъединить
@@ -3031,6 +3867,7 @@ export default function MoneyCounter() {
                                   >
                                     {/* Expenses are plain black and shown without a
                                         leading minus; only income is coloured (green). */}
+                                    {row.tx.amountCents > 0 && !row.tx.transferGroup ? "+" : null}
                                     {renderDisplayAmount(row.tx)}
                                   </td>
                                   <td className="amountCell">
@@ -3044,6 +3881,7 @@ export default function MoneyCounter() {
                                         aria-label="Действия"
                                         aria-haspopup="menu"
                                         aria-expanded={rowMenu === `tx-${row.tx.id}`}
+                                        data-focus-key={`tx-${row.tx.id}`}
                                         onClick={(event) => {
                                           const rect = event.currentTarget.getBoundingClientRect();
                                           setRowMenuUp(window.innerHeight - rect.bottom < 140);
@@ -3073,21 +3911,33 @@ export default function MoneyCounter() {
                                             type="button"
                                             onClick={() => {
                                               setRowMenu(null);
-                                              startEditTransaction(row.tx);
+                                              startEditTransaction(row.tx, `tx-${row.tx.id}`);
                                             }}
                                           >
                                             Править
                                           </button>
-                                          <button
-                                            type="button"
-                                            className="danger"
-                                            onClick={() => {
-                                              setRowMenu(null);
-                                              void removeTransaction(row.tx);
-                                            }}
-                                          >
-                                            Удалить
-                                          </button>
+                                          {row.tx.transferGroup ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setRowMenu(null);
+                                                void openUnlinkTransfer(row.tx.transferGroup ?? "");
+                                              }}
+                                            >
+                                              Разъединить
+                                            </button>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              className="danger"
+                                              onClick={() => {
+                                                setRowMenu(null);
+                                                setDeleteTransactionTarget(row.tx);
+                                              }}
+                                            >
+                                              Удалить
+                                            </button>
+                                          )}
                                         </span>
                                       ) : null}
                                     </span>
@@ -3105,102 +3955,74 @@ export default function MoneyCounter() {
             </section>
 
             <aside className="rightRail">
-            <section className="surface accountsPanel" aria-label="Баланс по счетам">
-              <h2>Счета</h2>
-              {pastPeriod ? (
-                <p className="panelNote">
-                  Остатки на {dmy(monthEnd(mainPeriod))}
-                </p>
-              ) : null}
-              <table className="balanceTable">
-                <thead>
-                  <tr className="balHead">
-                    <th />
-                    <th>Остаток</th>
-                    <th>В валюте счёта</th>
-                    <th>Траты</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {panelAccounts.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="emptyTable">
-                        {pastPeriod && endAccounts === null ? "Загрузка" : "Нет счетов"}
-                      </td>
-                    </tr>
+              <div
+                ref={rightStackRef}
+                className={`rightStickyStack ${rightStackSticky ? "" : "stickyDisabled"}`}
+              >
+                <section className="accountsPanel" aria-label="Баланс по счетам">
+                  <div className="accountsPanelTitle">
+                    <h2>Счета</h2>
+                    {pastPeriod ? <span>на {dmy(monthEnd(mainPeriod))}</span> : null}
+                  </div>
+                  <div className="accountPanelGrid accountPanelHead" aria-hidden="true">
+                    <span>Счёт</span>
+                    <span>Расходы</span>
+                    <span>Баланс</span>
+                  </div>
+                  {loading || (pastPeriod && endAccounts === null) ? (
+                    <div className="accountPanelSkeleton" aria-hidden="true">
+                      {Array.from({ length: 6 }, (_, index) => (
+                        <div className="accountPanelGrid" key={index}><span /><span /><span /></div>
+                      ))}
+                    </div>
+                  ) : panelAccounts.length === 0 ? (
+                    <div className="rightPanelState">Нет счетов</div>
                   ) : (
-                    panelAccounts.map((account) => (
-                      <tr key={account.id}>
-                        <td className="balName">{account.name}</td>
-                        <td className="amountCell">
-                          {/* Easter egg: hovering the display-currency figure —
-                              the one that was converted — reveals the exact rate. */}
-                          <span className="ratesPeek">
-                            <span>{renderAccountBalance(account)}</span>
-                            {displayCurrency &&
-                            account.currency !== displayCurrency &&
-                            rateInfo(account.currency) ? (
-                              <span className="ratesPop">{rateInfo(account.currency)}</span>
+                    <div className="accountPanelRows">
+                      {panelAccounts.map((account) => (
+                        <div className="accountPanelGrid accountPanelRow" key={account.id}>
+                          <span className="accountPanelName">
+                            <strong>{account.name}</strong>
+                            <small>{account.currency}</small>
+                          </span>
+                          <span className="accountPanelSpend">{renderFlowCell(accountSpend.get(account.id))}</span>
+                          <span className={account.balanceCents < 0 ? "accountPanelBalance negative" : "accountPanelBalance"}>
+                            <span className="ratesPeek">
+                              <strong>{renderAccountBalance(account)}</strong>
+                              {displayCurrency && account.currency !== displayCurrency && rateInfo(account.currency) ? (
+                                <span className="ratesPop">{rateInfo(account.currency)}</span>
+                              ) : null}
+                            </span>
+                            {displayCurrency && account.currency !== displayCurrency ? (
+                              <small><Money cents={account.balanceCents} currency={account.currency} /></small>
                             ) : null}
                           </span>
-                        </td>
-                        <td className="amountCell">
-                          <span className="altAmount">
-                            {displayCurrency && account.currency !== displayCurrency ? (
-                              <Money
-                                cents={account.balanceCents}
-                                currency={account.currency}
-                              />
-                            ) : (
-                              "—"
-                            )}
-                          </span>
-                        </td>
-                        <td className="amountCell flowCell">
-                          {renderFlowCell(accountSpend.get(account.id))}
-                        </td>
-                      </tr>
-                    ))
+                        </div>
+                      ))}
+                      <div className="accountPanelTotal">
+                        <strong>Итого</strong>
+                        <strong>{renderConverted(panelConverted, panelRates, panelRateDate)}</strong>
+                      </div>
+                    </div>
                   )}
-                </tbody>
-                {panelAccounts.length > 0 ? (
-                  <tfoot>
-                    <tr className="balTotal">
-                      <td>Итого</td>
-                      <td className="amountCell">
-                        {renderConverted(panelConverted, panelRates, panelRateDate)}
-                      </td>
-                      <td />
-                      <td className="amountCell flowCell">
-                        {renderFlowCell(periodExpense)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                ) : null}
-              </table>
-            </section>
+                </section>
 
-            <section className="surface categoryPanel" aria-label="Расходы по категориям">
-              <h2>Расходы по категориям</h2>
-              {categoryBars.missing.length > 0 ? (
-                <p className="panelNote">
-                  <Flagged
-                    reason={`Без учёта ${categoryBars.missing.join(", ")} — нет курса на ${dmy(periodRateDate)}`}
-                  >
-                    учтены не все валюты
-                  </Flagged>
-                </p>
-              ) : null}
-              {periodRates === null ? (
-                <div className="emptyBars">…</div>
-              ) : (
-                <CategoryBars
-                  items={categoryBars.items}
-                  uncategorized={categoryBars.uncategorized}
-                  currency={displayCurrency}
-                />
-              )}
-            </section>
+                <section className="categoryPanel" aria-label="Расходы по категориям">
+                  <h2>Расходы по категориям</h2>
+                  {categoryBars.missing.length > 0 ? (
+                    <p className="panelNote">
+                      <Flagged reason={`Без учёта ${categoryBars.missing.join(", ")} — нет курса на ${dmy(periodRateDate)}`}>
+                        учтены не все валюты
+                      </Flagged>
+                    </p>
+                  ) : null}
+                  {periodRates === null ? (
+                    <div className="categorySkeleton" aria-hidden="true" />
+                  ) : (
+                    <CategoryDonut items={categoryDonutItems} currency={displayCurrency} />
+                  )}
+                </section>
+              </div>
 
             </aside>
           </div>
@@ -3289,13 +4111,19 @@ export default function MoneyCounter() {
               className="modalOverlay"
               role="dialog"
               aria-modal="true"
-              aria-label={editingTransactionId ? "Правка операции" : "Новая операция"}
+              aria-label={operationModalTitle}
               onClick={closeForm}
             >
-              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
+              <div
+                ref={transactionDialogRef}
+                className={`modalCard operationDialog ${
+                  transactionForm.direction === "transfer" ? "transferDialog" : "ordinaryDialog"
+                }`}
+                onClick={(event) => event.stopPropagation()}
+              >
                 <div className="modalHead">
-                  <h2>{editingTransactionId ? "Правка операции" : "Новая операция"}</h2>
-                  <button className="iconButton small" type="button" onClick={closeForm} title="Закрыть">
+                  <h2>{operationModalTitle}</h2>
+                  <button className="modalClose" type="button" onClick={closeForm} aria-label="Закрыть">
                     ×
                   </button>
                 </div>
@@ -3303,41 +4131,56 @@ export default function MoneyCounter() {
                 {/* Two-column grid; the field set and pairing follow the type:
                     ordinary — [Тип|Счёт][Дата|Сумма][Описание][Категория],
                     transfer — [Тип|Дата][Со счёта|На счёт][Сумма|Зачислено]. */}
-                <form className="transactionForm" onSubmit={handleSubmitTransaction}>
-                  <label>
-                    Тип
-                    <select
-                      value={transactionForm.direction}
-                      onChange={(event) =>
-                        setTransactionForm({
-                          ...transactionForm,
-                          direction: event.target.value as TransactionForm["direction"],
-                        })
-                      }
-                    >
-                      <option value="expense">Расход</option>
-                      <option value="income">Поступление</option>
-                      {/* Add mode creates a new linked pair; edit mode links
-                          two EXISTING operations (e.g. imported statements). */}
-                      <option value="transfer">Перемещение между счетами</option>
-                    </select>
-                  </label>
+                <form className="transactionForm phase1TransactionForm" onSubmit={handleSubmitTransaction}>
+                  {transactionForm.direction !== "transfer" || !editingTransactionId ? (
+                    <div className="operationField">
+                    <span className="fieldLabel">Тип операции</span>
+                    <div className="operationSegments" role="group" aria-label="Тип операции">
+                      {([
+                        ["expense", "Расход"],
+                        ["income", "Поступление"],
+                        ["transfer", "Перевод"],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={transactionForm.direction === value ? "active" : ""}
+                          aria-pressed={transactionForm.direction === value}
+                          onClick={() => {
+                            setTransactionForm({
+                              ...transactionForm,
+                              direction: value,
+                              category: value === "expense" ? transactionForm.category : "",
+                            });
+                            setAutoCategoryApplied(false);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    </div>
+                  ) : null}
                   {transactionForm.direction === "transfer" && !editingTransactionId ? (
                     <>
-                      <label>
-                        Дата
+                      <div className="operationField">
+                        <label className="fieldLabel">Дата</label>
                         <DateField
                           required
                           value={transactionForm.date}
                           onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
                         />
-                      </label>
-                      <label>
-                        Со счёта
+                        <span className="fieldHelp">Дата влияет на список доступных счетов</span>
+                      </div>
+                      <div className={`operationField ${transactionAccountInvalid ? "invalid" : ""}`}>
+                        <label className="fieldLabel" htmlFor="transfer-from-account">Со счёта</label>
                         <select
+                          id="transfer-from-account"
                           required
+                          data-autofocus
                           disabled={accounts.length === 0}
                           value={transactionForm.accountId}
+                          aria-invalid={transactionAccountInvalid}
                           onChange={(event) =>
                             setTransactionForm({
                               ...transactionForm,
@@ -3345,19 +4188,26 @@ export default function MoneyCounter() {
                             })
                           }
                         >
-                          <option value="">Выберите счет</option>
-                          {accountsActiveOn(transactionForm.date).map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name}
+                          <option value="">Выберите счёт</option>
+                          {accounts.map((account) => (
+                            <option
+                              key={account.id}
+                              value={account.id}
+                              disabled={!accountsActiveOn(transactionForm.date).some((active) => active.id === account.id)}
+                            >
+                              {account.name} · {account.currency}
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <label>
-                        На счёт
+                        {transactionAccountInvalid ? <span className="fieldError">Этот счёт недоступен на выбранную дату. Выберите другой счёт.</span> : null}
+                      </div>
+                      <div className={`operationField ${transferToAccountInvalid ? "invalid" : ""}`}>
+                        <label className="fieldLabel" htmlFor="transfer-to-account">На счёт</label>
                         <select
+                          id="transfer-to-account"
                           required
                           value={transactionForm.toAccountId}
+                          aria-invalid={transferToAccountInvalid}
                           onChange={(event) =>
                             setTransactionForm({
                               ...transactionForm,
@@ -3365,68 +4215,77 @@ export default function MoneyCounter() {
                             })
                           }
                         >
-                          <option value="">Выберите счет</option>
-                          {accountsActiveOn(transactionForm.date)
+                          <option value="">Выберите счёт</option>
+                          {accounts
                             .filter((account) => String(account.id) !== transactionForm.accountId)
                             .map((account) => (
-                              <option key={account.id} value={account.id}>
-                                {account.name}
+                              <option
+                                key={account.id}
+                                value={account.id}
+                                disabled={!accountsActiveOn(transactionForm.date).some((active) => active.id === account.id)}
+                              >
+                                {account.name} · {account.currency}
                               </option>
                             ))}
                         </select>
-                      </label>
-                      {(() => {
-                        const fromCurrency = accounts.find(
-                          (account) => String(account.id) === transactionForm.accountId
-                        )?.currency;
-                        const toCurrency = accounts.find(
-                          (account) => String(account.id) === transactionForm.toAccountId
-                        )?.currency;
-                        const crossCurrency = Boolean(
-                          fromCurrency && toCurrency && fromCurrency !== toCurrency
-                        );
-                        return (
-                          <>
-                            <label>
-                              Сумма{fromCurrency ? ` (${fromCurrency})` : ""}
+                        {transferToAccountInvalid ? <span className="fieldError">Этот счёт недоступен на выбранную дату. Выберите другой счёт.</span> : null}
+                      </div>
+
+                      {transferCrossCurrency ? (
+                        <div className="transferAmountsDifferent wideField">
+                          <div className="operationField">
+                            <label className="fieldLabel" htmlFor="transfer-amount-out">Списано</label>
+                            <div className="amountControl">
                               <input
+                                id="transfer-amount-out"
                                 required
                                 inputMode="decimal"
+                                placeholder="0,00"
                                 value={transactionForm.amount}
-                                onChange={(event) =>
-                                  setTransactionForm({
-                                    ...transactionForm,
-                                    amount: event.target.value,
-                                  })
-                                }
+                                onChange={(event) => setTransactionForm({ ...transactionForm, amount: event.target.value })}
                               />
-                            </label>
-                            {/* Cross-currency: the user says how much actually
-                                arrived — the app never invents an FX rate for
-                                real money. */}
-                            {crossCurrency ? (
-                              <label>
-                                Зачислено ({toCurrency})
-                                <input
-                                  required
-                                  inputMode="decimal"
-                                  value={transactionForm.amountIn}
-                                  onChange={(event) =>
-                                    setTransactionForm({
-                                      ...transactionForm,
-                                      amountIn: event.target.value,
-                                    })
-                                  }
-                                />
-                              </label>
-                            ) : null}
-                          </>
-                        );
-                      })()}
-                      <label className="wideField">
-                        Описание
+                              <span>{transferFromAccount?.currency}</span>
+                            </div>
+                          </div>
+                          <span className="transferAmountArrow" aria-hidden="true">→</span>
+                          <div className="operationField">
+                            <label className="fieldLabel" htmlFor="transfer-amount-in">Зачислено</label>
+                            <div className="amountControl">
+                              <input
+                                id="transfer-amount-in"
+                                required
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={transactionForm.amountIn}
+                                onChange={(event) => setTransactionForm({ ...transactionForm, amountIn: event.target.value })}
+                              />
+                              <span>{transferToAccount?.currency}</span>
+                            </div>
+                            <span className="fieldHelp">Укажите сумму зачисления в валюте счёта</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="operationField wideField">
+                          <label className="fieldLabel" htmlFor="transfer-amount">Сумма</label>
+                          <div className="amountControl">
+                            <input
+                              id="transfer-amount"
+                              required
+                              inputMode="decimal"
+                              placeholder="0,00"
+                              value={transactionForm.amount}
+                              onChange={(event) => setTransactionForm({ ...transactionForm, amount: event.target.value })}
+                            />
+                            <span>{transferFromAccount?.currency ?? ""}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="operationField wideField">
+                        <label className="fieldLabel" htmlFor="transfer-description">Описание перевода</label>
                         <input
-                          placeholder="Перевод между счетами"
+                          id="transfer-description"
+                          maxLength={120}
                           value={transactionForm.description}
                           onChange={(event) =>
                             setTransactionForm({
@@ -3435,11 +4294,46 @@ export default function MoneyCounter() {
                             })
                           }
                         />
-                      </label>
+                        <span className="fieldHelp">Будет применено к обеим операциям</span>
+                        <span className="fieldCounter">{transactionForm.description.length} / 120</span>
+                      </div>
+
+                      <button
+                        className="additionalToggle wideField"
+                        type="button"
+                        aria-expanded={additionalFieldsOpen}
+                        onClick={() => setAdditionalFieldsOpen((value) => !value)}
+                      >
+                        <span aria-hidden="true">›</span>
+                        Дополнительно
+                      </button>
+                      {additionalFieldsOpen ? (
+                        <div className="additionalFields wideField">
+                          <div className="operationField">
+                            <label className="fieldLabel" htmlFor="transfer-note">Заметка</label>
+                            <textarea
+                              id="transfer-note"
+                              maxLength={500}
+                              placeholder="Введите заметку (необязательно)"
+                              value={transactionForm.notes}
+                              onChange={(event) => setTransactionForm({ ...transactionForm, notes: event.target.value })}
+                            />
+                            <span className="fieldCounter">{transactionForm.notes.length} / 500</span>
+                          </div>
+                          <label className="operationCheckbox">
+                            <input
+                              type="checkbox"
+                              checked={transactionForm.flagged}
+                              onChange={(event) => setTransactionForm({ ...transactionForm, flagged: event.target.checked })}
+                            />
+                            <span>Требует внимания</span>
+                          </label>
+                        </div>
+                      ) : null}
                     </>
                   ) : transactionForm.direction === "transfer" ? (
                     <>
-                      <label>
+                      <label className="legacyTransferLead">
                         Дата
                         {/* Locked while PICKING a partner (linking does not
                             save field edits); editable on a linked leg. */}
@@ -3450,7 +4344,7 @@ export default function MoneyCounter() {
                           onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
                         />
                       </label>
-                      <label>
+                      <label className="legacyTransferLead">
                         Счет
                         {/* Locked: linking never moves a leg to another
                             account, an edit here would be discarded. */}
@@ -3465,55 +4359,214 @@ export default function MoneyCounter() {
                       </label>
                       {editingTransaction?.transferGroup ? (
                         <>
-                          <p className="importHint wideField">
-                            Операция уже входит в перемещение: счёт и сумма фиксированы.
-                            Разъединить — кнопкой ✂ в списке, или выберите тип
-                            «Расход»/«Поступление» и сохраните.
-                          </p>
-                          <label className="wideField">
-                            Описание
-                            <input
-                              value={transactionForm.description}
-                              onChange={(event) =>
-                                setTransactionForm({
-                                  ...transactionForm,
-                                  description: event.target.value,
-                                })
-                              }
-                            />
-                          </label>
-                          <label className="wideField">
-                            Заметка
-                            <input
-                              placeholder="Почему помечено / что проверить"
-                              value={transactionForm.notes}
-                              onChange={(event) =>
-                                setTransactionForm({ ...transactionForm, notes: event.target.value })
-                              }
-                            />
-                          </label>
-                          <label className="flagCheck wideField">
-                            <input
-                              type="checkbox"
-                              checked={transactionForm.flagged}
-                              onChange={(event) =>
-                                setTransactionForm({
-                                  ...transactionForm,
-                                  flagged: event.target.checked,
-                                })
-                              }
-                            />
-                            ⚠️ Требует внимания
-                          </label>
+                          <div className="linkedTransferBanner wideField">
+                            <span aria-hidden="true">↗</span>
+                            <span><strong>Связанные операции</strong> · изменения сохраняются для обеих сторон</span>
+                          </div>
+                          {transferPairLoading || !editingTransferPair ? (
+                            <div className="transferFormLoading wideField">Загрузка…</div>
+                          ) : (
+                            <>
+                              <div className="transferEditDateRow wideField">
+                                <div className="operationField">
+                                  <label className="fieldLabel">Дата</label>
+                                  <DateField
+                                    required
+                                    value={transactionForm.date}
+                                    onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
+                                  />
+                                  <span className="fieldHelp">Дата влияет на список доступных счетов</span>
+                                </div>
+                              </div>
+
+                              <div className="transferEditGrid wideField">
+                                <section>
+                                  <h3>Списано</h3>
+                                  <div className={`operationField ${transactionAccountInvalid ? "invalid" : ""}`}>
+                                    <label className="fieldLabel" htmlFor="edit-transfer-from">Со счёта</label>
+                                    <select
+                                      id="edit-transfer-from"
+                                      value={transactionForm.accountId}
+                                      aria-invalid={transactionAccountInvalid}
+                                      onChange={(event) => setTransactionForm({ ...transactionForm, accountId: event.target.value })}
+                                    >
+                                      {accounts
+                                        .filter((account) => String(account.id) !== transactionForm.toAccountId)
+                                        .map((account) => (
+                                          <option
+                                            key={account.id}
+                                            value={account.id}
+                                            disabled={!accountsActiveOn(transactionForm.date).some((active) => active.id === account.id)}
+                                          >
+                                            {account.name} · {account.currency}
+                                          </option>
+                                        ))}
+                                    </select>
+                                    {transactionAccountInvalid ? <span className="fieldError">Этот счёт недоступен на выбранную дату. Выберите другой счёт.</span> : null}
+                                  </div>
+                                  <div className="operationField">
+                                    <label className="fieldLabel" htmlFor="edit-transfer-out-amount">Сумма</label>
+                                    <div className="amountControl">
+                                      <input
+                                        id="edit-transfer-out-amount"
+                                        inputMode="decimal"
+                                        value={transactionForm.amount}
+                                        onChange={(event) => setTransactionForm({ ...transactionForm, amount: event.target.value })}
+                                      />
+                                      <span>{transferFromAccount?.currency}</span>
+                                    </div>
+                                    <span className="transferAmountHelp" aria-hidden="true">&nbsp;</span>
+                                  </div>
+                                  <div className="operationField">
+                                    <label className="fieldLabel" htmlFor="edit-transfer-out-description">Описание</label>
+                                    <input
+                                      id="edit-transfer-out-description"
+                                      maxLength={120}
+                                      value={transactionForm.description}
+                                      onChange={(event) => setTransactionForm({ ...transactionForm, description: event.target.value })}
+                                    />
+                                  </div>
+                                </section>
+
+                                <section>
+                                  <h3>Зачислено</h3>
+                                  <div className={`operationField ${transferToAccountInvalid ? "invalid" : ""}`}>
+                                    <label className="fieldLabel" htmlFor="edit-transfer-to">На счёт</label>
+                                    <select
+                                      id="edit-transfer-to"
+                                      value={transactionForm.toAccountId}
+                                      aria-invalid={transferToAccountInvalid}
+                                      onChange={(event) => setTransactionForm({ ...transactionForm, toAccountId: event.target.value })}
+                                    >
+                                      {accounts
+                                        .filter((account) => String(account.id) !== transactionForm.accountId)
+                                        .map((account) => (
+                                          <option
+                                            key={account.id}
+                                            value={account.id}
+                                            disabled={!accountsActiveOn(transactionForm.date).some((active) => active.id === account.id)}
+                                          >
+                                            {account.name} · {account.currency}
+                                          </option>
+                                        ))}
+                                    </select>
+                                    {transferToAccountInvalid ? <span className="fieldError">Этот счёт недоступен на выбранную дату. Выберите другой счёт.</span> : null}
+                                  </div>
+                                  <div className="operationField">
+                                    <label className="fieldLabel" htmlFor="edit-transfer-in-amount">Сумма</label>
+                                    <div className={`amountControl ${transferCrossCurrency ? "" : "synced"}`}>
+                                      <input
+                                        id="edit-transfer-in-amount"
+                                        inputMode="decimal"
+                                        readOnly={!transferCrossCurrency}
+                                        value={transferCrossCurrency ? transactionForm.amountIn : transactionForm.amount}
+                                        onChange={(event) => setTransactionForm({ ...transactionForm, amountIn: event.target.value })}
+                                      />
+                                      <span>{transferToAccount?.currency}</span>
+                                    </div>
+                                    <span className="transferAmountHelp">
+                                      {transferCrossCurrency
+                                        ? "Укажите сумму зачисления в валюте счёта"
+                                        : "Синхронизировано со списанием"}
+                                    </span>
+                                  </div>
+                                  <div className="operationField">
+                                    <label className="fieldLabel" htmlFor="edit-transfer-in-description">Описание</label>
+                                    <input
+                                      id="edit-transfer-in-description"
+                                      maxLength={120}
+                                      value={transactionForm.descriptionIn}
+                                      onChange={(event) => setTransactionForm({ ...transactionForm, descriptionIn: event.target.value })}
+                                    />
+                                  </div>
+                                </section>
+                              </div>
+
+                              <button
+                                className="additionalToggle wideField"
+                                type="button"
+                                aria-expanded={additionalFieldsOpen}
+                                onClick={() => setAdditionalFieldsOpen((value) => !value)}
+                              >
+                                <span aria-hidden="true">›</span>
+                                Дополнительно
+                              </button>
+                              {additionalFieldsOpen ? (
+                                <div className="additionalFields wideField">
+                                  <div className="operationField">
+                                    <label className="fieldLabel" htmlFor="edit-transfer-note">Заметка</label>
+                                    <textarea
+                                      id="edit-transfer-note"
+                                      maxLength={500}
+                                      placeholder="Введите заметку (необязательно)"
+                                      value={transactionForm.notes}
+                                      onChange={(event) => setTransactionForm({ ...transactionForm, notes: event.target.value })}
+                                    />
+                                    <span className="fieldCounter">{transactionForm.notes.length} / 500</span>
+                                  </div>
+                                  <label className="operationCheckbox">
+                                    <input
+                                      type="checkbox"
+                                      checked={transactionForm.flagged}
+                                      onChange={(event) => setTransactionForm({ ...transactionForm, flagged: event.target.checked })}
+                                    />
+                                    <span>Требует внимания</span>
+                                  </label>
+                                </div>
+                              ) : null}
+                            </>
+                          )}
                         </>
                       ) : (
-                        <div className="wideField partnerPicker">
-                        <p className="importHint">
-                          Выберите вторую операцию (другого знака, с другого счёта) —
-                          вместе они станут перемещением и уйдут из доходов, расходов
-                          и категорий. Кандидаты — в пределах ±7 дней; точные
-                          совпадения по сумме показаны первыми.
-                        </p>
+                        <div className={`wideField partnerPicker ${partnerCreate.open ? "partnerMode" : "candidateMode"}`}>
+                        <div className="transferSourceCard">
+                          <span>Исходная операция</span>
+                          <div>
+                            <span>
+                              <strong>{editingTransaction?.accountName}</strong>
+                              <small>{editingTransaction ? dmy(editingTransaction.date) : ""} · {editingTransaction?.description || "—"}</small>
+                            </span>
+                            {editingTransaction ? (
+                              <b>
+                                {editingTransaction.amountCents > 0 ? "+" : null}
+                                <Money cents={Math.abs(editingTransaction.amountCents)} currency={editingTransaction.accountCurrency} />
+                              </b>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="transferTabs" role="tablist">
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={!partnerCreate.open}
+                            className={!partnerCreate.open ? "active" : ""}
+                            onClick={() => setPartnerCreate({ ...partnerCreate, open: false })}
+                          >
+                            Подходящие операции
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={partnerCreate.open}
+                            className={partnerCreate.open ? "active" : ""}
+                            onClick={() =>
+                              setPartnerCreate({
+                                open: true,
+                                accountId: partnerCreate.accountId,
+                                amount: partnerCreate.amount || centsToInputValue(Math.abs(editingTransaction?.amountCents ?? 0)),
+                                date: partnerCreate.date || editingTransaction?.date || today(),
+                                description: partnerCreate.description || editingTransaction?.description || "",
+                              })
+                            }
+                          >
+                            Создать операцию-напарника
+                          </button>
+                        </div>
+                        <div className="candidateSection">
+                          <div className="transferSectionIntro">
+                            <h3>Выберите подходящую операцию для связывания</h3>
+                            <p>Мы нашли возможные совпадения по дате, сумме и описанию.</p>
+                          </div>
                         {partnerCandidates === null ? (
                           <p className="mutedBlock">Загрузка…</p>
                         ) : partnerCandidates.length === 0 ? (
@@ -3533,7 +4586,15 @@ export default function MoneyCounter() {
                                     onChange={() => setPartnerId(String(cand.id))}
                                   />
                                   <span className="partnerMain">
-                                    <b>{cand.accountName}</b>
+                                    <span className="partnerCandidateTitle">
+                                      <b>{cand.accountName}</b>
+                                      {editingTransaction &&
+                                      cand.date === editingTransaction.date &&
+                                      cand.accountCurrency === editingTransaction.accountCurrency &&
+                                      Math.abs(cand.amountCents) === Math.abs(editingTransaction.amountCents) ? (
+                                        <em>точное совпадение</em>
+                                      ) : null}
+                                    </span>
                                     <small>
                                       {dmy(cand.date)} · {cand.description || "—"}
                                     </small>
@@ -3543,6 +4604,7 @@ export default function MoneyCounter() {
                                       cand.amountCents > 0 ? "positive" : ""
                                     }`}
                                   >
+                                    {cand.amountCents > 0 ? "+" : null}
                                     <Money
                                       cents={Math.abs(cand.amountCents)}
                                       currency={cand.accountCurrency}
@@ -3553,6 +4615,8 @@ export default function MoneyCounter() {
                             ))}
                           </ul>
                         )}
+                        <div className="transferInfo">Не нашли подходящую операцию? Переключитесь на вкладку «Создать операцию-напарника».</div>
+                        </div>
 
                         {/* Missing counterpart? Create it right here and link
                             in one action instead of closing the modal. */}
@@ -3569,6 +4633,7 @@ export default function MoneyCounter() {
                                     Math.abs(editingTransaction?.amountCents ?? 0)
                                   ),
                                   date: editingTransaction?.date ?? today(),
+                                  description: editingTransaction?.description ?? "",
                                 })
                               }
                             >
@@ -3576,17 +4641,23 @@ export default function MoneyCounter() {
                             </button>
                           ) : (
                             <>
-                              <p className="importHint">
-                                Будет создано{" "}
-                                {editingTransaction && editingTransaction.amountCents < 0
-                                  ? "поступление"
-                                  : "расход"}{" "}
-                                и сразу связано с этой операцией.
-                              </p>
                               <div className="partnerCreateGrid">
-                                <label>
-                                  Счёт
+                                <div className="operationField">
+                                  <label className="fieldLabel">Дата операции</label>
+                                  <DateField
+                                    value={partnerCreate.date}
+                                    onChange={(iso) => setPartnerCreate({ ...partnerCreate, date: iso })}
+                                  />
+                                  <span className="fieldHelp">
+                                    {partnerCreate.date === editingTransaction?.date
+                                      ? "Дата подставлена из исходной операции"
+                                      : "Дата изменена вручную"}
+                                  </span>
+                                </div>
+                                <div className="operationField">
+                                  <label className="fieldLabel" htmlFor="partner-account">На счёт</label>
                                   <select
+                                    id="partner-account"
                                     value={partnerCreate.accountId}
                                     onChange={(event) =>
                                       setPartnerCreate({
@@ -3595,59 +4666,46 @@ export default function MoneyCounter() {
                                       })
                                     }
                                   >
-                                    <option value="">Выберите счет</option>
+                                    <option value="">Выберите счёт</option>
                                     {accounts
                                       .filter(
                                         (account) =>
-                                          String(account.id) !== transactionForm.accountId
+                                          String(account.id) !== transactionForm.accountId &&
+                                          accountsActiveOn(partnerCreate.date).some((active) => active.id === account.id)
                                       )
                                       .map((account) => (
                                         <option key={account.id} value={account.id}>
-                                          {account.name}
+                                          {account.name} · {account.currency}
                                         </option>
                                       ))}
                                   </select>
-                                </label>
-                                <label>
-                                  Дата
-                                  <DateField
-                                    value={partnerCreate.date}
-                                    onChange={(iso) =>
-                                      setPartnerCreate({ ...partnerCreate, date: iso })
-                                    }
-                                  />
-                                </label>
-                                <label>
-                                  Сумма
-                                  {(() => {
-                                    const currency = accounts.find(
-                                      (account) =>
-                                        String(account.id) === partnerCreate.accountId
-                                    )?.currency;
-                                    return currency ? ` (${currency})` : "";
-                                  })()}
+                                </div>
+                                <div className="operationField">
+                                  <label className="fieldLabel" htmlFor="partner-amount">Сумма зачисления</label>
+                                  <div className="amountControl">
+                                    <input
+                                      id="partner-amount"
+                                      inputMode="decimal"
+                                      value={partnerCreate.amount}
+                                      onChange={(event) => setPartnerCreate({ ...partnerCreate, amount: event.target.value })}
+                                    />
+                                    <span>{accounts.find((account) => String(account.id) === partnerCreate.accountId)?.currency ?? ""}</span>
+                                  </div>
+                                  <span className="fieldHelp">
+                                    {partnerCreate.amount === centsToInputValue(Math.abs(editingTransaction?.amountCents ?? 0))
+                                      ? "Сумма подставлена из исходной операции"
+                                      : "Сумма изменена вручную"}
+                                  </span>
+                                </div>
+                                <div className="operationField">
+                                  <label className="fieldLabel" htmlFor="partner-description">Описание</label>
                                   <input
-                                    inputMode="decimal"
-                                    value={partnerCreate.amount}
-                                    onChange={(event) =>
-                                      setPartnerCreate({
-                                        ...partnerCreate,
-                                        amount: event.target.value,
-                                      })
-                                    }
+                                    id="partner-description"
+                                    value={partnerCreate.description}
+                                    onChange={(event) => setPartnerCreate({ ...partnerCreate, description: event.target.value })}
                                   />
-                                </label>
+                                </div>
                               </div>
-                              <button
-                                type="button"
-                                className="secondaryButton"
-                                disabled={
-                                  saving || !partnerCreate.accountId || !partnerCreate.amount
-                                }
-                                onClick={() => void createAndLinkPartner()}
-                              >
-                                Создать и связать
-                              </button>
                             </>
                           )}
                         </div>
@@ -3656,120 +4714,257 @@ export default function MoneyCounter() {
                     </>
                   ) : (
                     <>
-                      <label>
-                        Счет
-                        <select
-                          required
-                          disabled={accounts.length === 0}
-                          value={transactionForm.accountId}
-                          onChange={(event) =>
-                            setTransactionForm({
-                              ...transactionForm,
-                              accountId: event.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Выберите счет</option>
-                          {accountsActiveOn(transactionForm.date).map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Дата
+                      <div className="operationField">
+                        <label className="fieldLabel">Дата</label>
                         <DateField
                           required
                           value={transactionForm.date}
                           onChange={(iso) => setTransactionForm({ ...transactionForm, date: iso })}
                         />
-                      </label>
-                      <label>
-                        Сумма
-                        <input
-                          required
-                          inputMode="decimal"
-                          value={transactionForm.amount}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, amount: event.target.value })
-                          }
-                        />
-                      </label>
-                      <label className="wideField">
-                        Описание
-                        <input
-                          value={transactionForm.description}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, description: event.target.value })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Категория
+                        <span className="fieldHelp">Дата влияет на список доступных счетов</span>
+                      </div>
+
+                      <div className={`operationField ${transactionAccountInvalid ? "invalid" : ""}`}>
+                        <label className="fieldLabel" htmlFor="operation-account">Счёт</label>
                         <select
-                          value={transactionForm.category}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, category: event.target.value })
-                          }
+                          id="operation-account"
+                          required
+                          data-autofocus
+                          disabled={accounts.length === 0}
+                          value={transactionForm.accountId}
+                          aria-invalid={transactionAccountInvalid}
+                          onChange={(event) => setTransactionForm({ ...transactionForm, accountId: event.target.value })}
                         >
-                          <option value="">— без категории —</option>
-                          {transactionForm.category &&
-                          !categories.some((c) => c.name === transactionForm.category) ? (
-                            <option value={transactionForm.category}>
-                              {transactionForm.category}
-                            </option>
-                          ) : null}
-                          {categories.map((category) => (
-                            <option key={category.id} value={category.name}>
-                              {category.name}
-                            </option>
-                          ))}
+                          <option value="">Выберите счёт</option>
+                          {accounts.map((account) => {
+                            const available = accountsActiveOn(transactionForm.date).some(
+                              (activeAccount) => activeAccount.id === account.id
+                            );
+                            return (
+                              <option key={account.id} value={account.id} disabled={!available}>
+                                {account.name}
+                              </option>
+                            );
+                          })}
                         </select>
-                      </label>
-                      <label className="wideField">
-                        Заметка
+                        {transactionAccountInvalid ? (
+                          <span className="fieldError">Этот счёт недоступен на выбранную дату. Выберите другой счёт.</span>
+                        ) : null}
+                      </div>
+
+                      <div className="operationField">
+                        <label className="fieldLabel" htmlFor="operation-amount">Сумма</label>
+                        <div className="amountControl">
+                          <input
+                            id="operation-amount"
+                            required
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            value={transactionForm.amount}
+                            onChange={(event) => setTransactionForm({ ...transactionForm, amount: event.target.value })}
+                          />
+                          <span>
+                            {accounts.find((account) => String(account.id) === transactionForm.accountId)?.currency ?? ""}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="operationField wideField descriptionField">
+                        <label className="fieldLabel" htmlFor="operation-description">Описание</label>
                         <input
-                          placeholder="Почему помечено / что проверить"
-                          value={transactionForm.notes}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, notes: event.target.value })
-                          }
+                          id="operation-description"
+                          maxLength={200}
+                          autoComplete="off"
+                          value={transactionForm.description}
+                          onFocus={() => setSuggestionsOpen(descriptionSuggestions.length > 0)}
+                          onChange={(event) => {
+                            setTransactionForm({ ...transactionForm, description: event.target.value });
+                            setAutoCategoryApplied(false);
+                          }}
                         />
-                      </label>
-                      <label className="flagCheck wideField">
-                        <input
-                          type="checkbox"
-                          checked={transactionForm.flagged}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, flagged: event.target.checked })
-                          }
-                        />
-                        ⚠️ Требует внимания
-                      </label>
+                        <span className="fieldCounter">{transactionForm.description.length} / 200</span>
+                        {suggestionsOpen && descriptionSuggestions.length > 0 ? (
+                          <div className="descriptionSuggestions" role="listbox">
+                            {descriptionSuggestions.map((suggestion) => (
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected="false"
+                                key={suggestion.description.toLocaleLowerCase("ru-RU")}
+                                onClick={() => {
+                                  const applyCategory =
+                                    transactionForm.direction === "expense" && suggestion.autoCategory;
+                                  setTransactionForm({
+                                    ...transactionForm,
+                                    description: suggestion.description,
+                                    category: applyCategory ? suggestion.category : transactionForm.category,
+                                  });
+                                  setAutoCategoryApplied(applyCategory);
+                                  setSuggestionsOpen(false);
+                                }}
+                              >
+                                <span>
+                                  <strong>{suggestion.description}</strong>
+                                  {suggestion.category ? <small>{suggestion.category}</small> : null}
+                                </span>
+                                <em>Использовано {suggestion.usageCount} раз</em>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {transactionForm.direction === "expense" ? (
+                        <div className="operationField wideField">
+                          <label className="fieldLabel" htmlFor="operation-category">Категория</label>
+                          <select
+                            id="operation-category"
+                            value={transactionForm.category}
+                            onChange={(event) => {
+                              setTransactionForm({ ...transactionForm, category: event.target.value });
+                              setAutoCategoryApplied(false);
+                            }}
+                          >
+                            <option value="">Выберите категорию</option>
+                            {transactionForm.category && !categories.some((category) => category.name === transactionForm.category) ? (
+                              <option value={transactionForm.category}>{transactionForm.category}</option>
+                            ) : null}
+                            {categories.map((category) => (
+                              <option key={category.id} value={category.name}>{category.name}</option>
+                            ))}
+                          </select>
+                          {autoCategoryApplied ? <span className="autoCategoryBadge">Подставлено автоматически</span> : null}
+                        </div>
+                      ) : null}
+
+                      <button
+                        className="additionalToggle wideField"
+                        type="button"
+                        aria-expanded={additionalFieldsOpen}
+                        onClick={() => setAdditionalFieldsOpen((value) => !value)}
+                      >
+                        <span aria-hidden="true">›</span>
+                        Дополнительно
+                      </button>
+
+                      {additionalFieldsOpen ? (
+                        <div className="additionalFields wideField">
+                          <div className="operationField">
+                            <label className="fieldLabel" htmlFor="operation-note">Заметка</label>
+                            <textarea
+                              id="operation-note"
+                              maxLength={500}
+                              value={transactionForm.notes}
+                              onChange={(event) => setTransactionForm({ ...transactionForm, notes: event.target.value })}
+                            />
+                            <span className="fieldCounter">{transactionForm.notes.length} / 500</span>
+                          </div>
+                          <label className="operationCheckbox">
+                            <input
+                              type="checkbox"
+                              checked={transactionForm.flagged}
+                              onChange={(event) => setTransactionForm({ ...transactionForm, flagged: event.target.checked })}
+                            />
+                            <span>Требует внимания</span>
+                          </label>
+                        </div>
+                      ) : null}
                     </>
                   )}
-                  <button
-                    className="primaryButton"
-                    disabled={
-                      saving ||
-                      accounts.length === 0 ||
-                      (transactionForm.direction === "transfer" &&
-                        editingTransactionId !== null &&
-                        !editingTransaction?.transferGroup &&
-                        !partnerId)
-                    }
-                    type="submit"
-                  >
-                    <span>{editingTransactionId ? "✓" : "+"}</span>
-                    {transactionForm.direction === "transfer" &&
-                    editingTransactionId !== null &&
-                    !editingTransaction?.transferGroup
-                      ? "Связать"
-                      : editingTransactionId
-                        ? "Сохранить"
-                        : "Добавить"}
-                  </button>
+                  {transactionForm.direction === "transfer" ? (
+                    <footer className="transferFooter wideField">
+                      <div>
+                        {editingTransferPair ? (
+                          <button
+                            className="modalButton destructiveOutline"
+                            type="button"
+                            onClick={() => setUnlinkTransferPair(editingTransferPair)}
+                          >
+                            Разъединить
+                          </button>
+                        ) : null}
+                      </div>
+                      <div>
+                        <button className="modalButton" type="button" onClick={closeForm}>Отмена</button>
+                        {editingTransactionId && !editingTransaction?.transferGroup && partnerCreate.open ? (
+                          <button
+                            className="modalButton primary"
+                            type="button"
+                            disabled={saving || !partnerCreate.accountId || !partnerCreate.amount}
+                            onClick={() => void createAndLinkPartner()}
+                          >
+                            Создать и связать
+                          </button>
+                        ) : (
+                          <button
+                            className="modalButton primary"
+                            type="submit"
+                            disabled={
+                              saving ||
+                              transferPairLoading ||
+                              accounts.length === 0 ||
+                              transactionAccountInvalid ||
+                              transferToAccountInvalid ||
+                              (editingTransactionId !== null &&
+                                !editingTransaction?.transferGroup &&
+                                !partnerId)
+                            }
+                          >
+                            {editingTransactionId !== null && !editingTransaction?.transferGroup
+                              ? "Связать"
+                              : editingTransactionId
+                                ? "Сохранить"
+                                : "Добавить перевод"}
+                          </button>
+                        )}
+                      </div>
+                    </footer>
+                  ) : (
+                    <footer className="operationFooter wideField">
+                      <div>
+                        {editingTransaction ? (
+                          <button
+                            className="modalButton destructiveOutline"
+                            type="button"
+                            onClick={() => setDeleteTransactionTarget(editingTransaction)}
+                          >
+                            Удалить
+                          </button>
+                        ) : null}
+                      </div>
+                      <div>
+                        <button className="modalButton" type="button" onClick={closeForm}>Отмена</button>
+                        {editingTransactionId ? (
+                          <button
+                            className="modalButton primary"
+                            type="submit"
+                            disabled={saving || accounts.length === 0 || transactionAccountInvalid}
+                          >
+                            Сохранить
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              className="modalButton"
+                              type="submit"
+                              disabled={saving || accounts.length === 0 || transactionAccountInvalid}
+                              onClick={() => setSubmitMode("close")}
+                            >
+                              Добавить и закрыть
+                            </button>
+                            <button
+                              className="modalButton primary"
+                              type="submit"
+                              disabled={saving || accounts.length === 0 || transactionAccountInvalid}
+                              onClick={() => setSubmitMode("more")}
+                            >
+                              Добавить ещё
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </footer>
+                  )}
                 </form>
 
                 {/* Import is only for adding new operations; the edit modal
@@ -3926,6 +5121,85 @@ export default function MoneyCounter() {
                     )}
                   </div>
                 ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {deleteTransactionTarget ? (
+            <div
+              className="confirmOverlay"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-operation-title"
+              onClick={() => setDeleteTransactionTarget(null)}
+            >
+              <div className="confirmDialog" onClick={(event) => event.stopPropagation()}>
+                <h3 id="delete-operation-title">Удалить операцию?</h3>
+                <p>Операция будет удалена из истории. Это действие нельзя отменить.</p>
+                <div className="confirmOperation">
+                  <span>
+                    <strong>{deleteTransactionTarget.accountName}</strong>
+                    <small>{dmy(deleteTransactionTarget.date)} · {deleteTransactionTarget.description || "—"}</small>
+                  </span>
+                  <b>
+                    {deleteTransactionTarget.amountCents > 0 ? "+" : null}
+                    <Money cents={Math.abs(deleteTransactionTarget.amountCents)} currency={deleteTransactionTarget.accountCurrency} />
+                  </b>
+                </div>
+                <div className="confirmActions">
+                  <button className="modalButton" type="button" onClick={() => setDeleteTransactionTarget(null)}>Отмена</button>
+                  <button
+                    className="modalButton danger"
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void removeTransaction(deleteTransactionTarget)}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {unlinkTransferPair ? (
+            <div
+              className="confirmOverlay unlinkOverlay"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="unlink-transfer-title"
+              onClick={() => setUnlinkTransferPair(null)}
+            >
+              <div className="confirmDialog unlinkDialog" onClick={(event) => event.stopPropagation()}>
+                <h3 id="unlink-transfer-title">Разъединить этот перевод?</h3>
+                <div className="unlinkPair">
+                  <div>
+                    <span>Исходная операция</span>
+                    <strong>{unlinkTransferPair.out.accountName}</strong>
+                    <small>{dmy(unlinkTransferPair.out.date)} · {unlinkTransferPair.out.description || "—"}</small>
+                    <b><Money cents={Math.abs(unlinkTransferPair.out.amountCents)} currency={unlinkTransferPair.out.accountCurrency} /></b>
+                  </div>
+                  <div>
+                    <span>Операция-напарник</span>
+                    <strong>{unlinkTransferPair.incoming.accountName}</strong>
+                    <small>{dmy(unlinkTransferPair.incoming.date)} · {unlinkTransferPair.incoming.description || "—"}</small>
+                    <b>+<Money cents={Math.abs(unlinkTransferPair.incoming.amountCents)} currency={unlinkTransferPair.incoming.accountCurrency} /></b>
+                  </div>
+                </div>
+                <div className="unlinkWarning">
+                  <strong>После разъединения</strong>
+                  <p>Связь между операциями будет удалена. Они останутся в истории и будут учитываться отдельно: списание — как расход, зачисление — как поступление.</p>
+                </div>
+                <div className="confirmActions">
+                  <button className="modalButton" type="button" onClick={() => setUnlinkTransferPair(null)}>Отмена</button>
+                  <button
+                    className="modalButton danger"
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void unlinkTransfer(unlinkTransferPair.out.transferGroup ?? "")}
+                  >
+                    Разъединить
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}

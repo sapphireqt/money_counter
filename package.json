@@ -13,6 +13,7 @@
     "docker:build": "docker build -t money-counter-demo .",
     "docker:run": "docker run --rm -p 8787:8787 -v money-counter-data:/data money-counter-demo",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
