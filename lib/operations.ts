@@ -11,6 +11,13 @@ export type DescriptionSuggestion = {
   autoCategory: boolean;
 };
 
+export function descriptionHistoryWindowStart(now: Date): string {
+  const target = new Date(
+    Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate())
+  );
+  return target.toISOString().slice(0, 10);
+}
+
 export function normalizeDescription(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }

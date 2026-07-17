@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  descriptionHistoryWindowStart,
   normalizeDescription,
   rankDescriptionSuggestions,
 } from "../lib/operations.ts";
+
+test("uses a rolling twelve-month description history window", () => {
+  assert.equal(
+    descriptionHistoryWindowStart(new Date("2026-07-16T12:00:00Z")),
+    "2025-07-16"
+  );
+});
 
 test("normalizes whitespace without changing the user's casing", () => {
   assert.equal(normalizeDescription("  Metro   Sabadell  "), "Metro Sabadell");

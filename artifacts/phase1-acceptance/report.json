@@ -1,0 +1,2488 @@
+{
+  "generatedAt": "2026-07-16T19:33:25.192Z",
+  "baseUrl": "http://localhost:3106/",
+  "prototype": "family_finance_main_screen_prototype_v34_unified_content_grid.html",
+  "status": "PASS",
+  "scenarios": [
+    {
+      "id": "main-forecast-on",
+      "label": "Main / Forecast ON",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/main-forecast-on-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/main-forecast-on-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "sidebar is exactly 72px",
+          "result": "PASS",
+          "detail": "72px"
+        },
+        {
+          "name": "sidebar has no expand control",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "left column is 922px",
+          "result": "PASS",
+          "detail": "922px"
+        },
+        {
+          "name": "right column is 350px",
+          "result": "PASS",
+          "detail": "350px"
+        },
+        {
+          "name": "content gap is 18px",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "toolbar equals table width",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Inter is applied",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "forecast is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "expense row has no leading minus",
+          "result": "PASS",
+          "detail": "8,40 €"
+        },
+        {
+          "name": "income row has plus",
+          "result": "PASS",
+          "detail": "+4 200,00 €"
+        },
+        {
+          "name": "income row is green",
+          "result": "PASS",
+          "detail": "rgb(46, 155, 104)"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "main-forecast-on",
+      "label": "Main / Forecast ON",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/main-forecast-on-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/main-forecast-on-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "sidebar is exactly 72px",
+          "result": "PASS",
+          "detail": "72px"
+        },
+        {
+          "name": "sidebar has no expand control",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "left column is 922px",
+          "result": "PASS",
+          "detail": "922px"
+        },
+        {
+          "name": "right column is 350px",
+          "result": "PASS",
+          "detail": "350px"
+        },
+        {
+          "name": "content gap is 18px",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "toolbar equals table width",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "Inter is applied",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "forecast is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "main-forecast-off",
+      "label": "Main / Forecast OFF",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/main-forecast-off-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/main-forecast-off-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00014, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "forecast is absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "facts use the full content width",
+          "result": "PASS",
+          "detail": "facts=1290px summary=1290px"
+        },
+        {
+          "name": "summary has a single grid column",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "main-forecast-off",
+      "label": "Main / Forecast OFF",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/main-forecast-off-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/main-forecast-off-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00011, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "forecast is absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "facts use the full content width",
+          "result": "PASS",
+          "detail": "facts=1290px summary=1290px"
+        },
+        {
+          "name": "summary has a single grid column",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "responsive-wrap",
+      "label": "Responsive / Forecast and right rail wrap",
+      "viewport": {
+        "width": 1360,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/responsive-wrap-1360x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/responsive-wrap-1360x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00025, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "forecast moves below facts",
+          "result": "PASS",
+          "detail": "158 → 176"
+        },
+        {
+          "name": "right rail moves below table column",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "forecast remains visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "accounts remain visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "chart remains visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "whole page has no horizontal overflow",
+          "result": "PASS",
+          "detail": "1360px"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "responsive-wrap",
+      "label": "Responsive / Forecast and right rail wrap",
+      "viewport": {
+        "width": 1024,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/responsive-wrap-1024x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/responsive-wrap-1024x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00033, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "forecast moves below facts",
+          "result": "PASS",
+          "detail": "238 → 256"
+        },
+        {
+          "name": "right rail moves below table column",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "forecast remains visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "accounts remain visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "chart remains visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "whole page has no horizontal overflow",
+          "result": "PASS",
+          "detail": "1024px"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "filters-open",
+      "label": "Toolbar / Existing filters",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/filters-open-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/filters-open-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "filter panel opens",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "production filter set is present",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "toolbar equals table width",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "filters-open",
+      "label": "Toolbar / Existing filters",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/filters-open-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/filters-open-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "filter panel opens",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "production filter set is present",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "toolbar equals table width",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "sorting-date",
+      "label": "Sorting / Date descending",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/sorting-date-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/sorting-date-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "day groups are present",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "date is not a row column",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "sorting-date",
+      "label": "Sorting / Date descending",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/sorting-date-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/sorting-date-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "day groups are present",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "date is not a row column",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "sorting-amount-desc",
+      "label": "Sorting / Amount descending",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/sorting-amount-desc-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/sorting-amount-desc-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00012, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "day groups are removed",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "date appears in every row",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "flat header contains date",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "sorting-amount-desc",
+      "label": "Sorting / Amount descending",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/sorting-amount-desc-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/sorting-amount-desc-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00010, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "day groups are removed",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "date appears in every row",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "flat header contains date",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "sorting-amount-asc",
+      "label": "Sorting / Amount ascending",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/sorting-amount-asc-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/sorting-amount-asc-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00014, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "day groups are removed",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "rows remain populated",
+          "result": "PASS",
+          "detail": "19 rows"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "sorting-amount-asc",
+      "label": "Sorting / Amount ascending",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/sorting-amount-asc-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/sorting-amount-asc-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00011, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "day groups are removed",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "rows remain populated",
+          "result": "PASS",
+          "detail": "19 rows"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-long-day",
+      "label": "Table / Long day",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-long-day-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-long-day-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "long day renders all operations",
+          "result": "PASS",
+          "detail": "14 rows"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-long-day",
+      "label": "Table / Long day",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-long-day-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-long-day-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "long day renders all operations",
+          "result": "PASS",
+          "detail": "14 rows"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-income",
+      "label": "Table / Income",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-income-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-income-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "income has green plus",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-income",
+      "label": "Table / Income",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-income-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-income-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "income has green plus",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-expense",
+      "label": "Table / Expense",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-expense-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-expense-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "expense has no minus",
+          "result": "PASS",
+          "detail": "8,40 €"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-expense",
+      "label": "Table / Expense",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-expense-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-expense-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "expense has no minus",
+          "result": "PASS",
+          "detail": "8,40 €"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-transfer",
+      "label": "Table / Transfer",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-transfer-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-transfer-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "transfer row exists",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "transfer has destination line",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "transfer has at least two amount lines",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "table-transfer",
+      "label": "Table / Transfer",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/table-transfer-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/table-transfer-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "transfer row exists",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "transfer has destination line",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "transfer has at least two amount lines",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "accounts-default",
+      "label": "Accounts / Typography, tones and session expansion",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/accounts-default-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/accounts-default-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "default shows exactly 9 accounts",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "negative overflow is promoted",
+          "result": "PASS",
+          "detail": "Основной счёт, Семейный счёт, Долларовый резерв, Наличные EUR, Нулевой счёт, Отпуск, Повседневные расходы, Копилка, Скрытый овердрафт"
+        },
+        {
+          "name": "promoted negative displaces ninth account",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "account name is 14/400/#555560",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(85, 85, 96)\",\"display\":\"block\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"14px\",\"fontWeight\":\"400\",\"overflowX\":\"hidden\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "spend is 14/400/#666671",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(102, 102, 113)\",\"display\":\"block\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"14px\",\"fontWeight\":\"400\",\"overflowX\":\"visible\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "primary balance is 14/700/#222229",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(34, 34, 41)\",\"display\":\"inline\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"14px\",\"fontWeight\":\"700\",\"overflowX\":\"visible\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "native balance is 12/400/#7b7b86",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(123, 123, 134)\",\"display\":\"block\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"12px\",\"fontWeight\":\"400\",\"overflowX\":\"visible\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "currency is not rendered below account name",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "negative balance group is #D55353",
+          "result": "PASS",
+          "detail": "rgb(213, 83, 83)"
+        },
+        {
+          "name": "zero balance group is #AAAAAA",
+          "result": "PASS",
+          "detail": "rgb(170, 170, 170)"
+        },
+        {
+          "name": "total is weight 800",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "expand reveals all 12 active accounts",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "expanded state survives section switch",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "collapse restores configured order after viewing",
+          "result": "PASS",
+          "detail": "Основной счёт, Семейный счёт, Долларовый резерв, Наличные EUR, Нулевой счёт, Отпуск, Повседневные расходы, Копилка, Резерв 1"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "accounts-default",
+      "label": "Accounts / Typography, tones and session expansion",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/accounts-default-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/accounts-default-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "default shows exactly 9 accounts",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "negative overflow is promoted",
+          "result": "PASS",
+          "detail": "Основной счёт, Семейный счёт, Долларовый резерв, Наличные EUR, Нулевой счёт, Отпуск, Повседневные расходы, Копилка, Скрытый овердрафт"
+        },
+        {
+          "name": "promoted negative displaces ninth account",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "account name is 14/400/#555560",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(85, 85, 96)\",\"display\":\"block\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"14px\",\"fontWeight\":\"400\",\"overflowX\":\"hidden\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "spend is 14/400/#666671",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(102, 102, 113)\",\"display\":\"block\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"14px\",\"fontWeight\":\"400\",\"overflowX\":\"visible\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "primary balance is 14/700/#222229",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(34, 34, 41)\",\"display\":\"inline\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"14px\",\"fontWeight\":\"700\",\"overflowX\":\"visible\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "native balance is 12/400/#7b7b86",
+          "result": "PASS",
+          "detail": "{\"color\":\"rgb(123, 123, 134)\",\"display\":\"block\",\"fontFamily\":\"Inter, -apple-system, \\\"system-ui\\\", \\\"Segoe UI\\\", sans-serif\",\"fontSize\":\"12px\",\"fontWeight\":\"400\",\"overflowX\":\"visible\",\"position\":\"static\",\"visibility\":\"visible\"}"
+        },
+        {
+          "name": "currency is not rendered below account name",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "negative balance group is #D55353",
+          "result": "PASS",
+          "detail": "rgb(213, 83, 83)"
+        },
+        {
+          "name": "zero balance group is #AAAAAA",
+          "result": "PASS",
+          "detail": "rgb(170, 170, 170)"
+        },
+        {
+          "name": "total is weight 800",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "chart-default",
+      "label": "Chart / All slices and top-four legend",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/chart-default-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/chart-default-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "all eight non-zero category buckets are slices",
+          "result": "PASS",
+          "detail": "8 slices"
+        },
+        {
+          "name": "legend contains exactly four largest categories",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "every slice is keyboard focusable",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "chart-default",
+      "label": "Chart / All slices and top-four legend",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/chart-default-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/chart-default-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "all eight non-zero category buckets are slices",
+          "result": "PASS",
+          "detail": "8 slices"
+        },
+        {
+          "name": "legend contains exactly four largest categories",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "every slice is keyboard focusable",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-new-expense",
+      "label": "Operation / New expense / additional closed",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-new-expense-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-new-expense-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "new operation title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "create-only date helper is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "additional fields are closed",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "dialog background is white",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "dialog header background is white",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "inactive accounts are absent",
+          "result": "PASS",
+          "detail": "Выберите счёт, Основной счёт, Семейный счёт, Долларовый резерв, Наличные EUR, Нулевой счёт, Отпуск, Повседневные расходы, Копилка, Резерв 1, Резерв 2, Резерв 3, Скрытый овердрафт"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-new-expense",
+      "label": "Operation / New expense / additional closed",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-new-expense-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-new-expense-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "new operation title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "create-only date helper is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "additional fields are closed",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "dialog background is white",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "dialog header background is white",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "inactive accounts are absent",
+          "result": "PASS",
+          "detail": "Выберите счёт, Основной счёт, Семейный счёт, Долларовый резерв, Наличные EUR, Нулевой счёт, Отпуск, Повседневные расходы, Копилка, Резерв 1, Резерв 2, Резерв 3, Скрытый овердрафт"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-new-income",
+      "label": "Operation / New income / additional open",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-new-income-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-new-income-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "income variant is active",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "category is absent for income",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "additional note is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "attention control is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-new-income",
+      "label": "Operation / New income / additional open",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-new-income-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-new-income-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "income variant is active",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "category is absent for income",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "additional note is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "attention control is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-edit-expense",
+      "label": "Operation / Edit expense",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-edit-expense-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-edit-expense-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "edit expense title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "persistent date helper is absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "suggestions stay closed until description focus",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "delete action is present",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-edit-expense",
+      "label": "Operation / Edit expense",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-edit-expense-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-edit-expense-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "edit expense title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "persistent date helper is absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "suggestions stay closed until description focus",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "delete action is present",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-edit-income",
+      "label": "Operation / Edit income",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-edit-income-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-edit-income-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00007, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "edit income title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "persistent date helper is absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "suggestions stay closed until description focus",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "category is absent for income",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-edit-income",
+      "label": "Operation / Edit income",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-edit-income-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-edit-income-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "edit income title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "persistent date helper is absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "suggestions stay closed until description focus",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "category is absent for income",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-invalid-account",
+      "label": "Operation / Account invalidated by date",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-invalid-account-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-invalid-account-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "exact invalid-account copy",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "account select is aria-invalid",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "save actions are blocked",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-invalid-account",
+      "label": "Operation / Account invalidated by date",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-invalid-account-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-invalid-account-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "exact invalid-account copy",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "account select is aria-invalid",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "save actions are blocked",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-suggestions",
+      "label": "Operation / Description suggestions",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-suggestions-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-suggestions-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00043, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "suggestions appear after two symbols",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "suggestions are limited to eight",
+          "result": "PASS",
+          "detail": "1 suggestions"
+        },
+        {
+          "name": "debounce is at least 220ms",
+          "result": "PASS",
+          "detail": "366ms"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-suggestions",
+      "label": "Operation / Description suggestions",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-suggestions-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-suggestions-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00052, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "suggestions appear after two symbols",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "suggestions are limited to eight",
+          "result": "PASS",
+          "detail": "1 suggestions"
+        },
+        {
+          "name": "debounce is at least 220ms",
+          "result": "PASS",
+          "detail": "367ms"
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-autocategory",
+      "label": "Operation / Auto category",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-autocategory-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-autocategory-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00004, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "auto category badge is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "category was filled",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "operation-autocategory",
+      "label": "Operation / Auto category",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/operation-autocategory-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/operation-autocategory-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00001, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "auto category badge is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "category was filled",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-same-currency",
+      "label": "Transfer / Same currency",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-same-currency-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-same-currency-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "new transfer title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "same currency has one amount input",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "split amount inputs are absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-same-currency",
+      "label": "Transfer / Same currency",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-same-currency-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-same-currency-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "new transfer title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "same currency has one amount input",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "split amount inputs are absent",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "import controls are absent",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-different-currency",
+      "label": "Transfer / Different currencies",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-different-currency-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-different-currency-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00005, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "different currencies have debit amount",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "different currencies have credit amount",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "labels use approved copy",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-different-currency",
+      "label": "Transfer / Different currencies",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-different-currency-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-different-currency-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00003, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "different currencies have debit amount",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "different currencies have credit amount",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "labels use approved copy",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-candidates",
+      "label": "Transfer / Existing candidates",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-candidates-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-candidates-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00093, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "candidate mode opens by default",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "at least one candidate is shown",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "link action is present",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-candidates",
+      "label": "Transfer / Existing candidates",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-candidates-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-candidates-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00087, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "candidate mode opens by default",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "at least one candidate is shown",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "link action is present",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-partner",
+      "label": "Transfer / Create partner operation",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-partner-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-partner-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00004, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "partner fields are visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "create-and-link action is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "date and amount are inherited",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "income source creates a debit partner with correct labels",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-partner",
+      "label": "Transfer / Create partner operation",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-partner-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-partner-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00005, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "partner fields are visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "create-and-link action is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "date and amount are inherited",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "income source creates a debit partner with correct labels",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-linked-edit",
+      "label": "Transfer / Edit linked pair",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-linked-edit-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-linked-edit-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00006, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "linked edit has two sides",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "common linked banner is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "unlink action is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-linked-edit",
+      "label": "Transfer / Edit linked pair",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-linked-edit-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-linked-edit-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00003, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "linked edit has two sides",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "common linked banner is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "unlink action is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-unlink-confirm",
+      "label": "Transfer / Unlink confirmation",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-unlink-confirm-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-unlink-confirm-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "approved confirmation title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "both operations are shown",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "consequence warning is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "transfer-unlink-confirm",
+      "label": "Transfer / Unlink confirmation",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/transfer-unlink-confirm-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/transfer-unlink-confirm-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "approved confirmation title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "both operations are shown",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "consequence warning is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-loading",
+      "label": "State / Loading",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-loading-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-loading-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00014, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "summary skeleton is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "table skeleton is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "account skeleton is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-loading",
+      "label": "State / Loading",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-loading-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-loading-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00011, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "summary skeleton is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "table skeleton is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "account skeleton is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-empty",
+      "label": "State / Empty period",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-empty-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-empty-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00016, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "approved empty title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "empty action is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-empty",
+      "label": "State / Empty period",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-empty-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-empty-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00013, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "approved empty title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "empty action is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-no-results",
+      "label": "State / No results",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-no-results-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-no-results-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00023, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "approved no-results title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "reset action is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-no-results",
+      "label": "State / No results",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-no-results-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-no-results-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00019, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "approved no-results title",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "reset action is visible",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-error",
+      "label": "State / Full-screen error",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-error-1440x900.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-error-1440x900.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00005, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "full-screen error is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "retry action is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "failure is not masked by the main grid",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "state-error",
+      "label": "State / Full-screen error",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "prototypeScreenshot": "artifacts/phase1-acceptance/prototype/state-error-1600x1000.png",
+      "productionScreenshot": "artifacts/phase1-acceptance/production/state-error-1600x1000.png",
+      "checks": [
+        {
+          "name": "prototype screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00004, attempt=1"
+        },
+        {
+          "name": "production screenshot has no black compositor tiles",
+          "result": "PASS",
+          "detail": "ratio=0.00000, attempt=1"
+        },
+        {
+          "name": "full-screen error is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "retry action is visible",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "failure is not masked by the main grid",
+          "result": "PASS",
+          "detail": ""
+        }
+      ],
+      "result": "PASS"
+    }
+  ]
+}
