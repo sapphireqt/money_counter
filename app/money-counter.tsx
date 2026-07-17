@@ -22,6 +22,7 @@ import {
 import { selectAccountPanelItems } from "../lib/accounts-panel";
 import {
   buildCategoryPresentation,
+  buildTransferRowPresentation,
   groupOperationItemsByDate,
   groupOperationItemsByYear,
   hasOperationListFilters,
@@ -276,13 +277,32 @@ function accountInPeriod(
   return openedInTime && notYetClosed;
 }
 
+// Numeric px value of a :root CSS custom property (e.g. --metrics-h). Keeps
+// the stylesheet the single source of layout offsets that JS also needs.
+function readCssVarPx(name: string, fallback: number) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+  const value = parseFloat(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+// «Июль 2026» — prototype format, without the Intl «г.» suffix.
 function formatMonthLabel(ym: string) {
   const { year, month } = ymParts(ym);
   const label = new Intl.DateTimeFormat("ru-RU", {
     month: "long",
     year: "numeric",
-  }).format(new Date(year, month - 1, 1));
+  })
+    .format(new Date(year, month - 1, 1))
+    .replace(/\s*г\.\s*$/, "");
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+// «июль» — the bare month name used by forecast titles («Прогноз на июль»).
+function formatMonthName(ym: string) {
+  const { year, month } = ymParts(ym);
+  return new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(
+    new Date(year, month - 1, 1)
+  );
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -300,13 +320,24 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-// Render a money value with the currency symbol greyed out. The number keeps
-// whatever colour its container sets; only the symbol is muted (#DDDDDD, via
-// the .currencySymbol class). formatToParts keeps symbol placement correct for
-// any locale/currency instead of assuming a trailing symbol.
-function Money({ cents, currency }: { cents: number; currency: string }) {
+// The single shared money renderer. Wraps the value in .money, which enforces
+// the two non-negotiable invariants (white-space: nowrap + tabular numerals) at
+// the component level, so a number and its currency can never be separated by
+// a line break regardless of the container. The currency symbol is greyed out
+// (#DDDDDD via .currencySymbol). `secondary` offers the smaller companion
+// style (12px/400) for callers without container-level sizing; existing
+// secondary amounts keep their container styles.
+function Money({
+  cents,
+  currency,
+  secondary = false,
+}: {
+  cents: number;
+  currency: string;
+  secondary?: boolean;
+}) {
   return (
-    <>
+    <span className={secondary ? "money moneySecondary" : "money"}>
       {formatMoneyParts(cents, currency).map((part, index) =>
         part.type === "currency" ? (
           <span key={index} className="currencySymbol">
@@ -316,7 +347,7 @@ function Money({ cents, currency }: { cents: number; currency: string }) {
           <Fragment key={index}>{part.value}</Fragment>
         )
       )}
-    </>
+    </span>
   );
 }
 
@@ -967,11 +998,13 @@ export default function MoneyCounter() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [compactMetricsVisible, setCompactMetricsVisible] = useState(false);
+  const [rightStackOverflow, setRightStackOverflow] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [operationSort, setOperationSort] = useState<OperationSort>("date");
   const stickyToolsRef = useRef<HTMLDivElement>(null);
+  const rightStackRef = useRef<HTMLDivElement>(null);
   const accountsPanelRef = useRef<HTMLElement>(null);
   const [accountsExpanded, setAccountsExpanded] = useState(false);
   const [viewedOverflowAccountIds, setViewedOverflowAccountIds] = useState<Set<number>>(
@@ -1508,7 +1541,10 @@ export default function MoneyCounter() {
     if (activeTab !== "main") return;
     const update = () => {
       const toolsTop = stickyToolsRef.current?.getBoundingClientRect().top;
-      setCompactMetricsVisible(toolsTop != null && toolsTop <= 59);
+      // The trigger point is the compact bar's actual height (--metrics-h),
+      // not a hardcoded twin of it — the CSS token stays the single source.
+      const threshold = readCssVarPx("--metrics-h", 58) + 1;
+      setCompactMetricsVisible(toolsTop != null && toolsTop <= threshold);
     };
     update();
     window.addEventListener("scroll", update, { passive: true });
@@ -1518,6 +1554,32 @@ export default function MoneyCounter() {
       window.removeEventListener("resize", update);
     };
   }, [activeTab, forecastOn, mainPeriod, loading, transactionsLoading]);
+
+  // §2.2 of the reference behavior: the right cards stack sticks only while it
+  // fits the viewport. When it grows taller (accounts expanded, chart legend,
+  // small window), sticky turns off and the stack flows with the page — never
+  // an inner scrollbar. Measured live: ResizeObserver reacts to content
+  // changes, the resize listener to viewport changes.
+  useEffect(() => {
+    if (activeTab !== "main") return;
+    const stack = rightStackRef.current;
+    if (!stack) return;
+    const update = () => {
+      const metricsH = readCssVarPx("--metrics-h", 58);
+      const top = (compactMetricsVisible ? metricsH : 0) + 10;
+      const bottomReserve = 12;
+      setRightStackOverflow(
+        stack.scrollHeight + top + bottomReserve > window.innerHeight
+      );
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(stack);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [activeTab, compactMetricsVisible, loading]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -3463,6 +3525,12 @@ export default function MoneyCounter() {
     showDateYear = false
   ) {
     const transaction = row.kind === "transfer" ? row.out : row.tx;
+    // Transfers render through the explicit presentation model: the account
+    // pair lives in the account column, the amount column holds money only.
+    const transfer =
+      row.kind === "transfer"
+        ? buildTransferRowPresentation(row.out, row.incoming)
+        : null;
     const menuKey =
       row.kind === "transfer"
         ? `transfer-${row.out.transferGroup}`
@@ -3500,7 +3568,10 @@ export default function MoneyCounter() {
         )}
 
         <td className="operationAccount">
-          <ClampedName text={transaction.accountName} phase1 />
+          <ClampedName
+            text={transfer ? transfer.accountLabel : transaction.accountName}
+            phase1
+          />
         </td>
         <td className="operationDescription">
           {transaction.description || "—"}
@@ -3518,28 +3589,16 @@ export default function MoneyCounter() {
               : null}
             {renderDisplayAmount(transaction)}
           </span>
-          {row.kind === "transfer" ? (
-            <>
-              <span className="operationLocalAmount">{renderAccountAmount(row.out)}</span>
-              <span className="transferDestination">
-                <span aria-hidden="true">→</span>
-                <span>
-                  {row.incoming.accountName}
-                  {row.out.accountCurrency !== row.incoming.accountCurrency ? (
-                    <>
-                      {" · "}
-                      <Money
-                        cents={Math.abs(row.incoming.amountCents)}
-                        currency={row.incoming.accountCurrency}
-                      />
-                    </>
-                  ) : null}
-                </span>
-              </span>
-            </>
-          ) : (
-            <span className="operationLocalAmount">{renderAccountAmount(transaction)}</span>
-          )}
+          <span className="operationLocalAmount">{renderAccountAmount(transaction)}</span>
+          {transfer ? (
+            <span className="transferDestination">
+              <span aria-hidden="true">→</span>
+              <Money
+                cents={transfer.creditAmountCents}
+                currency={transfer.creditCurrency}
+              />
+            </span>
+          ) : null}
         </td>
         <td className="operationCategory">
           {row.kind === "transfer" ? "" : transaction.category}
@@ -3701,7 +3760,7 @@ export default function MoneyCounter() {
             </div>
             {forecastVisible ? (
               <div className="compactForecast">
-                <span className="compactForecastTitle">Прогноз на {formatMonthLabel(mainPeriod).replace(/^./, (value) => value.toLowerCase())}</span>
+                <span className="compactForecastTitle">Прогноз на {formatMonthName(mainPeriod)}</span>
                 <span className="compactMini"><span>Цель</span><b>{forecastResult ? <Money cents={forecastResult.goalCents} currency={displayCurrency} /> : "…"}</b></span>
                 <span className="compactMini"><span>Траты в день</span><b>{forecastResult ? <Money cents={forecastResult.dailyGoalCents} currency={displayCurrency} /> : "…"}</b></span>
                 <span className="compactMini"><span>Доступно</span><b>{forecastResult ? <Money cents={forecastResult.availableCents} currency={displayCurrency} /> : "…"}</b></span>
@@ -3773,7 +3832,7 @@ export default function MoneyCounter() {
               {forecastVisible ? (
                 <article className="forecastCard">
                   <span className="forecastCardTitle">
-                    Прогноз на {formatMonthLabel(mainPeriod).replace(/^./, (value) => value.toLowerCase())}
+                    Прогноз на {formatMonthName(mainPeriod)}
                   </span>
                   <span className="forecastColumns">
                     <span className="forecastColumn">
@@ -4093,7 +4152,10 @@ export default function MoneyCounter() {
 
             <aside className="p1RightRail">
               <div
-                className={`rightStickyStack ${compactMetricsVisible ? "scrolled" : ""}`}
+                ref={rightStackRef}
+                className={`rightStickyStack ${compactMetricsVisible ? "scrolled" : ""} ${
+                  rightStackOverflow ? "stickyOff" : ""
+                }`}
               >
                 <section ref={accountsPanelRef} className="p1AccountsPanel" aria-label="Баланс по счетам">
                   <div className="accountPanelGrid accountPanelHead" aria-hidden="true">
@@ -5444,17 +5506,17 @@ export default function MoneyCounter() {
               >
                 <h3 id="unlink-transfer-title">Разъединить этот перевод?</h3>
                 <div className="unlinkPair">
-                  <div>
-                    <span>Исходная операция</span>
-                    <strong>{unlinkTransferPair.out.accountName}</strong>
-                    <small>{dmy(unlinkTransferPair.out.date)} · {unlinkTransferPair.out.description || "—"}</small>
-                    <b>−<Money cents={Math.abs(unlinkTransferPair.out.amountCents)} currency={unlinkTransferPair.out.accountCurrency} /></b>
+                  <div className="unlinkCard">
+                    <span className="unlinkRole">Исходная операция</span>
+                    <strong className="unlinkAccount">{unlinkTransferPair.out.accountName}</strong>
+                    <small className="unlinkMeta">{dmy(unlinkTransferPair.out.date)} · На {unlinkTransferPair.incoming.accountName}</small>
+                    <b className="unlinkAmount">−<Money cents={Math.abs(unlinkTransferPair.out.amountCents)} currency={unlinkTransferPair.out.accountCurrency} /></b>
                   </div>
-                  <div>
-                    <span>Операция-напарник</span>
-                    <strong>{unlinkTransferPair.incoming.accountName}</strong>
-                    <small>{dmy(unlinkTransferPair.incoming.date)} · {unlinkTransferPair.incoming.description || "—"}</small>
-                    <b><Money cents={Math.abs(unlinkTransferPair.incoming.amountCents)} currency={unlinkTransferPair.incoming.accountCurrency} /></b>
+                  <div className="unlinkCard">
+                    <span className="unlinkRole">Операция-напарник</span>
+                    <strong className="unlinkAccount">{unlinkTransferPair.incoming.accountName}</strong>
+                    <small className="unlinkMeta">{dmy(unlinkTransferPair.incoming.date)} · {unlinkTransferPair.incoming.description || "—"}</small>
+                    <b className="unlinkAmount"><Money cents={Math.abs(unlinkTransferPair.incoming.amountCents)} currency={unlinkTransferPair.incoming.accountCurrency} /></b>
                   </div>
                 </div>
                 <div className="unlinkWarning">

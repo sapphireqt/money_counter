@@ -64,6 +64,37 @@ export function buildCategoryPresentation<T extends CategoryDatum>(items: readon
   };
 }
 
+export type TransferLegLike = {
+  accountName: string;
+  accountCurrency: string;
+  amountCents: number;
+};
+
+export type TransferRowPresentation = {
+  accountLabel: string;
+  debitAmountCents: number;
+  debitCurrency: string;
+  creditAmountCents: number;
+  creditCurrency: string;
+};
+
+// The explicit presentation contract of a collapsed transfer row: the account
+// column shows the «source → destination» pair, and the amount column carries
+// ONLY money — the debited amount plus the credited amount for the second
+// line. Account names never enter the amount cell.
+export function buildTransferRowPresentation(
+  out: TransferLegLike,
+  incoming: TransferLegLike
+): TransferRowPresentation {
+  return {
+    accountLabel: `${out.accountName} → ${incoming.accountName}`,
+    debitAmountCents: Math.abs(out.amountCents),
+    debitCurrency: out.accountCurrency,
+    creditAmountCents: Math.abs(incoming.amountCents),
+    creditCurrency: incoming.accountCurrency,
+  };
+}
+
 export function sortOperationItems<T>(
   items: readonly T[],
   mode: Phase1OperationSort,

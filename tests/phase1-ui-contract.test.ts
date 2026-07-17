@@ -45,19 +45,95 @@ test("table header and right rail use viewport sticky containers", () => {
     css,
     /\.p1Layout\s*\{[^}]*align-items:\s*stretch/
   );
+  // Offsets are derived from the shared tokens (74px / 132px in prototype
+  // terms), not hand-maintained magic numbers.
   assert.match(
     css,
-    /\.p1OpsTable thead\s*\{[^}]*position:\s*sticky[^}]*top:\s*74px/
+    /--thead-top:\s*calc\(var\(--tools-pad-top\) \+ var\(--toolbar-h\)\)/
   );
   assert.match(
     css,
-    /\.p1OpsTable\.compactHeader thead\s*\{[^}]*top:\s*132px/
+    /--thead-top-compact:\s*calc\(var\(--metrics-h\) \+ var\(--tools-pad-top\) \+ var\(--toolbar-h\)\)/
+  );
+  assert.match(
+    css,
+    /\.p1OpsTable thead\s*\{[^}]*position:\s*sticky[^}]*top:\s*var\(--thead-top\)/
+  );
+  assert.match(
+    css,
+    /\.p1OpsTable\.compactHeader thead\s*\{[^}]*top:\s*var\(--thead-top-compact\)/
+  );
+  // The stuck header must be fully opaque so rows never show through it.
+  assert.match(
+    css,
+    /\.p1OpsTable thead tr\s*\{[^}]*background:\s*var\(--surface\)/
   );
   assert.match(
     css,
     /\.rightStickyStack\s*\{[^}]*position:\s*sticky[^}]*top:\s*10px/
   );
-  assert.doesNotMatch(component, /rightStackSticky|stickyDisabled|setRightStackSticky/);
+  assert.match(css, /\.rightStickyStack\.scrolled\s*\{[^}]*top:\s*calc\(var\(--metrics-h\) \+ 10px\)/);
+});
+
+test("right stack sticky turns off when the measured stack outgrows the viewport", () => {
+  // §2.2: measured with ResizeObserver + window resize; a stack taller than
+  // the viewport returns to normal flow instead of scrolling internally.
+  assert.match(component, /new ResizeObserver\(update\)/);
+  assert.match(component, /observer\.observe\(stack\)/);
+  assert.match(component, /stack\.scrollHeight \+ top \+ bottomReserve > window\.innerHeight/);
+  assert.match(component, /rightStackOverflow \? "stickyOff" : ""/);
+  assert.match(css, /\.rightStickyStack\.stickyOff\s*\{[^}]*position:\s*static/);
+  // No inner scrolling on the right cards.
+  assert.doesNotMatch(css, /\.p1AccountsPanel\s*\{[^}]*overflow-y/);
+  assert.doesNotMatch(css, /\.p1CategoryPanel\s*\{[^}]*overflow-y/);
+});
+
+test("transfer rows keep the account pair in the account column and money-only amounts", () => {
+  assert.match(component, /buildTransferRowPresentation\(row\.out, row\.incoming\)/);
+  assert.match(
+    component,
+    /text=\{transfer \? transfer\.accountLabel : transaction\.accountName\}/
+  );
+  const amounts = between(
+    component,
+    '<td className="operationAmounts">',
+    '<td className="operationCategory">'
+  );
+  // The amount column carries money only — an account name must never render
+  // inside it (that was the unlink.png-era presentation bug).
+  assert.doesNotMatch(amounts, /accountName/);
+  assert.match(amounts, /transfer\.creditAmountCents/);
+  assert.match(amounts, /transfer\.creditCurrency/);
+});
+
+test("the shared Money component enforces nowrap and tabular numerals", () => {
+  assert.match(component, /className=\{secondary \? "money moneySecondary" : "money"\}/);
+  assert.match(
+    css,
+    /\.money\s*\{[^}]*font-variant-numeric:\s*tabular-nums[^}]*white-space:\s*nowrap/
+  );
+});
+
+test("unlink confirmation uses the shrinkable two-card grid and unbreakable amounts", () => {
+  assert.match(
+    css,
+    /\.unlinkPair\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/
+  );
+  assert.match(css, /\.unlinkCard\s*\{[^}]*min-width:\s*0/);
+  assert.match(
+    css,
+    /\.unlinkAccount\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/
+  );
+  assert.match(
+    css,
+    /\.unlinkAmount\s*\{[^}]*justify-self:\s*end[^}]*white-space:\s*nowrap/
+  );
+  const unlinkCss = between(css, ".unlinkPair", ".unlinkWarning");
+  assert.doesNotMatch(unlinkCss, /position:\s*absolute/);
+  // Bare descendant tag selectors were what forced .currencySymbol onto its
+  // own line; the cards must style their parts through explicit classes.
+  assert.doesNotMatch(css, /\.unlinkPair (span|strong|small|b)[\s,{]/);
+  assert.match(component, /className="unlinkAmount"/);
 });
 
 test("history date mode uses year groups and a per-row date column", () => {

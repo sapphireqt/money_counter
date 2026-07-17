@@ -31,6 +31,12 @@ const localBindingConfig = {
     : [],
 };
 
+// Isolated miniflare state for visual-acceptance fixtures (fresh D1 per run);
+// unset in normal development, where the default .wrangler/state is used.
+const persistState = process.env.MINIFLARE_STATE_PATH
+  ? { path: process.env.MINIFLARE_STATE_PATH }
+  : undefined;
+
 export default defineConfig({
   plugins: [
     vinext(),
@@ -38,6 +44,7 @@ export default defineConfig({
     cloudflare({
       viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
       config: localBindingConfig,
+      ...(persistState ? { persistState } : {}),
     }),
   ],
 });

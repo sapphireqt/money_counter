@@ -366,16 +366,50 @@ const scenarios = [
         const incomeColor = (await computed(incomeRow, ".operationMainAmount")).color;
         record("expense row has no leading minus", !/^[−-]/.test(expenseText.trim()), expenseText);
         record("income row has plus", incomeText.trim().startsWith("+"), incomeText);
-        record("income row is green", incomeColor === "rgb(46, 155, 104)", incomeColor);
+        // Prototype's in-table income green (#2e8a5c) is deliberately darker
+        // than the --green token used by the summary cards.
+        record("income row is green", incomeColor === "rgb(46, 138, 92)", incomeColor);
+
+        // Before any scroll the compact bar is hidden (top offset 10px), the
+        // fixture stack fits the viewport and MUST be sticky — this asserts
+        // the mechanism is actually on, not just the CSS default.
+        const preScroll = await productionPage.evaluate(() => {
+          const stack = document.querySelector(".rightStickyStack");
+          return {
+            position: getComputedStyle(stack).position,
+            fits: stack.scrollHeight + 10 + 12 <= window.innerHeight,
+          };
+        });
+        record(
+          "right rail is sticky while it fits (before scroll)",
+          preScroll.fits && preScroll.position === "sticky",
+          JSON.stringify(preScroll)
+        );
 
         await productionPage.evaluate(() => window.scrollTo(0, 300));
-        await productionPage.waitForTimeout(220);
+        await productionPage.waitForTimeout(320);
         const tableHead = await rect(productionPage, ".p1OpsTable thead");
-        const rightStack = await rect(productionPage, ".rightStickyStack");
         record("table heading stays below sticky toolbar", Math.abs(tableHead.y - 132) <= 1, `${tableHead.y}px`);
-        record("accounts and expenses rail stays sticky", Math.abs(rightStack.y - 68) <= 1, `${rightStack.y}px`);
         record("table heading uses sticky positioning", (await computed(productionPage, ".p1OpsTable thead")).position === "sticky");
-        record("right rail uses sticky positioning", (await computed(productionPage, ".rightStickyStack")).position === "sticky");
+        // §2.2: with the compact bar shown the offset grows to 68px; the stack
+        // sticks only while it still fits — a taller stack legally returns to
+        // normal flow (prototype's updateRightStickyMode does the same).
+        const stackFits = await productionPage.evaluate(() => {
+          const stack = document.querySelector(".rightStickyStack");
+          return stack.scrollHeight + 68 + 12 <= window.innerHeight;
+        });
+        const stackPosition = (await computed(productionPage, ".rightStickyStack")).position;
+        const rightStack = await rect(productionPage, ".rightStickyStack");
+        if (stackFits) {
+          record("accounts and expenses rail stays sticky", Math.abs(rightStack.y - 68) <= 1, `${rightStack.y}px`);
+          record("right rail uses sticky positioning", stackPosition === "sticky", stackPosition);
+        } else {
+          record(
+            "right rail taller than viewport returns to normal flow",
+            stackPosition === "static",
+            `${stackPosition}, stack bottom reserve exceeded`
+          );
+        }
         await productionPage.evaluate(() => window.scrollTo(0, 0));
       }
     },
@@ -520,7 +554,7 @@ const scenarios = [
     },
     check: async ({ productionPage }) => {
       const amount = productionPage.locator("tr.operationRow").filter({ hasText: "Зарплата" }).locator(".operationMainAmount");
-      record("income has green plus", (await amount.innerText()).trim().startsWith("+") && (await computed(amount)).color === "rgb(46, 155, 104)");
+      record("income has green plus", (await amount.innerText()).trim().startsWith("+") && (await computed(amount)).color === "rgb(46, 138, 92)");
     },
   },
   {
@@ -545,7 +579,20 @@ const scenarios = [
     check: async ({ productionPage }) => {
       const row = productionPage.locator("tr.operationRow.transfer").first();
       record("transfer row exists", await row.isVisible());
-      record("transfer has destination line", await row.locator(".transferDestination").isVisible());
+      const accountText = await row.locator(".operationAccount").innerText();
+      record(
+        "account column carries the source → destination pair",
+        /→/.test(accountText),
+        accountText
+      );
+      const destination = row.locator(".transferDestination");
+      record("transfer has destination amount line", await destination.isVisible());
+      const destinationText = (await destination.innerText()).replace(/\s+/g, " ").trim();
+      record(
+        "destination line is money only (no account name)",
+        /^→ [\d\s.,]+ ?[^\s\d]{1,5}$/u.test(destinationText),
+        destinationText
+      );
       record("transfer has at least two amount lines", (await row.locator(".operationAmounts > span").count()) >= 3);
     },
   },
@@ -797,6 +844,29 @@ const scenarios = [
       const dialog = productionPage.getByRole("alertdialog");
       record("approved confirmation title", await dialog.getByRole("heading", { name: "Разъединить этот перевод?" }).isVisible());
       record("both operations are shown", (await dialog.locator(".unlinkPair > div").count()) === 2);
+      const dialogBox = await dialog.boundingBox();
+      const cardBoxes = [];
+      for (const card of await dialog.locator(".unlinkCard").all()) {
+        cardBoxes.push(await card.boundingBox());
+      }
+      record(
+        "cards never overflow the modal",
+        cardBoxes.length === 2 &&
+          cardBoxes.every(
+            (box) =>
+              box.x >= dialogBox.x - 1 &&
+              box.x + box.width <= dialogBox.x + dialogBox.width + 1
+          ),
+        JSON.stringify({ dialog: dialogBox, cards: cardBoxes })
+      );
+      const amountHeights = await dialog
+        .locator(".unlinkAmount")
+        .evaluateAll((elements) => elements.map((el) => el.getBoundingClientRect().height));
+      record(
+        "amounts render on a single line (currency never wraps)",
+        amountHeights.length === 2 && amountHeights.every((height) => height < 20),
+        JSON.stringify(amountHeights)
+      );
       record("consequence warning is visible", await dialog.getByText("После разъединения", { exact: true }).isVisible());
     },
   },

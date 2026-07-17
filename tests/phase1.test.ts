@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   accountIsActiveOn,
   buildCategoryPresentation,
+  buildTransferRowPresentation,
   groupOperationItemsByDate,
   groupOperationItemsByYear,
   hasOperationListFilters,
@@ -11,6 +12,32 @@ import {
   shouldLoadOperationHistory,
   sortOperationItems,
 } from "../lib/phase1.ts";
+
+test("transfer row presentation is the account pair plus money-only amounts", () => {
+  const same = buildTransferRowPresentation(
+    { accountName: "Основной счёт", accountCurrency: "EUR", amountCents: -21000 },
+    { accountName: "Семейный счёт", accountCurrency: "EUR", amountCents: 21000 }
+  );
+  assert.deepEqual(same, {
+    accountLabel: "Основной счёт → Семейный счёт",
+    debitAmountCents: 21000,
+    debitCurrency: "EUR",
+    creditAmountCents: 21000,
+    creditCurrency: "EUR",
+  });
+
+  const cross = buildTransferRowPresentation(
+    { accountName: "KAST AK", accountCurrency: "USD", amountCents: -600000 },
+    { accountName: "BBVA", accountCurrency: "EUR", amountCents: 524580 }
+  );
+  assert.deepEqual(cross, {
+    accountLabel: "KAST AK → BBVA",
+    debitAmountCents: 600000,
+    debitCurrency: "USD",
+    creditAmountCents: 524580,
+    creditCurrency: "EUR",
+  });
+});
 
 test("account availability includes both lifetime boundary dates", () => {
   const account = { openedAt: "2026-03-10", closedAt: "2026-07-16" };

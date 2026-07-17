@@ -17,6 +17,12 @@
   --sidebar-w: 72px;
   --metrics-h: 58px;
   --toolbar-h: 64px;
+  --tools-pad-top: 10px;
+  /* Sticky offsets are derived, not hand-maintained: the table header docks
+     under the stuck toolbar, shifting down by --metrics-h once the compact
+     bar appears. 74px / 132px in prototype terms. */
+  --thead-top: calc(var(--tools-pad-top) + var(--toolbar-h));
+  --thead-top-compact: calc(var(--metrics-h) + var(--tools-pad-top) + var(--toolbar-h));
   --left-col: 922px;
   --right-col: 350px;
   --content-gap: 18px;
@@ -710,6 +716,19 @@ td {
   color: #dddddd;
 }
 
+/* The shared Money renderer. The two money invariants live here, on the
+   component itself, so no container can break a number away from its
+   currency: nowrap + tabular numerals everywhere a Money renders. */
+.money {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.money.moneySecondary {
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .rowActions {
   display: flex;
   gap: 6px;
@@ -1169,7 +1188,7 @@ td {
   padding: 12px 0;
 }
 
-.importStats span,
+.importStats > span,
 dl dt {
   color: var(--muted);
 }
@@ -1573,7 +1592,7 @@ dd {
   gap: 20px;
 }
 
-.chartTotals span {
+.chartTotals > span {
   color: var(--muted);
   font-size: 13px;
 }
@@ -2665,7 +2684,7 @@ textarea:focus-visible,
 
 .p1StickyTools {
   background: linear-gradient(var(--bg) 82%, rgba(245, 245, 247, 0));
-  padding: 10px 0 8px;
+  padding: var(--tools-pad-top) 0 8px;
   position: sticky;
   top: var(--metrics-h);
   width: 100%;
@@ -2939,7 +2958,7 @@ textarea:focus-visible,
 
 .p1OpsTable thead {
   position: sticky;
-  top: 74px;
+  top: var(--thead-top);
   z-index: 20;
 }
 
@@ -2952,13 +2971,14 @@ textarea:focus-visible,
 
 .p1OpsTable thead tr {
   align-items: center;
-  background: rgba(255, 255, 255, 0.97);
+  /* Fully opaque: rows must never shimmer through the stuck header. */
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
-  min-height: 42px;
+  padding-block: 10px;
 }
 
 .p1OpsTable.compactHeader thead {
-  top: 132px;
+  top: var(--thead-top-compact);
 }
 
 .p1OpsTable th,
@@ -2975,7 +2995,9 @@ textarea:focus-visible,
   letter-spacing: 0.005em;
 }
 
-.p1OpsTable tbody > tr:not(.dayGroup):not(.yearGroup):not(.operationSkeleton) {
+/* :where() keeps the exclusion list at zero specificity so the .transfer
+   variant below (min-height 52, align-items start) can actually win. */
+.p1OpsTable tbody > tr:where(:not(.dayGroup):not(.yearGroup):not(.operationSkeleton)) {
   align-items: center;
   border-top: 1px solid #f3f4f7;
   min-height: 44px;
@@ -2983,7 +3005,7 @@ textarea:focus-visible,
   transition: background 0.15s ease;
 }
 
-.p1OpsTable tbody > tr:not(.dayGroup):not(.yearGroup):not(.operationSkeleton):hover {
+.p1OpsTable tbody > tr:where(:not(.dayGroup):not(.yearGroup):not(.operationSkeleton)):hover {
   background: #faf9fc;
 }
 
@@ -3129,7 +3151,9 @@ textarea:focus-visible,
 }
 
 .operationMainAmount.income {
-  color: var(--green);
+  /* The prototype's in-table income green is deliberately darker than the
+     --green token used by the summary cards. */
+  color: #2e8a5c;
 }
 
 .operationLocalAmount,
@@ -3143,7 +3167,9 @@ textarea:focus-visible,
 
 .transferDestination {
   align-self: start;
+  color: #8b8d96;
   display: flex;
+  font-weight: 500;
   gap: 6px;
   grid-column: 2;
   line-height: 1;
@@ -3406,7 +3432,13 @@ textarea:focus-visible,
 }
 
 .rightStickyStack.scrolled {
-  top: 68px;
+  top: calc(var(--metrics-h) + 10px);
+}
+
+/* Set from JS when the measured stack is taller than the viewport: sticky
+   turns off and the cards flow with the page (§2.2 — no inner scrolling). */
+.rightStickyStack.stickyOff {
+  position: static;
 }
 
 .p1AccountsPanel,
@@ -3777,6 +3809,13 @@ textarea:focus-visible,
 
   .operationsSurface .p1TableFrame {
     overflow-x: auto;
+  }
+
+  /* overflow-x: auto turns the frame into a scroll container, which detaches
+     the header from viewport scrolling anyway — make that explicit instead of
+     leaving a sticky rule that silently stopped working. */
+  .operationsSurface .p1OpsTable thead {
+    position: static;
   }
 
   .operationsSurface .p1Toolbar {
@@ -4285,9 +4324,12 @@ textarea:focus-visible,
   padding: 12px 13px;
 }
 
-.confirmOperation span,
-.confirmOperation strong,
-.confirmOperation small {
+/* Direct children only: a bare `span` here would also catch the nested
+   .currencySymbol inside the Money value and push the currency onto its own
+   line (the unlink.png regression class). */
+.confirmOperation > span,
+.confirmOperation > span > strong,
+.confirmOperation > span > small {
   display: block;
   min-width: 0;
 }
@@ -4843,52 +4885,56 @@ textarea:focus-visible,
   margin-bottom: 16px;
 }
 
+/* Two equal columns that can actually shrink: minmax(0, 1fr) beats the grid
+   auto-minimum trap, and min-width: 0 on the cards lets long content ellipsize
+   instead of pushing the second card out of the modal. */
 .unlinkPair {
   display: grid;
   gap: 10px;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.unlinkPair > div {
+.unlinkCard {
+  align-content: start;
   background: var(--surface-soft);
   border: 1px solid #dddde2;
   border-radius: 9px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   padding: 12px 13px;
-  position: relative;
 }
 
-.unlinkPair span,
-.unlinkPair strong,
-.unlinkPair small {
-  display: block;
-}
-
-.unlinkPair span {
+.unlinkRole {
   color: #6c6f78;
   font-size: 10px;
   font-weight: 700;
   margin-bottom: 8px;
 }
 
-.unlinkPair strong {
+.unlinkAccount {
   font-size: 12px;
-}
-
-.unlinkPair small {
-  color: var(--muted);
-  font-size: 10px;
-  margin-top: 4px;
   overflow: hidden;
-  padding-right: 72px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.unlinkPair b {
+.unlinkMeta {
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The amount is one unbreakable Money line in normal flow — never absolutely
+   positioned, never allowed to wrap or drop its currency to another line. */
+.unlinkAmount {
   font-size: 11px;
-  position: absolute;
-  right: 12px;
-  top: 38px;
+  justify-self: end;
+  margin-top: 8px;
+  white-space: nowrap;
 }
 
 .unlinkWarning {
