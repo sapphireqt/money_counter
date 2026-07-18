@@ -3526,10 +3526,11 @@ export default function MoneyCounter() {
   ) {
     const transaction = row.kind === "transfer" ? row.out : row.tx;
     // Transfers render through the explicit presentation model: the account
-    // pair lives in the account column, the amount column holds money only.
+    // pair lives in the account column, the amount column holds money only,
+    // and line visibility is decided by currencies alone (lib/phase1.ts).
     const transfer =
       row.kind === "transfer"
-        ? buildTransferRowPresentation(row.out, row.incoming)
+        ? buildTransferRowPresentation(row.out, row.incoming, displayCurrency)
         : null;
     const menuKey =
       row.kind === "transfer"
@@ -3550,7 +3551,7 @@ export default function MoneyCounter() {
       <tr
         className={`operationRow ${showDate ? "flat" : ""} ${
           row.kind === "transfer" ? "transfer" : ""
-        }`}
+        } ${transfer?.showCredited ? "withDestination" : ""}`}
         key={menuKey}
       >
         {showDate ? (
@@ -3589,8 +3590,19 @@ export default function MoneyCounter() {
               : null}
             {renderDisplayAmount(transaction)}
           </span>
-          <span className="operationLocalAmount">{renderAccountAmount(transaction)}</span>
           {transfer ? (
+            transfer.showDebitNative ? (
+              <span className="operationLocalAmount">
+                <Money
+                  cents={transfer.debitAmountCents}
+                  currency={transfer.debitCurrency}
+                />
+              </span>
+            ) : null
+          ) : (
+            <span className="operationLocalAmount">{renderAccountAmount(transaction)}</span>
+          )}
+          {transfer?.showCredited ? (
             <span className="transferDestination">
               <span aria-hidden="true">→</span>
               <Money

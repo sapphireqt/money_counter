@@ -89,7 +89,10 @@ test("right stack sticky turns off when the measured stack outgrows the viewport
 });
 
 test("transfer rows keep the account pair in the account column and money-only amounts", () => {
-  assert.match(component, /buildTransferRowPresentation\(row\.out, row\.incoming\)/);
+  assert.match(
+    component,
+    /buildTransferRowPresentation\(row\.out, row\.incoming, displayCurrency\)/
+  );
   assert.match(
     component,
     /text=\{transfer \? transfer\.accountLabel : transaction\.accountName\}/
@@ -104,6 +107,18 @@ test("transfer rows keep the account pair in the account column and money-only a
   assert.doesNotMatch(amounts, /accountName/);
   assert.match(amounts, /transfer\.creditAmountCents/);
   assert.match(amounts, /transfer\.creditCurrency/);
+  // Line visibility is decided by the currency-only model flags, and the
+  // native debit line renders from the model, not ad-hoc row data.
+  assert.match(amounts, /transfer\.showDebitNative \? \(/);
+  assert.match(amounts, /transfer\?\.showCredited \? \(/);
+  assert.match(amounts, /transfer\.debitAmountCents/);
+  assert.match(amounts, /transfer\.debitCurrency/);
+  // Two-line layout applies only when the «→ credited» line is visible.
+  assert.match(component, /transfer\?\.showCredited \? "withDestination" : ""/);
+  assert.match(
+    css,
+    /\.p1OpsTable \.operationRow\.transfer\.withDestination\s*\{[^}]*align-items:\s*start[^}]*min-height:\s*52px/
+  );
 });
 
 test("the shared Money component enforces nowrap and tabular numerals", () => {

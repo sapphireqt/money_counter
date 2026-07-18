@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-17T10:56:47.673Z",
+  "generatedAt": "2026-07-18T10:46:57.847Z",
   "baseUrl": "http://localhost:3104/",
   "prototype": "family_finance_main_screen_prototype_v34_unified_content_grid.html",
   "status": "PASS",
@@ -729,7 +729,7 @@
         {
           "name": "rows remain populated",
           "result": "PASS",
-          "detail": "19 rows"
+          "detail": "20 rows"
         }
       ],
       "result": "PASS"
@@ -762,7 +762,7 @@
         {
           "name": "rows remain populated",
           "result": "PASS",
-          "detail": "19 rows"
+          "detail": "20 rows"
         }
       ],
       "result": "PASS"
@@ -963,20 +963,45 @@
         {
           "name": "account column carries the source → destination pair",
           "result": "PASS",
-          "detail": "Основной счёт → Семейный счёт"
+          "detail": "Долларовый резерв → Основной счёт"
         },
         {
-          "name": "transfer has destination amount line",
+          "name": "main amount renders in the display currency",
+          "result": "PASS",
+          "detail": "105,15 €"
+        },
+        {
+          "name": "native debit line shows the debited USD amount",
+          "result": "PASS",
+          "detail": "120,00 $"
+        },
+        {
+          "name": "cross-currency legs show the credited line",
           "result": "PASS",
           "detail": ""
         },
         {
           "name": "destination line is money only (no account name)",
           "result": "PASS",
-          "detail": "→ 210,00 €"
+          "detail": "→ 109,80 €"
         },
         {
-          "name": "transfer has at least two amount lines",
+          "name": "full-structure transfer keeps the two-line height",
+          "result": "PASS",
+          "detail": "52px"
+        },
+        {
+          "name": "same-display-currency transfer hides the native block",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "blockless transfer keeps the ordinary row height",
+          "result": "PASS",
+          "detail": "44px"
+        },
+        {
+          "name": "debit-in-display-currency transfer hides the block regardless of the credited currency",
           "result": "PASS",
           "detail": ""
         }
@@ -1011,20 +1036,45 @@
         {
           "name": "account column carries the source → destination pair",
           "result": "PASS",
-          "detail": "Основной счёт → Семейный счёт"
+          "detail": "Долларовый резерв → Основной счёт"
         },
         {
-          "name": "transfer has destination amount line",
+          "name": "main amount renders in the display currency",
+          "result": "PASS",
+          "detail": "105,15 €"
+        },
+        {
+          "name": "native debit line shows the debited USD amount",
+          "result": "PASS",
+          "detail": "120,00 $"
+        },
+        {
+          "name": "cross-currency legs show the credited line",
           "result": "PASS",
           "detail": ""
         },
         {
           "name": "destination line is money only (no account name)",
           "result": "PASS",
-          "detail": "→ 210,00 €"
+          "detail": "→ 109,80 €"
         },
         {
-          "name": "transfer has at least two amount lines",
+          "name": "full-structure transfer keeps the two-line height",
+          "result": "PASS",
+          "detail": "52px"
+        },
+        {
+          "name": "same-display-currency transfer hides the native block",
+          "result": "PASS",
+          "detail": ""
+        },
+        {
+          "name": "blockless transfer keeps the ordinary row height",
+          "result": "PASS",
+          "detail": "44px"
+        },
+        {
+          "name": "debit-in-display-currency transfer hides the block regardless of the credited currency",
           "result": "PASS",
           "detail": ""
         }
@@ -1791,7 +1841,7 @@
         {
           "name": "debounce is at least 220ms",
           "result": "PASS",
-          "detail": "338ms"
+          "detail": "358ms"
         }
       ],
       "result": "PASS"
@@ -1829,7 +1879,7 @@
         {
           "name": "debounce is at least 220ms",
           "result": "PASS",
-          "detail": "350ms"
+          "detail": "337ms"
         }
       ],
       "result": "PASS"

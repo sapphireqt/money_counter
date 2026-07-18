@@ -16,7 +16,8 @@ import {
 test("transfer row presentation is the account pair plus money-only amounts", () => {
   const same = buildTransferRowPresentation(
     { accountName: "Основной счёт", accountCurrency: "EUR", amountCents: -21000 },
-    { accountName: "Семейный счёт", accountCurrency: "EUR", amountCents: 21000 }
+    { accountName: "Семейный счёт", accountCurrency: "EUR", amountCents: 21000 },
+    "EUR"
   );
   assert.deepEqual(same, {
     accountLabel: "Основной счёт → Семейный счёт",
@@ -24,11 +25,14 @@ test("transfer row presentation is the account pair plus money-only amounts", ()
     debitCurrency: "EUR",
     creditAmountCents: 21000,
     creditCurrency: "EUR",
+    showDebitNative: false,
+    showCredited: false,
   });
 
   const cross = buildTransferRowPresentation(
     { accountName: "KAST AK", accountCurrency: "USD", amountCents: -600000 },
-    { accountName: "BBVA", accountCurrency: "EUR", amountCents: 524580 }
+    { accountName: "BBVA", accountCurrency: "EUR", amountCents: 524580 },
+    "EUR"
   );
   assert.deepEqual(cross, {
     accountLabel: "KAST AK → BBVA",
@@ -36,7 +40,50 @@ test("transfer row presentation is the account pair plus money-only amounts", ()
     debitCurrency: "USD",
     creditAmountCents: 524580,
     creditCurrency: "EUR",
+    showDebitNative: true,
+    showCredited: true,
   });
+});
+
+test("transfer amount visibility depends on currencies only", () => {
+  const leg = (currency: string, cents: number) => ({
+    accountName: `${currency} счёт`,
+    accountCurrency: currency,
+    amountCents: cents,
+  });
+
+  // USD → USD при display EUR: основная сумма EUR + одна дополнительная
+  // строка списания в USD, строка «→» не показывается.
+  const usdToUsd = buildTransferRowPresentation(leg("USD", -10000), leg("USD", 10000), "EUR");
+  assert.equal(usdToUsd.showDebitNative, true);
+  assert.equal(usdToUsd.debitCurrency, "USD");
+  assert.equal(usdToUsd.showCredited, false);
+
+  // EUR → EUR при display EUR: только основная сумма EUR — дополнительный
+  // блок отсутствует, даже при равных числовых суммах.
+  const eurToEur = buildTransferRowPresentation(leg("EUR", -10000), leg("EUR", 10000), "EUR");
+  assert.equal(eurToEur.showDebitNative, false);
+  assert.equal(eurToEur.showCredited, false);
+
+  // USD → EUR при display EUR: основная сумма EUR + списание USD +
+  // строка «→» с зачислением EUR.
+  const usdToEur = buildTransferRowPresentation(leg("USD", -10000), leg("EUR", 9150), "EUR");
+  assert.equal(usdToEur.showDebitNative, true);
+  assert.equal(usdToEur.debitCurrency, "USD");
+  assert.equal(usdToEur.showCredited, true);
+  assert.equal(usdToEur.creditCurrency, "EUR");
+
+  // Валюта списания совпадает с валютой отображения → дополнительного блока
+  // нет вообще, даже когда валюта зачисления другая (EUR → USD при EUR).
+  const eurToUsd = buildTransferRowPresentation(leg("EUR", -10000), leg("USD", 10900), "EUR");
+  assert.equal(eurToUsd.showDebitNative, false);
+  assert.equal(eurToUsd.showCredited, false);
+
+  // Не выбрана display currency → ведёт себя как отображение в валюте
+  // списания: блока нет.
+  const noDisplay = buildTransferRowPresentation(leg("USD", -10000), leg("EUR", 9150), "");
+  assert.equal(noDisplay.showDebitNative, false);
+  assert.equal(noDisplay.showCredited, false);
 });
 
 test("account availability includes both lifetime boundary dates", () => {

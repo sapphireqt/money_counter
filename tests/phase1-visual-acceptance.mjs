@@ -577,23 +577,68 @@ const scenarios = [
       await page.locator("tr.operationRow.transfer").first().scrollIntoViewIfNeeded();
     },
     check: async ({ productionPage }) => {
-      const row = productionPage.locator("tr.operationRow.transfer").first();
-      record("transfer row exists", await row.isVisible());
-      const accountText = await row.locator(".operationAccount").innerText();
+      // Currency-only visibility rules (display currency is EUR):
+      // USD → EUR — the full structure: main EUR + debit USD + «→ EUR».
+      const usdToEur = productionPage
+        .locator("tr.operationRow.transfer")
+        .filter({ hasText: "Возврат из долларового резерва" })
+        .first();
+      await usdToEur.scrollIntoViewIfNeeded();
+      record("transfer row exists", await usdToEur.isVisible());
+      const accountText = await usdToEur.locator(".operationAccount").innerText();
       record(
         "account column carries the source → destination pair",
         /→/.test(accountText),
         accountText
       );
-      const destination = row.locator(".transferDestination");
-      record("transfer has destination amount line", await destination.isVisible());
+      const mainText = (await usdToEur.locator(".operationMainAmount").innerText()).trim();
+      record("main amount renders in the display currency", /€$/u.test(mainText), mainText);
+      const localText = (await usdToEur.locator(".operationLocalAmount").innerText()).trim();
+      record("native debit line shows the debited USD amount", /\$$/u.test(localText), localText);
+      const destination = usdToEur.locator(".transferDestination");
+      record("cross-currency legs show the credited line", await destination.isVisible());
       const destinationText = (await destination.innerText()).replace(/\s+/g, " ").trim();
       record(
         "destination line is money only (no account name)",
         /^→ [\d\s.,]+ ?[^\s\d]{1,5}$/u.test(destinationText),
         destinationText
       );
-      record("transfer has at least two amount lines", (await row.locator(".operationAmounts > span").count()) >= 3);
+      record(
+        "full-structure transfer keeps the two-line height",
+        Math.abs((await usdToEur.boundingBox()).height - 53) <= 2,
+        `${(await usdToEur.boundingBox()).height}px`
+      );
+
+      // EUR → EUR — debit currency equals the display currency: main only,
+      // no native block, no «→» line, ordinary single-line height.
+      const eurToEur = productionPage
+        .locator("tr.operationRow.transfer")
+        .filter({ hasText: "Перевод между счетами" })
+        .first();
+      await eurToEur.scrollIntoViewIfNeeded();
+      record(
+        "same-display-currency transfer hides the native block",
+        (await eurToEur.locator(".operationLocalAmount").count()) === 0 &&
+          (await eurToEur.locator(".transferDestination").count()) === 0
+      );
+      record(
+        "blockless transfer keeps the ordinary row height",
+        Math.abs((await eurToEur.boundingBox()).height - 45) <= 2,
+        `${(await eurToEur.boundingBox()).height}px`
+      );
+
+      // EUR → USD — debit currency still equals the display currency, so the
+      // native block stays hidden even though the legs' currencies differ.
+      const eurToUsd = productionPage
+        .locator("tr.operationRow.transfer")
+        .filter({ hasText: "Пополнение долларового резерва" })
+        .first();
+      await eurToUsd.scrollIntoViewIfNeeded();
+      record(
+        "debit-in-display-currency transfer hides the block regardless of the credited currency",
+        (await eurToUsd.locator(".operationLocalAmount").count()) === 0 &&
+          (await eurToUsd.locator(".transferDestination").count()) === 0
+      );
     },
   },
   {

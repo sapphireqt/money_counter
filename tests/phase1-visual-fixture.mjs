@@ -199,6 +199,23 @@ await request("/api/transfers", {
   }),
 });
 
+// A transfer debited from the USD account: with display currency EUR this is
+// the only fixture row whose native block (debit in USD + «→ credited EUR»)
+// must be visible per the currency-only visibility rules.
+await request("/api/transfers", {
+  method: "POST",
+  body: JSON.stringify({
+    create: {
+      fromAccountId: accounts[2].id,
+      toAccountId: accounts[0].id,
+      date: "2026-07-09",
+      amount: "120,00",
+      amountIn: "109,80",
+      description: "Возврат из долларового резерва",
+    },
+  }),
+});
+
 for (const [date, amount] of [
   ["2026-06-18", "54,20"],
   ["2026-05-21", "49,80"],

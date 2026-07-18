@@ -3176,8 +3176,9 @@ textarea:focus-visible,
   margin-top: 3px;
 }
 
-.p1OpsTable .transferRow,
-.p1OpsTable .operationRow.transfer {
+/* Only a transfer with the visible «→ credited» second line is a two-line
+   row; transfers without it keep the ordinary 44px centred layout. */
+.p1OpsTable .operationRow.transfer.withDestination {
   align-items: start;
   min-height: 52px;
 }

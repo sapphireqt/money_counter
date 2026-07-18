@@ -76,22 +76,40 @@ export type TransferRowPresentation = {
   debitCurrency: string;
   creditAmountCents: number;
   creditCurrency: string;
+  showDebitNative: boolean;
+  showCredited: boolean;
 };
 
 // The explicit presentation contract of a collapsed transfer row: the account
 // column shows the «source → destination» pair, and the amount column carries
-// ONLY money — the debited amount plus the credited amount for the second
-// line. Account names never enter the amount cell.
+// ONLY money — account names never enter the amount cell.
+//
+// Line visibility depends on CURRENCIES only, never on numeric amounts:
+// - the main amount in the display currency always renders;
+// - the native block renders only when the debit-account currency differs
+//   from the display currency; its first line is the debited amount in the
+//   debit currency;
+// - the second line («→ credited amount») renders only inside a visible
+//   native block and only when the legs' currencies differ;
+// - when the debit currency equals the display currency the native block is
+//   not rendered at all. No display currency behaves as debit-currency
+//   display.
 export function buildTransferRowPresentation(
   out: TransferLegLike,
-  incoming: TransferLegLike
+  incoming: TransferLegLike,
+  displayCurrency: string | null
 ): TransferRowPresentation {
+  const display = displayCurrency || out.accountCurrency;
+  const showDebitNative = out.accountCurrency !== display;
   return {
     accountLabel: `${out.accountName} → ${incoming.accountName}`,
     debitAmountCents: Math.abs(out.amountCents),
     debitCurrency: out.accountCurrency,
     creditAmountCents: Math.abs(incoming.amountCents),
     creditCurrency: incoming.accountCurrency,
+    showDebitNative,
+    showCredited:
+      showDebitNative && out.accountCurrency !== incoming.accountCurrency,
   };
 }
 
