@@ -1843,6 +1843,15 @@ export default function MoneyCounter() {
     };
   }, [formOpen, transactionForm.description, transactionForm.direction]);
 
+  // Auto-dismiss the confirmation/status toast. The Phase 1 redesign turned the
+  // inline notice into a floating «p1Toast» but never cleared it, so it lingered
+  // on screen indefinitely after every save/edit.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 3200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   // --- currency conversion (summary cards) ----------------------------------
   const loadRates = useCallback(
     async (date: string): Promise<Record<string, number>> => {
@@ -2328,24 +2337,33 @@ export default function MoneyCounter() {
     );
   }, [transactions, query]);
 
-  // Collapse the two loaded legs of a transfer into one production row. A leg
-  // whose partner is outside the active filters remains a regular-looking row
-  // with the transfer marker, so filters never make money disappear silently.
+  // Collapse the two legs of a transfer into one production row. A leg's partner
+  // can be absent from the filtered list — an account filter keeps only the leg
+  // on the selected account, and a type/flag filter or the text search can hide
+  // one side too — so partners are also looked up in the whole-month dataset
+  // (periodTransactions). A transfer therefore always renders in its normal
+  // «SRC → DST» shape instead of degrading to a lone leg. A lone «⇄» row only
+  // survives when the partner is genuinely outside loaded data (e.g. the
+  // all-history view spanning a month periodTransactions does not cover).
   const displayRows = useMemo(() => {
-    const legsByGroup = new Map<string, Transaction[]>();
-    for (const tx of searchedTransactions) {
-      if (!tx.transferGroup) continue;
-      const legs = legsByGroup.get(tx.transferGroup) ?? [];
-      legs.push(tx);
+    const legsByGroup = new Map<string, Map<number, Transaction>>();
+    const indexLeg = (tx: Transaction) => {
+      if (!tx.transferGroup) return;
+      const legs = legsByGroup.get(tx.transferGroup) ?? new Map<number, Transaction>();
+      if (!legs.has(tx.id)) legs.set(tx.id, tx);
       legsByGroup.set(tx.transferGroup, legs);
-    }
+    };
+    // Index the visible legs first so a collapsed row prefers the list's own
+    // object, then fold in whole-month legs as partner fallbacks.
+    for (const tx of searchedTransactions) indexLeg(tx);
+    for (const tx of periodTransactions) indexLeg(tx);
     const placed = new Set<string>();
     const rows: DisplayRow[] = [];
     for (const tx of searchedTransactions) {
       let row: DisplayRow | null = null;
       if (tx.transferGroup) {
         if (placed.has(tx.transferGroup)) continue;
-        const partner = (legsByGroup.get(tx.transferGroup) ?? []).find(
+        const partner = [...(legsByGroup.get(tx.transferGroup)?.values() ?? [])].find(
           (leg) => leg.id !== tx.id
         );
         if (partner) {
@@ -2363,7 +2381,7 @@ export default function MoneyCounter() {
       const bTx = b.kind === "transfer" ? b.out : b.tx;
       return bTx.date.localeCompare(aTx.date) || bTx.id - aTx.id;
     });
-  }, [searchedTransactions]);
+  }, [searchedTransactions, periodTransactions]);
 
   const dayGroups = useMemo(() => {
     return groupOperationItemsByDate(
@@ -4456,7 +4474,7 @@ export default function MoneyCounter() {
                           <option value="">Выберите счёт</option>
                           {operationAccountOptions.map((account) => (
                             <option key={account.id} value={account.id}>
-                              {account.name} · {account.currency}
+                              {account.name}
                             </option>
                           ))}
                         </select>
@@ -4481,7 +4499,7 @@ export default function MoneyCounter() {
                             .filter((account) => String(account.id) !== transactionForm.accountId)
                             .map((account) => (
                               <option key={account.id} value={account.id}>
-                                {account.name} · {account.currency}
+                                {account.name}
                               </option>
                             ))}
                         </select>
@@ -4642,7 +4660,7 @@ export default function MoneyCounter() {
                                         .filter((account) => String(account.id) !== transactionForm.toAccountId)
                                         .map((account) => (
                                           <option key={account.id} value={account.id}>
-                                            {account.name} · {account.currency}
+                                            {account.name}
                                           </option>
                                         ))}
                                     </select>
@@ -4689,7 +4707,7 @@ export default function MoneyCounter() {
                                         .filter((account) => String(account.id) !== transactionForm.accountId)
                                         .map((account) => (
                                           <option key={account.id} value={account.id}>
-                                            {account.name} · {account.currency}
+                                            {account.name}
                                           </option>
                                         ))}
                                     </select>
@@ -4925,7 +4943,7 @@ export default function MoneyCounter() {
                                       )
                                       .map((account) => (
                                         <option key={account.id} value={account.id}>
-                                          {account.name} · {account.currency}
+                                          {account.name}
                                         </option>
                                       ))}
                                   </select>
@@ -5086,8 +5104,14 @@ export default function MoneyCounter() {
                                 aria-selected="false"
                                 key={suggestion.description.toLocaleLowerCase("ru-RU")}
                                 onClick={() => {
+                                  // Explicitly picking a suggestion is a strong
+                                  // signal, so fill its category whenever it has
+                                  // one — including a description used only once.
+                                  // The autoCategory confidence gate governs only
+                                  // silent auto-fill, not a deliberate pick.
                                   const applyCategory =
-                                    transactionForm.direction === "expense" && suggestion.autoCategory;
+                                    transactionForm.direction === "expense" &&
+                                    Boolean(suggestion.category);
                                   setTransactionForm({
                                     ...transactionForm,
                                     description: suggestion.description,

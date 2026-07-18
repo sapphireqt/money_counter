@@ -165,12 +165,14 @@ export async function GET(request: Request) {
 
     // Category filter: exact name, case-insensitive. «Без категории» also
     // matches the empty category, excluding transfer legs (their category is
-    // empty by design, not because they need attention).
+    // empty by design, not because they need attention). It is restricted to
+    // expenses (amount < 0): income has no category concept, so an empty
+    // category on an income row must not surface under «Без категории».
     const category = searchParams.get("category")?.trim();
     if (category) {
       if (category === "Без категории") {
         conditions.push(
-          "(t.transfer_group IS NULL AND (t.category = '' OR LOWER(t.category) = LOWER(?)))"
+          "(t.transfer_group IS NULL AND t.amount_cents < 0 AND (t.category = '' OR LOWER(t.category) = LOWER(?)))"
         );
       } else {
         conditions.push("LOWER(t.category) = LOWER(?)");

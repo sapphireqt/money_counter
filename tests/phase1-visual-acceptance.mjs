@@ -230,7 +230,7 @@ async function chooseOperationType(page, label) {
 async function openNewTransfer(page, destinationLabel) {
   await openAddOperation(page);
   await chooseOperationType(page, "Перевод");
-  await page.locator("#transfer-from-account").selectOption({ label: "Основной счёт · EUR" });
+  await page.locator("#transfer-from-account").selectOption({ label: "Основной счёт" });
   await page.locator("#transfer-to-account").selectOption({ label: destinationLabel });
   await page.waitForTimeout(120);
 }
@@ -832,7 +832,7 @@ const scenarios = [
     id: "transfer-same-currency",
     label: "Transfer / Same currency",
     prototypeSetup: async (page) => clickHidden(page, '[data-open-transfer="01-new-transfer-same-currency"]'),
-    productionSetup: async (page) => openNewTransfer(page, "Семейный счёт · EUR"),
+    productionSetup: async (page) => openNewTransfer(page, "Семейный счёт"),
     check: async ({ productionPage }) => {
       const dialog = productionPage.getByRole("dialog");
       record("new transfer title", await dialog.getByRole("heading", { name: "Новый перевод" }).isVisible());
@@ -845,7 +845,7 @@ const scenarios = [
     id: "transfer-different-currency",
     label: "Transfer / Different currencies",
     prototypeSetup: async (page) => clickHidden(page, '[data-open-transfer="02-new-transfer-different-currencies"]'),
-    productionSetup: async (page) => openNewTransfer(page, "Долларовый резерв · USD"),
+    productionSetup: async (page) => openNewTransfer(page, "Долларовый резерв"),
     check: async ({ productionPage }) => {
       const dialog = productionPage.getByRole("dialog");
       record("different currencies have debit amount", await dialog.locator("#transfer-amount-out").isVisible());

@@ -2172,9 +2172,10 @@ textarea:focus-visible,
   border-radius: 10px;
 }
 
-/* Phase 1 follows the prototype's single period capsule. Month navigation
-   remains available in the picker panel instead of adding side controls that
-   are absent from the reference. */
+/* Phase 1 keeps the prototype's period capsule but restores the ‹ › month
+   arrows on either side of the trigger (per user request — quicker month
+   stepping than opening the panel). The capsule reads as a small segmented
+   control: arrow · «Июль 2026 ▾» · arrow. */
 .p1MonthPickerCapsule {
   align-items: stretch;
   display: inline-flex;
@@ -2188,7 +2189,26 @@ textarea:focus-visible,
 }
 
 .p1MonthPickerArrow {
-  display: none;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 16px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0 10px;
+}
+
+.p1MonthPickerArrow:hover:not(:disabled) {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.p1MonthPickerArrow:disabled {
+  color: var(--line-strong);
+  cursor: default;
 }
 
 .p1MonthPickerTrigger {
