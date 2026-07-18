@@ -52,18 +52,18 @@ test("transfer amount visibility depends on currencies only", () => {
     amountCents: cents,
   });
 
-  // USD → USD при display EUR: основная сумма EUR + одна дополнительная
-  // строка списания в USD, строка «→» не показывается.
-  const usdToUsd = buildTransferRowPresentation(leg("USD", -10000), leg("USD", 10000), "EUR");
-  assert.equal(usdToUsd.showDebitNative, true);
-  assert.equal(usdToUsd.debitCurrency, "USD");
-  assert.equal(usdToUsd.showCredited, false);
-
   // EUR → EUR при display EUR: только основная сумма EUR — дополнительный
   // блок отсутствует, даже при равных числовых суммах.
   const eurToEur = buildTransferRowPresentation(leg("EUR", -10000), leg("EUR", 10000), "EUR");
   assert.equal(eurToEur.showDebitNative, false);
   assert.equal(eurToEur.showCredited, false);
+
+  // USD → USD при display EUR: основная сумма EUR + одна строка с суммой
+  // списания USD, строка «→» не показывается.
+  const usdToUsd = buildTransferRowPresentation(leg("USD", -10000), leg("USD", 10000), "EUR");
+  assert.equal(usdToUsd.showDebitNative, true);
+  assert.equal(usdToUsd.debitCurrency, "USD");
+  assert.equal(usdToUsd.showCredited, false);
 
   // USD → EUR при display EUR: основная сумма EUR + списание USD +
   // строка «→» с зачислением EUR.
@@ -73,17 +73,24 @@ test("transfer amount visibility depends on currencies only", () => {
   assert.equal(usdToEur.showCredited, true);
   assert.equal(usdToEur.creditCurrency, "EUR");
 
-  // Валюта списания совпадает с валютой отображения → дополнительного блока
-  // нет вообще, даже когда валюта зачисления другая (EUR → USD при EUR).
-  const eurToUsd = buildTransferRowPresentation(leg("EUR", -10000), leg("USD", 10900), "EUR");
-  assert.equal(eurToUsd.showDebitNative, false);
-  assert.equal(eurToUsd.showCredited, false);
+  // EUR → THB при display EUR: основная сумма EUR + списание EUR +
+  // «→» с зачислением THB. Повторение EUR намеренное: сверху нормализованная
+  // сумма в валюте отображения, в блоке — фактическая пара списания и
+  // зачисления.
+  const eurToThb = buildTransferRowPresentation(leg("EUR", -10000), leg("THB", 39000), "EUR");
+  assert.equal(eurToThb.showDebitNative, true);
+  assert.equal(eurToThb.debitCurrency, "EUR");
+  assert.equal(eurToThb.showCredited, true);
+  assert.equal(eurToThb.creditCurrency, "THB");
 
   // Не выбрана display currency → ведёт себя как отображение в валюте
-  // списания: блока нет.
-  const noDisplay = buildTransferRowPresentation(leg("USD", -10000), leg("EUR", 9150), "");
-  assert.equal(noDisplay.showDebitNative, false);
-  assert.equal(noDisplay.showCredited, false);
+  // списания: блок показывается только при разных валютах счетов.
+  const noDisplaySame = buildTransferRowPresentation(leg("USD", -10000), leg("USD", 10000), "");
+  assert.equal(noDisplaySame.showDebitNative, false);
+  assert.equal(noDisplaySame.showCredited, false);
+  const noDisplayCross = buildTransferRowPresentation(leg("USD", -10000), leg("EUR", 9150), "");
+  assert.equal(noDisplayCross.showDebitNative, true);
+  assert.equal(noDisplayCross.showCredited, true);
 });
 
 test("account availability includes both lifetime boundary dates", () => {

@@ -85,31 +85,34 @@ export type TransferRowPresentation = {
 // ONLY money — account names never enter the amount cell.
 //
 // Line visibility depends on CURRENCIES only, never on numeric amounts:
-// - the main amount in the display currency always renders;
-// - the native block renders only when the debit-account currency differs
-//   from the display currency; its first line is the debited amount in the
-//   debit currency;
-// - the second line («→ credited amount») renders only inside a visible
-//   native block and only when the legs' currencies differ;
-// - when the debit currency equals the display currency the native block is
-//   not rendered at all. No display currency behaves as debit-currency
-//   display.
+// - the main amount in the display currency always renders (the normalized
+//   operation amount);
+// - the account-currency block renders when the debit-account currency
+//   differs from the display currency OR from the credit-account currency;
+//   its first line is always the actual debited amount in the debit
+//   currency — for e.g. EUR → THB at display EUR the EUR repetition is
+//   deliberate: the top line is the normalized amount, the block is the
+//   actual debit/credit pair;
+// - the second line («→ credited amount») renders only when the legs'
+//   currencies differ (it can only appear inside a visible block, since a
+//   currency mismatch between the legs also shows the block);
+// - no display currency behaves as debit-currency display.
 export function buildTransferRowPresentation(
   out: TransferLegLike,
   incoming: TransferLegLike,
   displayCurrency: string | null
 ): TransferRowPresentation {
   const display = displayCurrency || out.accountCurrency;
-  const showDebitNative = out.accountCurrency !== display;
   return {
     accountLabel: `${out.accountName} → ${incoming.accountName}`,
     debitAmountCents: Math.abs(out.amountCents),
     debitCurrency: out.accountCurrency,
     creditAmountCents: Math.abs(incoming.amountCents),
     creditCurrency: incoming.accountCurrency,
-    showDebitNative,
-    showCredited:
-      showDebitNative && out.accountCurrency !== incoming.accountCurrency,
+    showDebitNative:
+      out.accountCurrency !== display ||
+      out.accountCurrency !== incoming.accountCurrency,
+    showCredited: out.accountCurrency !== incoming.accountCurrency,
   };
 }
 

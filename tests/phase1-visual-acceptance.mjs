@@ -627,17 +627,33 @@ const scenarios = [
         `${(await eurToEur.boundingBox()).height}px`
       );
 
-      // EUR → USD — debit currency still equals the display currency, so the
-      // native block stays hidden even though the legs' currencies differ.
+      // EUR → USD (the «EUR → THB»-shaped case) — the legs' currencies
+      // differ, so the block shows even though the debit currency equals the
+      // display currency: the deliberate EUR repetition (normalized amount on
+      // top, the actual debit/credit pair in the block) plus «→ credited $».
       const eurToUsd = productionPage
         .locator("tr.operationRow.transfer")
         .filter({ hasText: "Пополнение долларового резерва" })
         .first();
       await eurToUsd.scrollIntoViewIfNeeded();
+      const eurDebitText = (await eurToUsd.locator(".operationLocalAmount").innerText()).trim();
       record(
-        "debit-in-display-currency transfer hides the block regardless of the credited currency",
-        (await eurToUsd.locator(".operationLocalAmount").count()) === 0 &&
-          (await eurToUsd.locator(".transferDestination").count()) === 0
+        "display-currency debit still shows the actual debited amount when legs differ",
+        /€$/u.test(eurDebitText),
+        eurDebitText
+      );
+      const eurToUsdDestination = (await eurToUsd.locator(".transferDestination").innerText())
+        .replace(/\s+/g, " ")
+        .trim();
+      record(
+        "credited line shows the destination-currency amount",
+        /^→ [\d\s.,]+ ?\$$/u.test(eurToUsdDestination),
+        eurToUsdDestination
+      );
+      record(
+        "cross-currency transfer from the display currency keeps the two-line height",
+        Math.abs((await eurToUsd.boundingBox()).height - 53) <= 2,
+        `${(await eurToUsd.boundingBox()).height}px`
       );
     },
   },

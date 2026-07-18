@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-18T10:46:57.847Z",
+  "generatedAt": "2026-07-18T10:58:32.960Z",
   "baseUrl": "http://localhost:3104/",
   "prototype": "family_finance_main_screen_prototype_v34_unified_content_grid.html",
   "status": "PASS",
@@ -1001,9 +1001,19 @@
           "detail": "44px"
         },
         {
-          "name": "debit-in-display-currency transfer hides the block regardless of the credited currency",
+          "name": "display-currency debit still shows the actual debited amount when legs differ",
           "result": "PASS",
-          "detail": ""
+          "detail": "320,00 €"
+        },
+        {
+          "name": "credited line shows the destination-currency amount",
+          "result": "PASS",
+          "detail": "→ 348,25 $"
+        },
+        {
+          "name": "cross-currency transfer from the display currency keeps the two-line height",
+          "result": "PASS",
+          "detail": "52px"
         }
       ],
       "result": "PASS"
@@ -1074,9 +1084,19 @@
           "detail": "44px"
         },
         {
-          "name": "debit-in-display-currency transfer hides the block regardless of the credited currency",
+          "name": "display-currency debit still shows the actual debited amount when legs differ",
           "result": "PASS",
-          "detail": ""
+          "detail": "320,00 €"
+        },
+        {
+          "name": "credited line shows the destination-currency amount",
+          "result": "PASS",
+          "detail": "→ 348,25 $"
+        },
+        {
+          "name": "cross-currency transfer from the display currency keeps the two-line height",
+          "result": "PASS",
+          "detail": "52px"
         }
       ],
       "result": "PASS"
@@ -1841,7 +1861,7 @@
         {
           "name": "debounce is at least 220ms",
           "result": "PASS",
-          "detail": "358ms"
+          "detail": "338ms"
         }
       ],
       "result": "PASS"
@@ -1879,7 +1899,7 @@
         {
           "name": "debounce is at least 220ms",
           "result": "PASS",
-          "detail": "337ms"
+          "detail": "339ms"
         }
       ],
       "result": "PASS"
