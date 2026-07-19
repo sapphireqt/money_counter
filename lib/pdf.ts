@@ -1,5 +1,5 @@
-import { parseFlexibleDate, parseMoneyInputToCents } from "./finance";
-import type { ParsedRow } from "./import";
+import { parseFlexibleDate, parseMoneyInputToCents } from "./finance.ts";
+import type { ParsedRow } from "./import.ts";
 
 /**
  * PDF bank-statement parsing. PURE and framework-free: the caller (the browser)
@@ -139,11 +139,17 @@ export function extractKbank(pages: PdfPage[]): PdfAnalyzeResult {
       }
       if (balanceCents !== null) prevBalance = balanceCents;
 
-      const channel = joinBand(tokens, KBANK.chanMin, KBANK.chanMax);
+      // The Channel column ("EDC/E-Commerce", "K PLUS", "Automatic Transfer") is
+      // a technical routing label, not part of the human description, so it is
+      // dropped. From Details we keep only *useful* text — a transfer beneficiary
+      // like "To BAY X8078 VITALII DEN++" — and drop the technical "Ref Code …".
       const details = joinBand(tokens, KBANK.detMin, KBANK.detMin + 200);
-      const payee = [channel, details].filter(Boolean).join(" · ");
+      const usefulDetails =
+        details && !/^ref\s*code\b/i.test(details) ? details : "";
+      const description = usefulDetails ? `${desc} · ${usefulDetails}` : desc;
 
       let skip: string | null = null;
+      let amountAltCents: number | null = null;
       if (!date) {
         skip = "нет даты";
       } else if (amountCents === null) {
@@ -157,17 +163,21 @@ export function extractKbank(pages: PdfPage[]): PdfAnalyzeResult {
         Math.abs(Math.abs(amountCents) - Math.abs(printed)) > 1
       ) {
         skip = "сумма ≠ Δостатка";
+        // Surface the printed figure alongside the balance-delta amount so the
+        // preview can let the user choose which one to import.
+        amountAltCents = amountCents < 0 ? -Math.abs(printed) : Math.abs(printed);
       }
 
       rows.push({
         date,
         amountCents,
         currency,
-        description: desc,
-        payee,
+        description,
+        payee: "",
         category: "",
         skip,
         raw: tokens.map((t) => t.str),
+        amountAltCents,
       });
     }
   }

@@ -33,15 +33,25 @@ import {
 } from "../lib/phase1";
 import {
   analyzeImport,
-  buildRows,
-  detectAmountSigned,
-  FIELD_DEFS,
   type AnalyzeResult,
-  type ColumnMapping,
-  type FieldKey,
   type ParsedRow,
 } from "../lib/import";
 import { analyzePdf, type PdfPage } from "../lib/pdf";
+import {
+  attachDuplicateCandidates,
+  formatAmountWithType,
+  formatDateRangeRu,
+  guessPhase2Columns,
+  hasIssues,
+  normalizePdfOperations,
+  normalizeTextOperations,
+  pluralRu,
+  summarizeOperations,
+  type ExistingTransaction,
+  type ImportIssue,
+  type NormalizedOperation,
+  type Phase2Columns,
+} from "../lib/import-preview";
 import type { DescriptionSuggestion } from "../lib/operations";
 import {
   forecastMonth,
@@ -207,13 +217,6 @@ type ImportPayloadRow = {
 type Tab = "main" | "settings" | "charts" | "forecast" | "pending";
 
 type PrimaryNavTab = Exclude<Tab, "pending">;
-
-const DELIMITER_LABELS: Record<string, string> = {
-  ",": "запятая",
-  ";": "точка с запятой",
-  "\t": "табуляция",
-  "|": "вертикальная черта",
-};
 
 const palette = [
   "#2563eb",
@@ -904,6 +907,1100 @@ function MonthPicker({
   );
 }
 
+// --- Phase 2: bank-statement import modal -----------------------------------
+// A self-contained 3-step flow (Файл и счёт → Сопоставление → Проверка) that
+// converges 1:1 with prototype v34.1. Parsing (lib/import, lib/pdf), preview
+// normalization + duplicate search (lib/import-preview) and the final write
+// (POST /api/import) are kept separated so the deferred UX patch can redesign
+// the interim states without touching the pipeline.
+
+type ImportDecision =
+  | { type: "keep" }
+  | { type: "exclude" }
+  | { type: "fixDate"; value: string }
+  | { type: "fixAmount"; cents: number };
+
+type ImportFileStatus = "idle" | "loading" | "ready" | "error" | "empty";
+
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const probe = new Date(0);
+  probe.setUTCFullYear(y, m - 1, d + days);
+  return probe.toISOString().slice(0, 10);
+}
+
+// pdfjs is loaded lazily (only when a PDF is picked) so it stays out of the
+// main bundle; it extracts positioned text in the browser for lib/pdf.
+async function extractPdfPages(file: File): Promise<PdfPage[]> {
+  const pdfjs = await import("pdfjs-dist");
+  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+  const data = await file.arrayBuffer();
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const pages: PdfPage[] = [];
+  for (let p = 1; p <= doc.numPages; p += 1) {
+    const page = await doc.getPage(p);
+    const content = await page.getTextContent();
+    const items: PdfPage["items"] = [];
+    for (const item of content.items) {
+      if ("str" in item && typeof item.str === "string") {
+        items.push({ str: item.str, x: item.transform[4], y: item.transform[5] });
+      }
+    }
+    pages.push({ items });
+  }
+  return pages;
+}
+
+const OPERATION_FORMS: [string, string, string] = ["операция", "операции", "операций"];
+
+function ImportModal({
+  accounts,
+  activeCurrency,
+  notify,
+  onClose,
+  onImported,
+}: {
+  accounts: Account[];
+  activeCurrency: string;
+  notify: (message: string) => void;
+  onClose: () => void;
+  onImported: () => Promise<void>;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [status, setStatus] = useState<ImportFileStatus>("idle");
+  const [fileName, setFileName] = useState("");
+  const [fileFormat, setFileFormat] = useState<"tsv" | "csv" | "pdf">("tsv");
+  const [analysis, setAnalysis] = useState<AnalyzeResult | null>(null);
+  const [pdfRows, setPdfRows] = useState<ParsedRow[] | null>(null);
+  const [columns, setColumns] = useState<Phase2Columns | null>(null);
+  const [accountId, setAccountId] = useState("");
+  const [openEditor, setOpenEditor] = useState<"date" | "description" | "amount" | null>(null);
+  const [decisions, setDecisions] = useState<Record<string, ImportDecision>>({});
+  const [existing, setExisting] = useState<ExistingTransaction[] | null>(null);
+  const [fullOpen, setFullOpen] = useState(false);
+  const [fullSearch, setFullSearch] = useState("");
+  const [fullFilter, setFullFilter] = useState<"all" | "attention" | "expense" | "income">("all");
+  const [submitting, setSubmitting] = useState(false);
+
+  const dialogRef = useRef<HTMLElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const account = accounts.find((item) => String(item.id) === accountId) ?? null;
+
+  const rawOps = useMemo<NormalizedOperation[]>(() => {
+    if (fileFormat === "pdf" && pdfRows) {
+      return normalizePdfOperations(pdfRows, {
+        currency: pdfRows[0]?.currency ?? activeCurrency,
+      });
+    }
+    if (analysis && columns) {
+      return normalizeTextOperations(analysis, {
+        columns,
+        defaultCurrency: analysis.detectedCurrency,
+        sourceFormat: fileFormat,
+      });
+    }
+    return [];
+  }, [fileFormat, pdfRows, analysis, columns, activeCurrency]);
+
+  const summary = useMemo(() => summarizeOperations(rawOps), [rawOps]);
+  const fileCurrency = summary.currency;
+  const currencyMismatch = Boolean(
+    account && rawOps.length > 0 && account.currency !== fileCurrency
+  );
+
+  // Duplicate issues attach only once the account's existing operations have
+  // been read (a read-only fetch — never a write). Re-running is idempotent.
+  const ops = useMemo<NormalizedOperation[]>(
+    () => (existing ? attachDuplicateCandidates(rawOps, existing) : rawOps),
+    [rawOps, existing]
+  );
+
+  // Existing account operations for the duplicate window (file dates ±3 days).
+  // Keyed on the stable accountId (not the per-render `account` object) so it
+  // fetches once per account/step, never on every render. Read-only — no write.
+  const minDate = summary.minDate;
+  const maxDate = summary.maxDate;
+  useEffect(() => {
+    if (step !== 3 || !accountId || rawOps.length === 0 || !minDate || !maxDate) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const from = addDaysIso(minDate, -3);
+        const to = addDaysIso(maxDate, 3);
+        const data = await requestJson<{
+          transactions: Array<{ id: number; date: string; description: string; amountCents: number }>;
+        }>(`/api/transactions?accountId=${accountId}&from=${from}&to=${to}&limit=500`);
+        if (cancelled) return;
+        setExisting(
+          data.transactions.map((tx) => ({
+            id: tx.id,
+            date: tx.date,
+            description: tx.description,
+            amountCents: tx.amountCents,
+          }))
+        );
+      } catch {
+        if (!cancelled) setExisting([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [step, accountId, rawOps.length, minDate, maxDate]);
+
+  // Focus trap, background scroll lock, Escape to close (Q-06 accessibility).
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (fullOpen) setFullOpen(false);
+        else onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const scope = fullOpen
+        ? document.querySelector<HTMLElement>(".im-full-dialog")
+        : dialog;
+      const focusable = [
+        ...(scope?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []),
+      ].filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      document
+        .querySelector<HTMLElement>('[data-focus-key="add-operation"]')
+        ?.focus();
+    };
+  }, [fullOpen, onClose]);
+
+  function resetFile() {
+    setStatus("idle");
+    setFileName("");
+    setAnalysis(null);
+    setPdfRows(null);
+    setColumns(null);
+    setOpenEditor(null);
+    setExisting(null);
+    setDecisions({});
+  }
+
+  async function handleFile(file: File | null) {
+    if (!file) return;
+    setStep(1);
+    setStatus("loading");
+    setAnalysis(null);
+    setPdfRows(null);
+    setColumns(null);
+    setOpenEditor(null);
+    setExisting(null);
+    setDecisions({});
+
+    if (file.size > 20 * 1024 * 1024) {
+      setStatus("error");
+      notify("Файл больше 20 МБ");
+      return;
+    }
+
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    try {
+      if (isPdf) {
+        const pages = await extractPdfPages(file);
+        const result = analyzePdf(pages);
+        if (!result.bank) {
+          setStatus("error");
+          return;
+        }
+        const previewOps = normalizePdfOperations(result.rows, { currency: result.currency });
+        setPdfRows(result.rows);
+        setFileFormat("pdf");
+        setFileName(file.name);
+        setStatus(previewOps.length > 0 ? "ready" : "empty");
+      } else {
+        const text = await file.text();
+        const parsed = analyzeImport(text, { defaultCurrency: activeCurrency });
+        if (parsed.headers.length === 0) {
+          setStatus("error");
+          return;
+        }
+        const format: "tsv" | "csv" = parsed.delimiter === "," ? "csv" : "tsv";
+        const cols = guessPhase2Columns(parsed);
+        const previewOps = normalizeTextOperations(parsed, {
+          columns: cols,
+          defaultCurrency: parsed.detectedCurrency,
+          sourceFormat: format,
+        });
+        setAnalysis(parsed);
+        setColumns(cols);
+        setFileFormat(format);
+        setFileName(file.name);
+        setStatus(previewOps.length > 0 ? "ready" : "empty");
+      }
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  // --- review helpers --------------------------------------------------------
+  const decisionOf = (op: NormalizedOperation): ImportDecision | undefined =>
+    decisions[op.sourceRowId];
+
+  const isUnresolved = (op: NormalizedOperation) => hasIssues(op) && !decisionOf(op);
+  const isExcluded = (op: NormalizedOperation) => decisionOf(op)?.type === "exclude";
+
+  const effectiveDate = (op: NormalizedOperation): string | null => {
+    const decision = decisionOf(op);
+    return decision?.type === "fixDate" ? decision.value : op.date;
+  };
+  const effectiveAmount = (op: NormalizedOperation): number | null => {
+    const decision = decisionOf(op);
+    return decision?.type === "fixAmount" ? decision.cents : op.amountCents;
+  };
+
+  const unresolvedCount = ops.filter(isUnresolved).length;
+  const excludedCount = ops.filter(isExcluded).length;
+  const summaryCount = ops.length - excludedCount;
+
+  const problemOps = ops.filter(hasIssues);
+  const normalOps = ops.filter((op) => !hasIssues(op));
+  const totalOps = ops.length;
+
+  function setDecision(op: NormalizedOperation, decision: ImportDecision | null) {
+    setDecisions((current) => {
+      const next = { ...current };
+      if (decision === null) delete next[op.sourceRowId];
+      else next[op.sourceRowId] = decision;
+      return next;
+    });
+  }
+
+  // --- submit ----------------------------------------------------------------
+  async function handleImport() {
+    if (!account || unresolvedCount > 0) return;
+    const included = ops.filter((op) => !isExcluded(op));
+    const rows: ImportPayloadRow[] = included.map((op) => {
+      const cents = effectiveAmount(op) ?? 0;
+      return {
+        currency: op.currency,
+        date: effectiveDate(op) ?? "",
+        amount: (cents / 100).toFixed(2),
+        direction: op.direction ?? "expense",
+        description: op.description,
+        category: "",
+        payee: "",
+        notes: "",
+      };
+    });
+    if (rows.length === 0) return;
+    setSubmitting(true);
+    try {
+      const result = await requestJson<{ createdTransactions: number }>("/api/import", {
+        method: "POST",
+        body: JSON.stringify({ rows, accountId: Number(account.id), skipDedupe: true }),
+      });
+      await onImported();
+      notify(
+        `Импортировано: ${result.createdTransactions} ${pluralRu(
+          result.createdTransactions,
+          OPERATION_FORMS
+        )}`
+      );
+      onClose();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Импорт не выполнен");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // --- stepper / footer ------------------------------------------------------
+  const canLeaveStep1 = status === "ready" && Boolean(account) && !currencyMismatch;
+  const nextDisabled =
+    (step === 1 && !canLeaveStep1) ||
+    (step === 3 && (unresolvedCount > 0 || summaryCount === 0));
+
+  function goNext() {
+    if (nextDisabled) return;
+    if (step < 3) setStep((step + 1) as 1 | 2 | 3);
+    else void handleImport();
+  }
+
+  const firstOp = rawOps[0] ?? null;
+
+  const introText =
+    totalOps <= 25
+      ? "Все найденные операции показаны ниже."
+      : problemOps.length > 0
+        ? "Ниже показаны все проблемные операции и первые 10 остальных."
+        : `Показаны первые 10 из ${totalOps} операций.`;
+
+  const visibleReviewOps =
+    totalOps <= 25
+      ? [...problemOps, ...normalOps]
+      : [...problemOps.slice(0, 10), ...normalOps.slice(0, 10)];
+
+  // --- render helpers --------------------------------------------------------
+  function reasonFor(issue: ImportIssue): string {
+    switch (issue.kind) {
+      case "duplicate_candidate":
+        return "Похожая операция уже есть в выбранном счёте.";
+      case "missing_date":
+        return "Не удалось определить дату операции.";
+      case "ambiguous_amount":
+        return "Сумма не совпадает с изменением баланса.";
+      case "bank_state":
+        return `Банк отметил операцию как ${issue.state}.`;
+    }
+  }
+
+  function resolvedTextFor(op: NormalizedOperation, decision: ImportDecision): string {
+    if (decision.type === "exclude") return "Исключена из импорта.";
+    if (decision.type === "fixDate") return `Дата выбрана: ${dmy(decision.value)}.`;
+    if (decision.type === "fixAmount") {
+      return `Будет импортирована сумма ${formatMoney(decision.cents, op.currency)}.`;
+    }
+    const issue = op.issues[0];
+    if (issue?.kind === "bank_state") return "Будет импортирована несмотря на статус банка.";
+    return "Будет импортирована несмотря на возможное совпадение.";
+  }
+
+  function renderIssueControls(op: NormalizedOperation, issue: ImportIssue) {
+    const decision = decisionOf(op);
+    if (decision) {
+      return (
+        <button
+          className="im-link-button"
+          type="button"
+          onClick={() => setDecision(op, null)}
+        >
+          Изменить
+        </button>
+      );
+    }
+    if (issue.kind === "missing_date") {
+      return (
+        <>
+          <select
+            className="op-control im-issue-select"
+            defaultValue=""
+            aria-label="Выберите дату"
+            onChange={(event) =>
+              event.target.value && setDecision(op, { type: "fixDate", value: event.target.value })
+            }
+          >
+            <option value="" disabled>
+              Выберите дату
+            </option>
+            {issue.options.map((value) => (
+              <option key={value} value={value}>
+                {dmy(value)}
+              </option>
+            ))}
+          </select>
+          <button
+            className="im-link-button im-issue-exclude"
+            type="button"
+            onClick={() => setDecision(op, { type: "exclude" })}
+          >
+            Исключить
+          </button>
+        </>
+      );
+    }
+    if (issue.kind === "ambiguous_amount") {
+      return (
+        <>
+          <select
+            className="op-control im-issue-select"
+            defaultValue=""
+            aria-label="Выберите сумму"
+            onChange={(event) =>
+              event.target.value &&
+              setDecision(op, { type: "fixAmount", cents: Number(event.target.value) })
+            }
+          >
+            <option value="" disabled>
+              Выберите сумму
+            </option>
+            {issue.options.map((option) => (
+              <option key={`${option.amountCents}-${option.label}`} value={option.amountCents}>
+                {formatMoney(option.amountCents, op.currency)} · {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            className="im-link-button im-issue-exclude"
+            type="button"
+            onClick={() => setDecision(op, { type: "exclude" })}
+          >
+            Исключить
+          </button>
+        </>
+      );
+    }
+    // duplicate_candidate / bank_state — Импортировать / Исключить
+    return (
+      <>
+        <button
+          className="op-button"
+          type="button"
+          onClick={() => setDecision(op, { type: "keep" })}
+        >
+          Импортировать
+        </button>
+        <button
+          className="im-link-button im-issue-exclude"
+          type="button"
+          onClick={() => setDecision(op, { type: "exclude" })}
+        >
+          Исключить
+        </button>
+      </>
+    );
+  }
+
+  function renderAmount(op: NormalizedOperation) {
+    const cents = effectiveAmount(op);
+    if (cents === null) return <span>—</span>;
+    return (
+      <span className={op.direction === "income" ? "income" : undefined}>
+        {op.direction === "income" ? "+" : ""}
+        <Money cents={cents} currency={op.currency} />
+      </span>
+    );
+  }
+
+  function renderReviewRow(op: NormalizedOperation) {
+    const date = effectiveDate(op);
+    return (
+      <div className="im-preview-row" key={op.sourceRowId}>
+        <div>{date ? dmy(date) : "—"}</div>
+        <div className="im-preview-description">{op.description || "—"}</div>
+        <div className={`im-preview-amount ${op.direction === "income" ? "income" : ""}`}>
+          {renderAmount(op)}
+        </div>
+      </div>
+    );
+  }
+
+  function renderIssueBlock(op: NormalizedOperation) {
+    const issue = op.issues[0];
+    const decision = decisionOf(op);
+    const date = effectiveDate(op);
+    const blockClass = decision
+      ? decision.type === "exclude"
+        ? "im-issue-block resolved excluded"
+        : "im-issue-block resolved"
+      : "im-issue-block";
+    return (
+      <div className={blockClass} key={op.sourceRowId}>
+        <div className="im-preview-row">
+          <div>{date ? dmy(date) : "—"}</div>
+          <div className="im-preview-description">
+            {op.description || "—"}
+            <span className={`im-review-badge${decision ? " resolved" : ""}`}>
+              {decision ? "Решено" : "Проверить"}
+            </span>
+          </div>
+          <div className={`im-preview-amount ${op.direction === "income" ? "income" : ""}`}>
+            {renderAmount(op)}
+          </div>
+        </div>
+        <div className="im-issue-strip">
+          <div className="im-issue-message">
+            <strong>{decision ? "Готово" : "Причина:"}</strong>{" "}
+            {decision ? resolvedTextFor(op, decision) : reasonFor(issue)}
+          </div>
+          <div className="im-issue-actions">{renderIssueControls(op, issue)}</div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- full list -------------------------------------------------------------
+  const fullRows = ops.filter((op) => {
+    if (fullSearch && !op.description.toLowerCase().includes(fullSearch.toLowerCase())) {
+      return false;
+    }
+    if (fullFilter === "attention") return isUnresolved(op);
+    if (fullFilter === "expense") return op.direction === "expense";
+    if (fullFilter === "income") return op.direction === "income";
+    return true;
+  });
+
+  const stepStateClass = (index: 1 | 2 | 3) =>
+    `im-step${step === index ? " active" : ""}${step > index ? " done" : ""}`;
+
+  return (
+    <div className="im-overlay open" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section
+        className={`im-dialog${step === 3 ? " review-fixed" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Импорт выписки"
+        ref={dialogRef}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="im-header">
+          <h2>Импорт выписки</h2>
+          <button className="im-close" type="button" aria-label="Закрыть" onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <div className="im-stepper" aria-label="Этапы импорта">
+          <div className={stepStateClass(1)}>
+            <span className="im-step-no">1</span>
+            <span className="im-step-copy">
+              <strong>Файл и счёт</strong>
+            </span>
+          </div>
+          <div className={stepStateClass(2)}>
+            <span className="im-step-no">2</span>
+            <span className="im-step-copy">
+              <strong>Сопоставление</strong>
+            </span>
+          </div>
+          <div className={stepStateClass(3)}>
+            <span className="im-step-no">3</span>
+            <span className="im-step-copy">
+              <strong>Проверка</strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="im-body">
+          {step === 1 ? (
+            <section className="im-screen">
+              {status === "ready" ? (
+                <>
+                  <div className="im-file-card">
+                    <div className="im-file-main">
+                      <div className="im-file-icon">{fileFormat.toUpperCase()}</div>
+                      <div className="im-file-copy">
+                        <strong title={fileName}>{fileName}</strong>
+                        <span>
+                          {summary.count} {pluralRu(summary.count, OPERATION_FORMS)} ·{" "}
+                          {formatDateRangeRu(summary.minDate, summary.maxDate)} · {fileCurrency}
+                        </span>
+                      </div>
+                    </div>
+                    <button className="im-link-button" type="button" onClick={resetFile}>
+                      Заменить файл
+                    </button>
+                  </div>
+
+                  <section className="im-section">
+                    <div className="im-field">
+                      <label htmlFor="importAccount">Импортировать в счёт</label>
+                      <select
+                        className="op-control"
+                        id="importAccount"
+                        value={accountId}
+                        onChange={(event) => {
+                          // Account changed → duplicate search and any per-row
+                          // decisions from the previous account no longer apply.
+                          setAccountId(event.target.value);
+                          setExisting(null);
+                          setDecisions({});
+                        }}
+                      >
+                        <option value="">Выберите счёт</option>
+                        {accounts.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} · {item.currency}
+                          </option>
+                        ))}
+                      </select>
+                      <small>Все найденные операции будут созданы в выбранном счёте.</small>
+                    </div>
+                    {account && currencyMismatch ? (
+                      <div className="im-banner warning">
+                        Валюта выписки — {fileCurrency}, счёта — {account.currency}.
+                      </div>
+                    ) : account ? (
+                      <div className="im-account-confirm">
+                        ✓ Валюта счёта совпадает с валютой выписки: {fileCurrency}
+                      </div>
+                    ) : null}
+                  </section>
+                </>
+              ) : status === "loading" ? (
+                <div className="im-dropzone im-dropzone-state">
+                  <div>
+                    <div className="im-state-spinner" aria-hidden="true" />
+                    <h3>Читаем выписку…</h3>
+                  </div>
+                </div>
+              ) : status === "error" ? (
+                <div className="im-dropzone im-dropzone-state">
+                  <div>
+                    <div className="im-upload-icon im-upload-icon-warn" aria-hidden="true">
+                      !
+                    </div>
+                    <h3>Не удалось прочитать файл</h3>
+                    <p>Попробуйте выбрать другой файл.</p>
+                    <button
+                      className="op-button primary"
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Выбрать файл
+                    </button>
+                  </div>
+                </div>
+              ) : status === "empty" ? (
+                <div className="im-dropzone im-dropzone-state">
+                  <div>
+                    <div className="im-upload-icon im-upload-icon-warn" aria-hidden="true">
+                      !
+                    </div>
+                    <h3>В выписке не найдено операций</h3>
+                    <button
+                      className="op-button primary"
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Выбрать другой файл
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="im-dropzone"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    void handleFile(event.dataTransfer.files?.[0] ?? null);
+                  }}
+                >
+                  <div>
+                    <div className="im-upload-icon">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5M5 14.5V19h14v-4.5" />
+                      </svg>
+                    </div>
+                    <h3>Перетащите сюда банковскую выписку</h3>
+                    <p>или выберите файл на компьютере</p>
+                    <button
+                      className="op-button primary"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      Выбрать файл
+                    </button>
+                    <div className="im-formats">PDF, CSV, TSV · до 20 МБ</div>
+                    <div className="im-global-note">
+                      Один файл выписки импортируется в один счёт. Система сама попробует
+                      распознать дату, описание, сумму и тип каждой операции.
+                    </div>
+                  </div>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.tsv,.txt,.pdf,text/csv,text/tab-separated-values,text/plain,application/pdf"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  event.target.value = "";
+                  void handleFile(file);
+                }}
+              />
+            </section>
+          ) : null}
+
+          {step === 2 ? (
+            <section className="im-screen">
+              <div className="im-mapping-intro">
+                <h3>Проверьте сопоставление</h3>
+                <p>Так данные из файла будут записаны в операции.</p>
+              </div>
+
+              <div className="im-mapping-list">
+                {fileFormat === "pdf" ? (
+                  <>
+                    <ImportMapRowStatic
+                      source="Date"
+                      label="Дата"
+                      example={firstOp?.date ? `«${dmy(firstOp.date)}»` : "—"}
+                    />
+                    <ImportMapRowStatic
+                      source="Descriptions, Details"
+                      label="Описание"
+                      example={firstOp ? `«${firstOp.description}»` : "—"}
+                    />
+                    <ImportMapRowStatic
+                      source="Withdrawal / Deposit"
+                      label="Сумма и тип"
+                      example={firstOp ? `«${formatAmountWithType(firstOp)}»` : "—"}
+                    />
+                  </>
+                ) : analysis && columns ? (
+                  <>
+                    <ImportMapRowEditable
+                      rowKey="date"
+                      open={openEditor === "date"}
+                      onToggle={() => setOpenEditor(openEditor === "date" ? null : "date")}
+                      source={analysis.headers[columns.dateIndex] ?? "—"}
+                      label="Дата"
+                      example={firstOp?.date ? `«${dmy(firstOp.date)}»` : "—"}
+                      headers={analysis.headers}
+                      dataRow={analysis.dataRows[0] ?? []}
+                      value={columns.dateIndex}
+                      onChange={(index) => setColumns({ ...columns, dateIndex: index })}
+                    />
+                    <ImportMapRowEditable
+                      rowKey="description"
+                      open={openEditor === "description"}
+                      onToggle={() =>
+                        setOpenEditor(openEditor === "description" ? null : "description")
+                      }
+                      source={analysis.headers[columns.descriptionIndex] ?? "—"}
+                      label="Описание"
+                      example={firstOp ? `«${firstOp.description}»` : "—"}
+                      headers={analysis.headers}
+                      dataRow={analysis.dataRows[0] ?? []}
+                      value={columns.descriptionIndex}
+                      onChange={(index) => setColumns({ ...columns, descriptionIndex: index })}
+                    />
+                    <ImportMapRowEditable
+                      rowKey="amount"
+                      open={openEditor === "amount"}
+                      onToggle={() => setOpenEditor(openEditor === "amount" ? null : "amount")}
+                      source={analysis.headers[columns.amountIndex] ?? "—"}
+                      label="Сумма и тип"
+                      example={firstOp ? `«${formatAmountWithType(firstOp)}»` : "—"}
+                      subline={`Распознано: ${summary.expenseCount} ${pluralRu(summary.expenseCount, [
+                        "расход",
+                        "расхода",
+                        "расходов",
+                      ])} и ${summary.incomeCount} ${pluralRu(summary.incomeCount, [
+                        "поступление",
+                        "поступления",
+                        "поступлений",
+                      ])}.`}
+                      headers={analysis.headers}
+                      dataRow={analysis.dataRows[0] ?? []}
+                      value={columns.amountIndex}
+                      onChange={(index) => setColumns({ ...columns, amountIndex: index })}
+                    />
+                  </>
+                ) : null}
+              </div>
+
+              {summary.feeCount > 0 ? (
+                <div className="im-fee-note">
+                  <strong>
+                    {summary.feeCount === 1
+                      ? `Найдена 1 комиссия на сумму ${formatMoney(summary.feeTotalCents, fileCurrency)}.`
+                      : `Найдены ${summary.feeCount} ${pluralRu(summary.feeCount, [
+                          "комиссия",
+                          "комиссии",
+                          "комиссий",
+                        ])} на общую сумму ${formatMoney(summary.feeTotalCents, fileCurrency)}.`}
+                  </strong>{" "}
+                  {summary.feeCount === 1
+                    ? "Она будет импортирована как отдельный расход."
+                    : "Они будут импортированы как отдельные расходы."}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {step === 3 ? (
+            <section className="im-screen im-review-screen">
+              <div className="im-review-intro">
+                <h3>Проверьте операции перед импортом</h3>
+                <p>{introText}</p>
+              </div>
+
+              {problemOps.length > 0 ? (
+                <div className="im-review-alert">
+                  {unresolvedCount > 0 ? (
+                    <>
+                      <strong>
+                        {unresolvedCount} {pluralRu(unresolvedCount, OPERATION_FORMS)}{" "}
+                        {pluralRu(unresolvedCount, ["требует", "требуют", "требуют"])} проверки.
+                      </strong>{" "}
+                      Решите отмеченные вопросы перед импортом.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Все вопросы решены.</strong> Операции готовы к импорту.
+                    </>
+                  )}
+                </div>
+              ) : null}
+
+              <div className="im-preview">
+                <div className="im-preview-head">
+                  <div>Дата</div>
+                  <div>Описание</div>
+                  <div style={{ textAlign: "right" }}>Сумма</div>
+                </div>
+                <div className="im-review-rows">
+                  {visibleReviewOps.map((op) =>
+                    hasIssues(op) ? renderIssueBlock(op) : renderReviewRow(op)
+                  )}
+                </div>
+              </div>
+
+              <div className="im-summary-note">
+                Будут созданы {summaryCount} {pluralRu(summaryCount, OPERATION_FORMS)} в счёте{" "}
+                <strong>{account?.name ?? "—"}</strong>.
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        <footer className="im-footer">
+          <div className="im-footer-left">
+            {step === 3 && totalOps > 25 ? (
+              <button className="im-link-button" type="button" onClick={() => setFullOpen(true)}>
+                Открыть полный список
+              </button>
+            ) : null}
+            {fileName && status === "ready" ? (
+              <div className="im-file-pill">
+                <strong>{fileName}</strong>
+              </div>
+            ) : null}
+          </div>
+          <div className="im-footer-right">
+            {step > 1 ? (
+              <button
+                className="op-button"
+                type="button"
+                onClick={() => setStep((step - 1) as 1 | 2 | 3)}
+              >
+                Назад
+              </button>
+            ) : null}
+            <button className="op-button" type="button" onClick={onClose}>
+              Отмена
+            </button>
+            <button
+              className="op-button primary"
+              type="button"
+              disabled={nextDisabled || submitting}
+              title={step === 3 && unresolvedCount > 0 ? "Сначала решите все вопросы по операциям" : undefined}
+              onClick={goNext}
+            >
+              {step === 3 ? "Импортировать" : "Далее"}
+            </button>
+          </div>
+        </footer>
+      </section>
+
+      {fullOpen ? (
+        <div
+          className="im-full-overlay open"
+          onMouseDown={(event) => event.target === event.currentTarget && setFullOpen(false)}
+        >
+          <section
+            className="im-full-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Все операции к импорту"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className="im-full-header">
+              <h2>Все операции к импорту · {totalOps}</h2>
+              <button
+                className="im-close"
+                type="button"
+                aria-label="Закрыть"
+                onClick={() => setFullOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="im-full-toolbar">
+              <input
+                className="op-control"
+                type="search"
+                placeholder="Поиск по описанию"
+                value={fullSearch}
+                onChange={(event) => setFullSearch(event.target.value)}
+              />
+              <select
+                className="op-control"
+                aria-label="Фильтр операций"
+                value={fullFilter}
+                onChange={(event) =>
+                  setFullFilter(event.target.value as "all" | "attention" | "expense" | "income")
+                }
+              >
+                <option value="all">Все операции</option>
+                <option value="attention">Требуют внимания</option>
+                <option value="expense">Расходы</option>
+                <option value="income">Поступления</option>
+              </select>
+            </div>
+            <div className="im-full-body">
+              <div className="im-full-table">
+                <div className="im-full-head">
+                  <div>Дата</div>
+                  <div>Описание</div>
+                  <div style={{ textAlign: "right" }}>Сумма</div>
+                  <div>Статус</div>
+                </div>
+                <div>
+                  {fullRows.map((op) => {
+                    const attention = isUnresolved(op);
+                    const date = effectiveDate(op);
+                    return (
+                      <div
+                        className={`im-full-row${attention ? " attention" : ""}`}
+                        key={op.sourceRowId}
+                      >
+                        <div>{date ? dmy(date) : "—"}</div>
+                        <div>{op.description || "—"}</div>
+                        <div className={`amount ${op.direction === "income" ? "income" : ""}`}>
+                          {renderAmount(op)}
+                        </div>
+                        <div className={`im-full-status${attention ? " attention" : ""}`}>
+                          {attention ? "Требует проверки" : "Готово"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <footer className="im-full-footer">
+              <span>
+                Показано {fullRows.length} из {totalOps}
+              </span>
+              <button className="op-button" type="button" onClick={() => setFullOpen(false)}>
+                Готово
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// A read-only mapping row (used for the fixed KBank PDF columns).
+function ImportMapRowStatic({
+  source,
+  label,
+  example,
+}: {
+  source: string;
+  label: string;
+  example: string;
+}) {
+  return (
+    <div className="im-map-row">
+      <span className="im-map-check">✓</span>
+      <span className="im-map-source">
+        <code>{source}</code>
+      </span>
+      <span className="im-map-arrow">→</span>
+      <span className="im-map-result">
+        <strong>{label}:</strong>
+        <span className="im-map-example">{example}</span>
+      </span>
+    </div>
+  );
+}
+
+// An editable mapping row: «Изменить» reveals an inline column picker.
+function ImportMapRowEditable({
+  rowKey,
+  open,
+  onToggle,
+  source,
+  label,
+  example,
+  subline,
+  headers,
+  dataRow,
+  value,
+  onChange,
+}: {
+  rowKey: string;
+  open: boolean;
+  onToggle: () => void;
+  source: string;
+  label: string;
+  example: string;
+  subline?: string;
+  headers: string[];
+  dataRow: string[];
+  value: number;
+  onChange: (index: number) => void;
+}) {
+  return (
+    <div className="im-map-row" data-map-row={rowKey}>
+      <span className="im-map-check">✓</span>
+      <span className="im-map-source">
+        <code>{source}</code>
+      </span>
+      <span className="im-map-arrow">→</span>
+      <span className="im-map-result">
+        <strong>{label}:</strong>
+        <span className="im-map-example">{example}</span>
+        {subline ? <span className="im-map-subline">{subline}</span> : null}
+      </span>
+      <button className="im-map-edit" type="button" onClick={onToggle}>
+        Изменить
+      </button>
+      {open ? (
+        <div className="im-map-editor">
+          <span className="im-map-editor-label">Выберите колонку файла</span>
+          <div className="im-map-editor-controls">
+            <select
+              className="op-control"
+              value={value}
+              onChange={(event) => onChange(Number(event.target.value))}
+            >
+              {headers.map((header, index) => {
+                const sample = (dataRow[index] ?? "").trim();
+                return (
+                  <option key={index} value={index}>
+                    {header || `Колонка ${index + 1}`}
+                    {sample ? ` — ${sample}` : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <button className="op-button" type="button" onClick={onToggle}>
+              Готово
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function MoneyCounter() {
   const [activeTab, setActiveTab] = useState<Tab>("main");
 
@@ -1097,15 +2194,6 @@ export default function MoneyCounter() {
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [currencyModalOpen, setCurrencyModalOpen] = useState(false);
-
-  const [importAnalysis, setImportAnalysis] = useState<AnalyzeResult | null>(null);
-  const [importMapping, setImportMapping] = useState<ColumnMapping | null>(null);
-  const [importFileName, setImportFileName] = useState("");
-  const [importFlip, setImportFlip] = useState(false);
-  const [importEditorOpen, setImportEditorOpen] = useState(false);
-  // Non-null when the picked file was a PDF: rows are parsed directly (the sign
-  // comes from the running balance), bypassing the CSV column-mapping machinery.
-  const [pdfRows, setPdfRows] = useState<ParsedRow[] | null>(null);
 
   const activeCurrency = accounts[0]?.currency ?? "EUR";
 
@@ -2581,190 +3669,6 @@ export default function MoneyCounter() {
     }
     return slices;
   }, [stats, colorByCategory]);
-
-  // --- import ---------------------------------------------------------------
-  // The import always targets the account selected in the modal's "Счет" field;
-  // there is no separate destination picker and no on-the-fly account creation.
-  const importAccount = accounts.find(
-    (account) => String(account.id) === transactionForm.accountId
-  );
-  const importCurrency =
-    importAccount?.currency ??
-    importAnalysis?.detectedCurrency ??
-    pdfRows?.[0]?.currency ??
-    activeCurrency;
-
-  const importRows = useMemo<ParsedRow[]>(() => {
-    // PDF rows are already fully resolved (signed amount, currency) by analyzePdf.
-    if (pdfRows) return pdfRows;
-    if (!importAnalysis || !importMapping) return [];
-    const amountIsSigned = detectAmountSigned(importAnalysis.dataRows, importMapping.amount);
-    return buildRows(importAnalysis.dataRows, importMapping, {
-      amountIsSigned,
-      directionIndex: importAnalysis.directionIndex,
-      flipSign: importFlip,
-      defaultCurrency: importCurrency,
-    });
-  }, [pdfRows, importAnalysis, importMapping, importCurrency, importFlip]);
-
-  const importNeedsMapping = Boolean(
-    importMapping &&
-      (importMapping.date < 0 ||
-        (importMapping.amount < 0 && importMapping.debit < 0 && importMapping.credit < 0))
-  );
-  const importValidRows = useMemo(() => importRows.filter((row) => !row.skip), [importRows]);
-  const importTotal = useMemo(
-    () => importValidRows.reduce((sum, row) => sum + (row.amountCents ?? 0), 0),
-    [importValidRows]
-  );
-  const importSkipReasons = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of importRows) {
-      if (row.skip) counts.set(row.skip, (counts.get(row.skip) ?? 0) + 1);
-    }
-    return [...counts.entries()];
-  }, [importRows]);
-
-  function resetImport() {
-    setImportAnalysis(null);
-    setImportMapping(null);
-    setPdfRows(null);
-    setImportFileName("");
-    setImportFlip(false);
-    setImportEditorOpen(false);
-  }
-
-  async function handleImportFile(file: File | null) {
-    if (!file) return;
-    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-    if (isPdf) {
-      await handlePdfFile(file);
-      return;
-    }
-    try {
-      const text = await file.text();
-      const analysis = analyzeImport(text, { defaultCurrency: activeCurrency });
-      if (analysis.headers.length === 0 || analysis.rows.length === 0) {
-        setNotice("Не удалось распознать строки в файле");
-        return;
-      }
-      const hasAmount =
-        analysis.mapping.amount >= 0 ||
-        analysis.mapping.debit >= 0 ||
-        analysis.mapping.credit >= 0;
-      const needsMapping = analysis.mapping.date < 0 || !hasAmount;
-
-      setPdfRows(null);
-      setImportAnalysis(analysis);
-      setImportMapping(analysis.mapping);
-      setImportFileName(file.name);
-      setImportFlip(false);
-      setImportEditorOpen(needsMapping);
-      setNotice(
-        `Файл распознан: ${analysis.valid} строк к импорту` +
-          (analysis.skipped ? `, ${analysis.skipped} пропущено` : "")
-      );
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Файл не прочитан");
-    }
-  }
-
-  // PDF path: pdfjs is loaded lazily (only when a PDF is picked) so it stays out
-  // of the main bundle. It extracts positioned text in the browser; the pure
-  // analyzePdf (lib/pdf.ts) reconstructs the table into ParsedRow[].
-  async function handlePdfFile(file: File) {
-    setNotice("Читаю PDF…");
-    try {
-      const pdfjs = await import("pdfjs-dist");
-      const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
-      pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-
-      const data = await file.arrayBuffer();
-      const doc = await pdfjs.getDocument({ data }).promise;
-      const pages: PdfPage[] = [];
-      for (let p = 1; p <= doc.numPages; p += 1) {
-        const page = await doc.getPage(p);
-        const content = await page.getTextContent();
-        const items: PdfPage["items"] = [];
-        for (const item of content.items) {
-          if ("str" in item && typeof item.str === "string") {
-            items.push({ str: item.str, x: item.transform[4], y: item.transform[5] });
-          }
-        }
-        pages.push({ items });
-      }
-
-      const result = analyzePdf(pages);
-      if (!result.bank || result.valid === 0) {
-        setNotice(
-          "Формат PDF не распознан — поддерживается выписка K PLUS / KBank (THB)"
-        );
-        return;
-      }
-
-      setImportAnalysis(null);
-      setImportMapping(null);
-      setPdfRows(result.rows);
-      setImportFileName(file.name);
-      setImportFlip(false);
-      setImportEditorOpen(false);
-      setNotice(
-        `PDF распознан (${result.bank}): ${result.valid} операций к импорту` +
-          (result.skipped ? `, ${result.skipped} пропущено` : "")
-      );
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "PDF не прочитан");
-    }
-  }
-
-  function updateMapping(field: FieldKey, index: number) {
-    setImportMapping((current) => (current ? { ...current, [field]: index } : current));
-  }
-
-  async function handleImport() {
-    if (importValidRows.length === 0) return;
-    // Always import into the account selected in the modal — never create one.
-    const accountId = Number(transactionForm.accountId);
-    if (!accountId) {
-      setNotice("Выберите счёт для импорта");
-      return;
-    }
-    setSaving(true);
-    try {
-      const rows: ImportPayloadRow[] = importValidRows.map((row) => ({
-        currency: row.currency,
-        date: row.date ?? "",
-        amount: ((row.amountCents ?? 0) / 100).toFixed(2),
-        direction: "",
-        description: row.description,
-        category: row.category,
-        payee: row.payee,
-        notes: "",
-      }));
-
-      const result = await requestJson<{
-        createdTransactions: number;
-        duplicates: number;
-        rejected: Array<{ row: number; reason: string }>;
-      }>("/api/import", {
-        method: "POST",
-        body: JSON.stringify({ rows, accountId }),
-      });
-
-      setNotice(
-        `Импортировано: ${result.createdTransactions}` +
-          (result.duplicates ? `, дублей пропущено: ${result.duplicates}` : "") +
-          (result.rejected.length ? `, ошибок: ${result.rejected.length}` : "")
-      );
-      resetImport();
-      setImportOpen(false);
-      await refreshAfterMutation();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Импорт не выполнен");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   // --- mutations ------------------------------------------------------------
   async function handleSubmitTransaction(event: FormEvent<HTMLFormElement>) {
@@ -5300,193 +6204,13 @@ export default function MoneyCounter() {
           ) : null}
 
           {importOpen ? (
-            <div
-              className="modalOverlay"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Импорт выписки"
-              onClick={() => setImportOpen(false)}
-            >
-              <div className="modalCard" onClick={(event) => event.stopPropagation()}>
-                <div className="modalHead">
-                  <h2>Импорт выписки</h2>
-                  <button
-                    className="iconButton small"
-                    type="button"
-                    onClick={() => setImportOpen(false)}
-                    aria-label="Закрыть"
-                  >
-                    ×
-                  </button>
-                </div>
-                  <div className="modalImport">
-                    <div className="sectionHead">
-                      <label>
-                        Счёт
-                        <select
-                          required
-                          value={transactionForm.accountId}
-                          onChange={(event) =>
-                            setTransactionForm({ ...transactionForm, accountId: event.target.value })
-                          }
-                        >
-                          <option value="">Выберите счёт</option>
-                          {accounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <span>{importValidRows.length}</span>
-                    </div>
-                    <label className="fileDrop">
-                      <input
-                        type="file"
-                        accept=".csv,.tsv,.txt,.pdf,text/csv,text/tab-separated-values,text/plain,application/pdf"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0] ?? null;
-                          event.target.value = "";
-                          void handleImportFile(file);
-                        }}
-                      />
-                      <span>{importFileName || "Выбрать файл · CSV, TSV, TXT или PDF"}</span>
-                    </label>
-
-                    {(importAnalysis && importMapping) || pdfRows ? (
-                      <>
-                        <p className="importHint">
-                          Импортируется в счёт{" "}
-                          <b>
-                            {importAccount
-                              ? `«${importAccount.name}»`
-                              : "— сначала выберите счёт в поле «Счет» выше"}
-                          </b>
-                        </p>
-
-                        {/* Column mapping + sign flip are CSV-only. PDF rows are
-                            already resolved by analyzePdf, so this block is hidden
-                            for PDF imports (importAnalysis is null then). */}
-                        {importAnalysis && importMapping ? (
-                          <>
-                            {importNeedsMapping ? (
-                              <p className="importWarning">
-                                Не найдена колонка даты или суммы — укажите её в разделе «Колонки» ниже.
-                              </p>
-                            ) : null}
-
-                            <details
-                              className="mappingEditor"
-                              open={importEditorOpen}
-                              onToggle={(event) => setImportEditorOpen(event.currentTarget.open)}
-                            >
-                              <summary>
-                                Колонки · разделитель «
-                                {DELIMITER_LABELS[importAnalysis.delimiter] ?? importAnalysis.delimiter}»
-                              </summary>
-                              <div className="mappingGrid">
-                                {FIELD_DEFS.map((field) => (
-                                  <label key={field.key}>
-                                    {field.label}
-                                    <select
-                                      value={importMapping[field.key]}
-                                      onChange={(event) => updateMapping(field.key, Number(event.target.value))}
-                                    >
-                                      <option value={-1}>—</option>
-                                      {importAnalysis.headers.map((header, index) => (
-                                        <option key={index} value={index}>
-                                          {header || `Колонка ${index + 1}`}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                ))}
-                              </div>
-                            </details>
-
-                            <label className="flipToggle">
-                              <input
-                                type="checkbox"
-                                checked={importFlip}
-                                onChange={(event) => setImportFlip(event.target.checked)}
-                              />
-                              Инвертировать знак (выписки по карте: траты как «+»)
-                            </label>
-                          </>
-                        ) : null}
-
-                        <div className="tableWrap importPreview">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Дата</th>
-                                <th>Описание</th>
-                                <th className="amountCell">Сумма</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {importRows.slice(0, 8).map((row, index) => (
-                                <tr key={index} className={row.skip ? "skippedRow" : ""}>
-                                  <td>{row.date ?? "—"}</td>
-                                  <td>
-                                    <b>{row.description || "—"}</b>
-                                    {row.skip ? <small>пропуск: {row.skip}</small> : null}
-                                  </td>
-                                  <td
-                                    className={`amountCell ${
-                                      (row.amountCents ?? 0) < 0 ? "negative" : "positive"
-                                    }`}
-                                  >
-                                    {row.amountCents === null ? (
-                                      "—"
-                                    ) : (
-                                      <Money
-                                        cents={row.amountCents}
-                                        currency={row.currency || importCurrency}
-                                      />
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <div className="importStats">
-                          <span>К импорту</span>
-                          <b>{importValidRows.length}</b>
-                          <span>Пропущено</span>
-                          <b>{importRows.length - importValidRows.length}</b>
-                          <span>Сумма</span>
-                          <b><Money cents={importTotal} currency={importCurrency} /></b>
-                        </div>
-
-                        {importSkipReasons.length ? (
-                          <p className="importHint">
-                            Пропущены:{" "}
-                            {importSkipReasons.map(([reason, count]) => `${reason} (${count})`).join(", ")}
-                          </p>
-                        ) : null}
-
-                        <button
-                          className="primaryButton"
-                          type="button"
-                          disabled={saving || importValidRows.length === 0 || !importAccount}
-                          onClick={handleImport}
-                        >
-                          <span>↓</span> Импортировать {importValidRows.length}
-                        </button>
-                      </>
-                    ) : (
-                      <p className="importHint">
-                        Поддерживаются выписки банков в CSV и TSV (разделитель, колонки и валюта
-                        определяются автоматически) и PDF-выписка K PLUS / KBank. Перед загрузкой
-                        можно всё проверить; категории проставятся по правилам из «Настроек».
-                      </p>
-                    )}
-                  </div>
-              </div>
-            </div>
+            <ImportModal
+              accounts={accounts}
+              activeCurrency={activeCurrency}
+              notify={setNotice}
+              onClose={() => setImportOpen(false)}
+              onImported={refreshAfterMutation}
+            />
           ) : null}
 
           {deleteTransactionTarget ? (

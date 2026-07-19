@@ -2,7 +2,7 @@ import {
   normalizeCurrency,
   parseFlexibleDate,
   parseMoneyInputToCents,
-} from "./finance";
+} from "./finance.ts";
 
 /**
  * Bank-statement import engine: delimiter detection, an RFC 4180-ish CSV/TSV
@@ -632,7 +632,7 @@ function cellAt(record: string[], index: number): string {
 // "Outgoing Transfer" -> expense, "Card Refund" -> income), and a value that
 // contains BOTH an expense and an income word stays unclassified rather than
 // guessing. For signed-amount files the direction column is ignored anyway.
-function classifyDirection(value: string): "expense" | "income" | null {
+export function classifyDirection(value: string): "expense" | "income" | null {
   const normalized = value.trim().toLowerCase().replace(/ё/g, "е");
   if (!normalized) return null;
   if (EXPENSE_WORDS.has(normalized)) return "expense";
@@ -660,6 +660,13 @@ export type ParsedRow = {
   /** Reason the row is not importable, if any. */
   skip: string | null;
   raw: string[];
+  /**
+   * The amount literally printed in the source, when it disagrees with the
+   * derived amount (e.g. a KBank row where the printed figure ≠ the running
+   * balance delta). Optional — only set by profiles that can detect the
+   * discrepancy, so the Phase 2 preview can offer both as a "choose amount".
+   */
+  amountAltCents?: number | null;
 };
 
 export type AnalyzeOptions = {

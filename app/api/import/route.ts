@@ -5,6 +5,10 @@ import {
   resolveSignedAmountCents,
   type CategoryRule,
 } from "../../../lib/finance";
+import {
+  dedupeKey as commitDedupeKey,
+  planForcedImport,
+} from "../../../lib/import-commit";
 import { ensureSchema, getD1 } from "../../../db";
 
 type ImportRow = {
@@ -57,6 +61,7 @@ async function readPayload(request: Request) {
     return (await request.json()) as {
       rows?: ImportRow[];
       accountId?: number | string;
+      skipDedupe?: boolean;
     };
   } catch {
     return {};
@@ -66,10 +71,6 @@ async function readPayload(request: Request) {
 function parseId(value: unknown) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-function dedupeKey(accountId: number, date: string, amountCents: number, description: string) {
-  return `${accountId}::${date}::${amountCents}::${description.trim().toLowerCase()}`;
 }
 
 export async function POST(request: Request) {
@@ -136,7 +137,7 @@ export async function POST(request: Request) {
         .bind(accountId)
         .all<{ date: string; amount_cents: number; description: string }>();
       for (const tx of existing.results ?? []) {
-        set.add(dedupeKey(accountId, tx.date, tx.amount_cents, tx.description));
+        set.add(commitDedupeKey(accountId, tx.date, tx.amount_cents, tx.description));
       }
       existingKeys.set(accountId, set);
       return set;
@@ -152,6 +153,43 @@ export async function POST(request: Request) {
       notes
     )
     VALUES (?, ?, ?, ?, ?, ?, ?)`;
+
+    // Phase 2 (and any single-account import) plans the whole write purely, then
+    // inserts it in one D1 batch = one implicit transaction (all-or-nothing).
+    // `skipDedupe` is honored only here: the Phase 2 preview already surfaced
+    // duplicates and the user decided per row, so nothing must be silently
+    // dropped on write. The legacy multi-account path below is unchanged.
+    if (forcedAccount) {
+      const keys = await loadExistingKeys(forcedAccount.id);
+      const plan = planForcedImport(rows, {
+        account: forcedAccount,
+        rules,
+        existingKeys: keys,
+        skipDedupe: payload.skipDedupe === true,
+      });
+      const planned = plan.planned.map((tx) =>
+        d1
+          .prepare(insertSql)
+          .bind(
+            tx.accountId,
+            tx.date,
+            tx.description,
+            tx.category,
+            tx.payee,
+            tx.amountCents,
+            tx.notes
+          )
+      );
+      if (planned.length > 0) {
+        await d1.batch(planned);
+      }
+      return Response.json({
+        createdAccounts: 0,
+        createdTransactions: planned.length,
+        duplicates: plan.duplicates,
+        rejected: plan.rejected,
+      });
+    }
 
     let createdAccounts = 0;
     let duplicates = 0;
@@ -177,52 +215,43 @@ export async function POST(request: Request) {
         continue;
       }
 
-      let account = forcedAccount;
+      // The single-account (forced) import is handled above and returns early,
+      // so this loop is the multi-account path: resolve each row's account by
+      // name+currency, auto-creating missing ones (opening balance 0).
+      const accountName = String(row.accountName ?? "").trim();
+      const currency = normalizeCurrency(row.currency);
 
-      if (account) {
-        // Currency lives on the account, not the row — flag rows that belong to
-        // a different currency so they aren't silently mislabeled.
-        const rowCurrency = String(row.currency ?? "").trim();
-        if (rowCurrency && normalizeCurrency(rowCurrency) !== account.currency) {
-          rejected.push({ row: rowNumber, reason: "другая валюта" });
+      if (!accountName) {
+        rejected.push({ row: rowNumber, reason: "не указан счет" });
+        continue;
+      }
+
+      const key = accountKey(accountName, currency);
+      let account: AccountLookup | null = accountsByKey.get(key) ?? null;
+
+      if (!account) {
+        const created = await d1
+          .prepare(
+            `INSERT INTO accounts (name, currency, color)
+             VALUES (?, ?, ?)
+             RETURNING id, name, currency`
+          )
+          .bind(
+            accountName,
+            currency,
+            palette[accountsByKey.size % palette.length]
+          )
+          .first<AccountLookup>();
+
+        if (!created) {
+          rejected.push({ row: rowNumber, reason: "счет не создан" });
           continue;
         }
-      } else {
-        const accountName = String(row.accountName ?? "").trim();
-        const currency = normalizeCurrency(row.currency);
 
-        if (!accountName) {
-          rejected.push({ row: rowNumber, reason: "не указан счет" });
-          continue;
-        }
-
-        const key = accountKey(accountName, currency);
-        account = accountsByKey.get(key) ?? null;
-
-        if (!account) {
-          const created = await d1
-            .prepare(
-              `INSERT INTO accounts (name, currency, color)
-               VALUES (?, ?, ?)
-               RETURNING id, name, currency`
-            )
-            .bind(
-              accountName,
-              currency,
-              palette[accountsByKey.size % palette.length]
-            )
-            .first<AccountLookup>();
-
-          if (!created) {
-            rejected.push({ row: rowNumber, reason: "счет не создан" });
-            continue;
-          }
-
-          account = created;
-          accountsByKey.set(key, created);
-          accountsById.set(created.id, created);
-          createdAccounts += 1;
-        }
+        account = created;
+        accountsByKey.set(key, created);
+        accountsById.set(created.id, created);
+        createdAccounts += 1;
       }
 
       const description =
@@ -242,7 +271,7 @@ export async function POST(request: Request) {
       }
 
       const keys = await loadExistingKeys(account.id);
-      const fingerprint = dedupeKey(account.id, date, amountCents, description);
+      const fingerprint = commitDedupeKey(account.id, date, amountCents, description);
       if (keys.has(fingerprint)) {
         duplicates += 1;
         continue;
