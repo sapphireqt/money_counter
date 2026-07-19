@@ -978,6 +978,10 @@ function ImportModal({
   const [openEditor, setOpenEditor] = useState<"date" | "description" | "amount" | null>(null);
   const [decisions, setDecisions] = useState<Record<string, ImportDecision>>({});
   const [existing, setExisting] = useState<ExistingTransaction[] | null>(null);
+  // True when the duplicate-search read failed: we then keep the server's
+  // exact-fingerprint dedupe as a safety net (skipDedupe=false) instead of
+  // blindly creating rows the preview never got to check.
+  const [dupFailed, setDupFailed] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
   const [fullSearch, setFullSearch] = useState("");
   const [fullFilter, setFullFilter] = useState<"all" | "attention" | "expense" | "income">("all");
@@ -1033,6 +1037,7 @@ function ImportModal({
           transactions: Array<{ id: number; date: string; description: string; amountCents: number }>;
         }>(`/api/transactions?accountId=${accountId}&from=${from}&to=${to}&limit=500`);
         if (cancelled) return;
+        setDupFailed(false);
         setExisting(
           data.transactions.map((tx) => ({
             id: tx.id,
@@ -1042,7 +1047,10 @@ function ImportModal({
           }))
         );
       } catch {
-        if (!cancelled) setExisting([]);
+        if (!cancelled) {
+          setDupFailed(true);
+          setExisting([]);
+        }
       }
     })();
     return () => {
@@ -1099,7 +1107,17 @@ function ImportModal({
     setColumns(null);
     setOpenEditor(null);
     setExisting(null);
+    setDupFailed(false);
     setDecisions({});
+  }
+
+  // Remapping a column invalidates any per-row decisions and the duplicate
+  // search (source row ids are stable but their content changed).
+  function remapColumn(patch: Partial<Phase2Columns>) {
+    setColumns((current) => (current ? { ...current, ...patch } : current));
+    setDecisions({});
+    setExisting(null);
+    setDupFailed(false);
   }
 
   async function handleFile(file: File | null) {
@@ -1111,6 +1129,7 @@ function ImportModal({
     setColumns(null);
     setOpenEditor(null);
     setExisting(null);
+    setDupFailed(false);
     setDecisions({});
 
     if (file.size > 20 * 1024 * 1024) {
@@ -1211,16 +1230,28 @@ function ImportModal({
     if (rows.length === 0) return;
     setSubmitting(true);
     try {
-      const result = await requestJson<{ createdTransactions: number }>("/api/import", {
+      const result = await requestJson<{
+        createdTransactions: number;
+        duplicates: number;
+        rejected: Array<{ row: number; reason: string }>;
+      }>("/api/import", {
         method: "POST",
-        body: JSON.stringify({ rows, accountId: Number(account.id), skipDedupe: true }),
+        // Duplicates were resolved per-row in preview, so skip the server's
+        // fingerprint dedupe — UNLESS the duplicate search itself failed, in
+        // which case we keep it as a safety net so nothing is created blindly.
+        body: JSON.stringify({ rows, accountId: Number(account.id), skipDedupe: !dupFailed }),
       });
       await onImported();
+      // Surface any rows the server rejected/skipped so kept rows never vanish
+      // without explanation.
+      const extra: string[] = [];
+      if (result.rejected?.length) extra.push(`отклонено: ${result.rejected.length}`);
+      if (result.duplicates) extra.push(`дублей пропущено: ${result.duplicates}`);
       notify(
         `Импортировано: ${result.createdTransactions} ${pluralRu(
           result.createdTransactions,
           OPERATION_FORMS
-        )}`
+        )}${extra.length ? ` (${extra.join(", ")})` : ""}`
       );
       onClose();
     } catch (error) {
@@ -1232,9 +1263,13 @@ function ImportModal({
 
   // --- stepper / footer ------------------------------------------------------
   const canLeaveStep1 = status === "ready" && Boolean(account) && !currencyMismatch;
+  // On step 3 the duplicate search must finish (existing !== null) before import
+  // is allowed, otherwise a fast click on a clean statement would submit with
+  // skipDedupe before any duplicate_candidate issue was attached.
+  const duplicateSearchPending = step === 3 && existing === null;
   const nextDisabled =
     (step === 1 && !canLeaveStep1) ||
-    (step === 3 && (unresolvedCount > 0 || summaryCount === 0));
+    (step === 3 && (unresolvedCount > 0 || summaryCount === 0 || duplicateSearchPending));
 
   function goNext() {
     if (nextDisabled) return;
@@ -1251,10 +1286,16 @@ function ImportModal({
         ? "Ниже показаны все проблемные операции и первые 10 остальных."
         : `Показаны первые 10 из ${totalOps} операций.`;
 
+  // Problem rows are the only ones the user MUST act on and final import is
+  // blocked until each is resolved — so they are always shown in full (the
+  // review list scrolls). Only the non-blocking normal rows are capped at 10
+  // for large files; the full list shows everything. This keeps the introText
+  // "…все проблемные операции…" true and avoids a dead-end where a hidden
+  // unresolved problem keeps import disabled with no way to reach it.
   const visibleReviewOps =
     totalOps <= 25
       ? [...problemOps, ...normalOps]
-      : [...problemOps.slice(0, 10), ...normalOps.slice(0, 10)];
+      : [...problemOps, ...normalOps.slice(0, 10)];
 
   // --- render helpers --------------------------------------------------------
   function reasonFor(issue: ImportIssue): string {
@@ -1277,7 +1318,10 @@ function ImportModal({
       return `Будет импортирована сумма ${formatMoney(decision.cents, op.currency)}.`;
     }
     const issue = op.issues[0];
-    if (issue?.kind === "bank_state") return "Будет импортирована несмотря на статус банка.";
+    // Approved copy defines a resolved-keep string only for duplicates. For a
+    // kept bank-state row we use a minimal factual line (not a new "status")
+    // pending a copy decision — see handoff §7.
+    if (issue?.kind === "bank_state") return "Будет импортирована.";
     return "Будет импортирована несмотря на возможное совпадение.";
   }
 
@@ -1519,6 +1563,7 @@ function ImportModal({
                           // decisions from the previous account no longer apply.
                           setAccountId(event.target.value);
                           setExisting(null);
+                          setDupFailed(false);
                           setDecisions({});
                         }}
                       >
@@ -1578,7 +1623,7 @@ function ImportModal({
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      Выбрать другой файл
+                      Выбрать файл
                     </button>
                   </div>
                 </div>
@@ -1670,7 +1715,7 @@ function ImportModal({
                       headers={analysis.headers}
                       dataRow={analysis.dataRows[0] ?? []}
                       value={columns.dateIndex}
-                      onChange={(index) => setColumns({ ...columns, dateIndex: index })}
+                      onChange={(index) => remapColumn({ dateIndex: index })}
                     />
                     <ImportMapRowEditable
                       rowKey="description"
@@ -1684,7 +1729,7 @@ function ImportModal({
                       headers={analysis.headers}
                       dataRow={analysis.dataRows[0] ?? []}
                       value={columns.descriptionIndex}
-                      onChange={(index) => setColumns({ ...columns, descriptionIndex: index })}
+                      onChange={(index) => remapColumn({ descriptionIndex: index })}
                     />
                     <ImportMapRowEditable
                       rowKey="amount"
@@ -1705,7 +1750,7 @@ function ImportModal({
                       headers={analysis.headers}
                       dataRow={analysis.dataRows[0] ?? []}
                       value={columns.amountIndex}
-                      onChange={(index) => setColumns({ ...columns, amountIndex: index })}
+                      onChange={(index) => remapColumn({ amountIndex: index })}
                     />
                   </>
                 ) : null}

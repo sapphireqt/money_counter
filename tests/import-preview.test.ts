@@ -117,6 +117,27 @@ test("a row with a non-zero amount AND a fee yields two operations", () => {
   assert.equal(fee.description, "Hotel Booking");
 });
 
+test("unsigned amount + unclassifiable Type falls back to the amount sign, not expense", () => {
+  // No amount parses negative → amountIsSigned=false; "Type" is the direction
+  // column but "Transfer" is unclassifiable, so direction must follow the sign
+  // (positive → income), never be forced to expense.
+  const text = [
+    "Date,Description,Type,Amount",
+    "2026-07-02,Salary,Transfer,500.00",
+    "2026-07-03,Coffee,Purchase,3.50",
+  ].join("\n");
+  const analyze = analyzeImport(text, { defaultCurrency: "EUR" });
+  const ops = normalizeTextOperations(analyze, {
+    columns: guessPhase2Columns(analyze),
+    defaultCurrency: analyze.detectedCurrency,
+    sourceFormat: "csv",
+  });
+  const salary = ops.find((op) => op.description === "Salary")!;
+  const coffee = ops.find((op) => op.description === "Coffee")!;
+  assert.equal(salary.direction, "income", "positive + unclassifiable Type → income");
+  assert.equal(coffee.direction, "expense", "'Purchase' still classifies as expense");
+});
+
 test("TSV date defaults to Completed Date and Started Date is an alternative", () => {
   const completed = normalizeTsv(ORIGINAL_TSV, "completed");
   assert.equal(completed[0].date, "2026-06-01"); // Tren completed

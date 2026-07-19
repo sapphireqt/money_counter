@@ -184,7 +184,13 @@ export function normalizeTextOperations(
       if (amountIsSigned) {
         direction = amountRaw < 0 ? "expense" : "income";
       } else if (columns.directionIndex >= 0) {
-        direction = classifyDirection(cell(record, columns.directionIndex)) ?? "expense";
+        // An unclassifiable direction/Type value must NOT force "expense" — fall
+        // back to the amount's own sign (matches the legacy resolveRowCents),
+        // otherwise a positive receipt with a Type like "Transfer" flips to a
+        // spurious expense.
+        direction =
+          classifyDirection(cell(record, columns.directionIndex)) ??
+          (amountRaw < 0 ? "expense" : "income");
       } else {
         direction = amountRaw < 0 ? "expense" : "income";
       }

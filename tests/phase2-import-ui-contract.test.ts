@@ -96,10 +96,14 @@ test("full list has search, filters, status column and count", () => {
 // Behaviour invariants ------------------------------------------------------
 
 test("final import posts only included rows with skipDedupe", () => {
-  assert.match(component, /skipDedupe: true/);
+  // skipDedupe is opt-in per submit — true when the duplicate search succeeded,
+  // false as a safety net when it failed (so nothing is created unchecked).
+  assert.match(component, /skipDedupe: !dupFailed/);
   assert.match(component, /ops\.filter\(\(op\) => !isExcluded\(op\)\)/);
   assert.match(component, /const nextDisabled =/);
   assert.match(component, /unresolvedCount > 0/);
+  // Import waits for the duplicate search to finish before it is enabled.
+  assert.match(component, /duplicateSearchPending/);
 });
 
 test("duplicate search reads existing operations without writing", () => {
