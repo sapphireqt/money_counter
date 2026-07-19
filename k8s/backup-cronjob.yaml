@@ -1,0 +1,69 @@
+# Daily on-cluster backup of the Money Counter D1 (SQLite) database.
+#
+# Runs SQLite's online-backup API (Node 24 built-in node:sqlite) from a short
+# pod that co-mounts the app's data PVC. It opens a READ-ONLY connection to the
+# live DB, so app data is never modified; the volume is mounted read-WRITE only
+# so SQLite can maintain the WAL -shm index while miniflare keeps writing.
+#
+# Snapshots land on the SAME PVC under /data/backups (provably writable by the
+# app's uid). That protects against logical errors (bad import, accidental
+# delete, app bug) but NOT node/disk loss — for off-node safety also run
+# scripts/backup-db.sh from a workstation periodically.
+#
+# The d1-in-pod.mjs script is supplied via a ConfigMap; create/update it with
+# scripts/install-backup-cronjob.sh (single source of truth = scripts/d1-in-pod.mjs).
+#
+# Install:   scripts/install-backup-cronjob.sh
+# Test now:  kubectl --context lab -n money-counter create job --from=cronjob/money-counter-backup mc-backup-test
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: money-counter-backup
+  namespace: money-counter
+spec:
+  schedule: "0 2 * * *" # daily 02:00 (kube-controller-manager timezone, usually UTC)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          imagePullSecrets:
+            - name: ghcr-creds
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: money-counter-data
+            - name: script
+              configMap:
+                name: money-counter-backup-script
+          containers:
+            - name: backup
+              image: ghcr.io/sapphireqt/money_counter:build-002
+              imagePullPolicy: IfNotPresent
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  BKDIR=/data/backups
+                  mkdir -p "$BKDIR"
+                  TS=$(date +%Y%m%d-%H%M%S)
+                  OUT="$BKDIR/money-counter-d1-$TS.sqlite"
+                  D1_DIR=/data/wrangler/v3/d1/miniflare-D1DatabaseObject \
+                    node /scripts/d1-in-pod.mjs backup "$OUT"
+                  gzip -f "$OUT"
+                  echo "wrote $OUT.gz ($(du -h "$OUT.gz" | cut -f1))"
+                  # retention: keep the 30 newest, drop the rest
+                  ls -1t "$BKDIR"/money-counter-d1-*.sqlite.gz | tail -n +31 | xargs -r rm -f
+                  echo "current backups:"
+                  ls -1t "$BKDIR"/money-counter-d1-*.sqlite.gz | head
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
