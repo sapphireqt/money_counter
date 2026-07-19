@@ -553,3 +553,23 @@ export function blockingIssue(op: NormalizedOperation): ImportIssue | null {
 export function hasIssues(op: NormalizedOperation): boolean {
   return op.issues.length > 0;
 }
+
+/**
+ * Shared review/full-list ordering: items for which `requiresAttention` is true
+ * are moved to the front, all other items follow, and the ORIGINAL source order
+ * is preserved inside each group (a stable partition). The compact review and
+ * the full-list modal both use this so their ordering never diverges. Any
+ * search/filtering is applied by the caller BEFORE ordering.
+ */
+export function orderByAttention<T>(
+  items: T[],
+  requiresAttention: (item: T) => boolean
+): T[] {
+  const attention: T[] = [];
+  const rest: T[] = [];
+  for (const item of items) {
+    if (requiresAttention(item)) attention.push(item);
+    else rest.push(item);
+  }
+  return [...attention, ...rest];
+}

@@ -10,11 +10,14 @@ import {
   findDuplicateCandidates,
   formatDateRangeRu,
   guessPhase2Columns,
+  hasIssues,
   normalizePdfOperations,
   normalizeTextOperations,
+  orderByAttention,
   pluralRu,
   summarizeOperations,
   type ExistingTransaction,
+  type ImportIssue,
   type NormalizedOperation,
 } from "../lib/import-preview.ts";
 
@@ -336,4 +339,51 @@ test("descriptionSimilarity is 100 for identical, 0 for unrelated", () => {
   assert.equal(descriptionSimilarity("EasyPark", "EasyPark"), 100);
   assert.equal(descriptionSimilarity("EasyPark", "Парковка"), 0);
   assert.ok(descriptionSimilarity("Turo Park Medical Cent", "Turo Park") > 0);
+});
+
+// --- shared review/full-list ordering (change 2) ----------------------------
+
+const dupIssue: ImportIssue = { kind: "duplicate_candidate", candidates: [] };
+function op(id: string, problem: boolean): NormalizedOperation {
+  return {
+    sourceRowId: id,
+    sourceFormat: "tsv",
+    sourceIndex: Number(id.replace(/\D/g, "")) || 0,
+    isFee: false,
+    date: "2026-06-01",
+    startedAt: "2026-06-01",
+    completedAt: "2026-06-01",
+    description: id,
+    direction: "expense",
+    amountCents: 100,
+    currency: "EUR",
+    sourceState: null,
+    issues: problem ? [dupIssue] : [],
+  };
+}
+
+test("orderByAttention floats problem rows to the top («Все операции»)", () => {
+  const rows = [op("a", false), op("b", true), op("c", false), op("d", true)];
+  const ordered = orderByAttention(rows, hasIssues);
+  assert.deepEqual(
+    ordered.map((o) => o.sourceRowId),
+    ["b", "d", "a", "c"],
+    "problem rows first, then the rest"
+  );
+});
+
+test("orderByAttention preserves the original source order inside each group", () => {
+  const rows = [op("p1", true), op("n1", false), op("p2", true), op("n2", false), op("p3", true)];
+  const ordered = orderByAttention(rows, hasIssues);
+  assert.deepEqual(
+    ordered.map((o) => o.sourceRowId),
+    ["p1", "p2", "p3", "n1", "n2"],
+    "stable within the attention group and within the rest group"
+  );
+});
+
+test("«Требуют внимания» filter keeps only problem rows", () => {
+  const rows = [op("a", false), op("b", true), op("c", false), op("d", true)];
+  const attentionOnly = rows.filter(hasIssues);
+  assert.deepEqual(attentionOnly.map((o) => o.sourceRowId), ["b", "d"]);
 });

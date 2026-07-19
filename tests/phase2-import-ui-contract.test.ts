@@ -105,6 +105,24 @@ test("problem-row reasons and resolved states match the approved copy", () => {
   assert.match(component, /decision \? "Решено" : "Проверить"/);
 });
 
+// Footer: file pill / full-list link ---------------------------------------
+
+test("footer shows «Файл: {filename}» on steps 1–2 and hides it on step 3", () => {
+  // Steps 1–2: muted «Файл:» label + the name in normal text (v34.1 pill).
+  assert.match(component, /<div className="im-file-pill">\s*Файл: <strong>\{fileName\}<\/strong>/);
+  // Step 3 renders the full-list link (or nothing) — never the file pill.
+  assert.match(
+    component,
+    /\{step === 3 \?\s*\(\s*totalOps > 25 \?[\s\S]*?\) : fileName && status === "ready" \?/
+  );
+});
+
+test("full-list link appears only when total > 25 on step 3", () => {
+  assert.match(component, /step === 3 \?\s*\(\s*totalOps > 25 \?/);
+  assert.match(css, /\.im-file-pill\s*\{[^}]*color:\s*var\(--muted\)/);
+  assert.match(css, /\.im-file-pill strong\s*\{[^}]*color:\s*var\(--text\)/);
+});
+
 // Full list -----------------------------------------------------------------
 
 test("full list has search, filters, status column and count", () => {
@@ -114,6 +132,15 @@ test("full list has search, filters, status column and count", () => {
   assert.match(component, /<option value="attention">Требуют внимания<\/option>/);
   assert.match(component, /Показано \{fullRows\.length\} из \{totalOps\}/);
   assert.match(component, /Требует проверки/);
+});
+
+test("review and full list share one attention-ordering helper", () => {
+  // Full list: filter/search first, then orderByAttention.
+  assert.match(component, /const fullRows = orderByAttention\(\s*ops\.filter/);
+  // Compact review uses the same helper.
+  assert.match(component, /orderByAttention\(ops, hasIssues\)/);
+  // The «Требуют внимания» filter keeps only unresolved rows.
+  assert.match(component, /fullFilter === "attention"\) return isUnresolved\(op\)/);
 });
 
 // Behaviour invariants ------------------------------------------------------

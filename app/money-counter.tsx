@@ -45,6 +45,7 @@ import {
   hasIssues,
   normalizePdfOperations,
   normalizeTextOperations,
+  orderByAttention,
   pluralRu,
   summarizeOperations,
   type ExistingTransaction,
@@ -1317,13 +1318,14 @@ function ImportModal({
 
   // Problem rows are the only ones the user MUST act on and final import is
   // blocked until each is resolved — so they are always shown in full (the
-  // review list scrolls). Only the non-blocking normal rows are capped at 10
-  // for large files; the full list shows everything. This keeps the introText
-  // "…все проблемные операции…" true and avoids a dead-end where a hidden
-  // unresolved problem keeps import disabled with no way to reach it.
+  // review list scrolls, via the shared orderByAttention helper). Only the
+  // non-blocking normal rows are capped at 10 for large files; the full list
+  // shows everything. This keeps the introText "…все проблемные операции…" true
+  // and avoids a dead-end where a hidden unresolved problem keeps import
+  // disabled with no way to reach it.
   const visibleReviewOps =
     totalOps <= 25
-      ? [...problemOps, ...normalOps]
+      ? orderByAttention(ops, hasIssues)
       : [...problemOps, ...normalOps.slice(0, 10)];
 
   // --- render helpers --------------------------------------------------------
@@ -1508,15 +1510,21 @@ function ImportModal({
   }
 
   // --- full list -------------------------------------------------------------
-  const fullRows = ops.filter((op) => {
-    if (fullSearch && !op.description.toLowerCase().includes(fullSearch.toLowerCase())) {
-      return false;
-    }
-    if (fullFilter === "attention") return isUnresolved(op);
-    if (fullFilter === "expense") return op.direction === "expense";
-    if (fullFilter === "income") return op.direction === "income";
-    return true;
-  });
+  // Full list: search + the chosen filter are applied FIRST, then the shared
+  // ordering floats the rows that require attention (problem rows) to the top,
+  // preserving source order inside each group — same helper as the review.
+  const fullRows = orderByAttention(
+    ops.filter((op) => {
+      if (fullSearch && !op.description.toLowerCase().includes(fullSearch.toLowerCase())) {
+        return false;
+      }
+      if (fullFilter === "attention") return isUnresolved(op);
+      if (fullFilter === "expense") return op.direction === "expense";
+      if (fullFilter === "income") return op.direction === "income";
+      return true;
+    }),
+    hasIssues
+  );
 
   const stepStateClass = (index: 1 | 2 | 3) =>
     `im-step${step === index ? " active" : ""}${step > index ? " done" : ""}`;
@@ -1854,14 +1862,17 @@ function ImportModal({
 
         <footer className="im-footer">
           <div className="im-footer-left">
-            {step === 3 && totalOps > 25 ? (
-              <button className="im-link-button" type="button" onClick={() => setFullOpen(true)}>
-                Открыть полный список
-              </button>
-            ) : null}
-            {fileName && status === "ready" ? (
+            {/* Step 3: only «Открыть полный список» (and only when total > 25).
+                Steps 1–2: the «Файл: name» pill. Never both. Matches v34.1. */}
+            {step === 3 ? (
+              totalOps > 25 ? (
+                <button className="im-link-button" type="button" onClick={() => setFullOpen(true)}>
+                  Открыть полный список
+                </button>
+              ) : null
+            ) : fileName && status === "ready" ? (
               <div className="im-file-pill">
-                <strong>{fileName}</strong>
+                Файл: <strong>{fileName}</strong>
               </div>
             ) : null}
           </div>
