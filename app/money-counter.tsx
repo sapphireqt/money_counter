@@ -1196,6 +1196,14 @@ function ImportModal({
   const unresolvedCount = ops.filter(isUnresolved).length;
   const excludedCount = ops.filter(isExcluded).length;
   const summaryCount = ops.length - excludedCount;
+  // Operations that will actually be created: clean rows plus problem rows the
+  // user kept/fixed (excluded and still-undecided rows are not counted).
+  const isIncluded = (op: NormalizedOperation) => {
+    if (!hasIssues(op)) return true;
+    const decision = decisionOf(op);
+    return Boolean(decision) && decision!.type !== "exclude";
+  };
+  const includedCount = ops.filter(isIncluded).length;
 
   const problemOps = ops.filter(hasIssues);
   const normalOps = ops.filter((op) => !hasIssues(op));
@@ -1267,17 +1275,38 @@ function ImportModal({
   // is allowed, otherwise a fast click on a clean statement would submit with
   // skipDedupe before any duplicate_candidate issue was attached.
   const duplicateSearchPending = step === 3 && existing === null;
+  // All questions resolved but nothing left to create → a terminal "everything
+  // excluded" state: the primary action becomes «Завершить» and just closes the
+  // modal without calling the create API.
+  const allExcluded =
+    step === 3 && !duplicateSearchPending && unresolvedCount === 0 && includedCount === 0;
   const nextDisabled =
     (step === 1 && !canLeaveStep1) ||
-    (step === 3 && (unresolvedCount > 0 || summaryCount === 0 || duplicateSearchPending));
+    (step === 3 &&
+      !allExcluded &&
+      (unresolvedCount > 0 || summaryCount === 0 || duplicateSearchPending));
 
   function goNext() {
     if (nextDisabled) return;
     if (step < 3) setStep((step + 1) as 1 | 2 | 3);
+    else if (allExcluded) onClose();
     else void handleImport();
   }
 
   const firstOp = rawOps[0] ?? null;
+
+  // Computed from the NORMALIZED operations (not raw file rows), so it is
+  // correct for every format including PDF — e.g. the KBank PDF reports
+  // «Распознано: 8 расходов и 2 поступления».
+  const typeStatsLine = `Распознано: ${summary.expenseCount} ${pluralRu(summary.expenseCount, [
+    "расход",
+    "расхода",
+    "расходов",
+  ])} и ${summary.incomeCount} ${pluralRu(summary.incomeCount, [
+    "поступление",
+    "поступления",
+    "поступлений",
+  ])}.`;
 
   const introText =
     totalOps <= 25
@@ -1701,6 +1730,7 @@ function ImportModal({
                       source="Withdrawal / Deposit"
                       label="Сумма и тип"
                       example={firstOp ? `«${formatAmountWithType(firstOp)}»` : "—"}
+                      subline={typeStatsLine}
                     />
                   </>
                 ) : analysis && columns ? (
@@ -1738,15 +1768,7 @@ function ImportModal({
                       source={analysis.headers[columns.amountIndex] ?? "—"}
                       label="Сумма и тип"
                       example={firstOp ? `«${formatAmountWithType(firstOp)}»` : "—"}
-                      subline={`Распознано: ${summary.expenseCount} ${pluralRu(summary.expenseCount, [
-                        "расход",
-                        "расхода",
-                        "расходов",
-                      ])} и ${summary.incomeCount} ${pluralRu(summary.incomeCount, [
-                        "поступление",
-                        "поступления",
-                        "поступлений",
-                      ])}.`}
+                      subline={typeStatsLine}
                       headers={analysis.headers}
                       dataRow={analysis.dataRows[0] ?? []}
                       value={columns.amountIndex}
@@ -1814,8 +1836,17 @@ function ImportModal({
               </div>
 
               <div className="im-summary-note">
-                Будут созданы {summaryCount} {pluralRu(summaryCount, OPERATION_FORMS)} в счёте{" "}
-                <strong>{account?.name ?? "—"}</strong>.
+                {allExcluded ? (
+                  "Все операции исключены. Новые операции созданы не будут."
+                ) : (
+                  <>
+                    {`Будут созданы ${summaryCount} ${pluralRu(
+                      summaryCount,
+                      OPERATION_FORMS
+                    )} в счёте\u00A0`}
+                    <strong>{account?.name ?? "—"}</strong>.
+                  </>
+                )}
               </div>
             </section>
           ) : null}
@@ -1854,7 +1885,7 @@ function ImportModal({
               title={step === 3 && unresolvedCount > 0 ? "Сначала решите все вопросы по операциям" : undefined}
               onClick={goNext}
             >
-              {step === 3 ? "Импортировать" : "Далее"}
+              {step === 3 ? (allExcluded ? "Завершить" : "Импортировать") : "Далее"}
             </button>
           </div>
         </footer>
@@ -1956,10 +1987,12 @@ function ImportMapRowStatic({
   source,
   label,
   example,
+  subline,
 }: {
   source: string;
   label: string;
   example: string;
+  subline?: string;
 }) {
   return (
     <div className="im-map-row">
@@ -1971,6 +2004,7 @@ function ImportMapRowStatic({
       <span className="im-map-result">
         <strong>{label}:</strong>
         <span className="im-map-example">{example}</span>
+        {subline ? <span className="im-map-subline">{subline}</span> : null}
       </span>
     </div>
   );

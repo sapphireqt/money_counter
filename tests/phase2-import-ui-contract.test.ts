@@ -61,14 +61,37 @@ test("fee note is rendered only when a fee is found", () => {
   assert.match(component, /импортирована как отдельный расход/);
 });
 
+test("the recognized-types subline is computed from normalized ops for all formats", () => {
+  // Single source of truth, built from summarizeOperations (works for PDF too).
+  assert.match(component, /const typeStatsLine = `Распознано: \$\{summary\.expenseCount\}/);
+  // Passed to BOTH the static PDF «Withdrawal / Deposit» row and the editable
+  // TSV amount row — so the subline shows for every format.
+  assert.match(
+    component,
+    /source="Withdrawal \/ Deposit"[\s\S]*?subline=\{typeStatsLine\}/
+  );
+  // Exactly two mapping rows carry the subline (PDF static + TSV editable).
+  assert.equal((component.match(/subline=\{typeStatsLine\}/g) ?? []).length, 2);
+});
+
 // Step 3 --------------------------------------------------------------------
 
 test("review header, summary line and button use the approved copy", () => {
   assert.match(component, /Проверьте операции перед импортом/);
-  assert.match(component, /Будут созданы \{summaryCount\}/);
+  assert.match(component, /Будут созданы \$\{summaryCount\}/);
+  // A non-breaking space keeps «счёте» attached to the account name inline.
+  assert.match(component, /в счёте\\u00A0`\}/);
   // The primary button reads "Импортировать" with no count appended.
-  assert.match(component, /step === 3 \? "Импортировать" : "Далее"/);
+  assert.match(component, /allExcluded \? "Завершить" : "Импортировать"/);
   assert.match(component, /Сначала решите все вопросы по операциям/);
+});
+
+test("all-excluded review shows the finish state without a create call", () => {
+  assert.match(component, /Все операции исключены\. Новые операции созданы не будут\./);
+  assert.match(component, /const allExcluded =/);
+  assert.match(component, /includedCount === 0/);
+  // «Завершить» just closes the modal — goNext calls onClose(), not handleImport.
+  assert.match(component, /else if \(allExcluded\) onClose\(\);/);
 });
 
 test("problem-row reasons and resolved states match the approved copy", () => {
