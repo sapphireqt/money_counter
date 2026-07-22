@@ -142,7 +142,7 @@ export function extractKbank(pages: PdfPage[]): PdfAnalyzeResult {
       // The Channel column ("EDC/E-Commerce", "K PLUS", "Automatic Transfer") is
       // a technical routing label, not part of the human description, so it is
       // dropped. From Details we keep only *useful* text — a transfer beneficiary
-      // like "To BAY X8078 VITALII DEN++" — and drop the technical "Ref Code …".
+      // like "To BAY X0000 JOHN DOE++" — and drop the technical "Ref Code …".
       const details = joinBand(tokens, KBANK.detMin, KBANK.detMin + 200);
       const usefulDetails =
         details && !/^ref\s*code\b/i.test(details) ? details : "";
